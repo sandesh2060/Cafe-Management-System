@@ -5,7 +5,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── CSS VARIABLES ─────────────────────────────────────────────────────────── */
+/* ── CSS VARIABLES — LIGHT MODE ────────────────────────────────────────────── */
 :root {
   /* Brand */
   --color-saffron:         #FF9F1C;
@@ -19,14 +19,23 @@
   --color-brew-soft:       #C49A6C;
   --color-matcha:          #2D9B5A;
   --color-matcha-light:    #38C26F;
-  --color-cream:           #FFF8EE;
-  --color-cream-dark:      #FFF0D6;
 
-  /* Semantic */
+  /* Semantic — light */
   --color-success:         #16A34A;
   --color-warning:         #D97706;
   --color-error:           #DC2626;
   --color-info:            #2563EB;
+
+  /* Surface — light */
+  --bg-app:                #FFF8EE;
+  --bg-surface:            #FFFFFF;
+  --bg-surface-2:          #F9FAFB;
+  --bg-surface-3:          #FFF3DC;
+  --border-color:          #F0D9B5;
+  --text-primary:          #111827;
+  --text-secondary:        #374151;
+  --text-muted:            #6B7280;
+  --text-brand:            #FF9F1C;
 
   /* Layout */
   --bottom-nav-height:     64px;
@@ -40,14 +49,23 @@
   --transition-slow:       400ms ease;
 }
 
-/* ── DARK MODE ─────────────────────────────────────────────────────────────── */
+/* ── CSS VARIABLES — DARK MODE ─────────────────────────────────────────────── */
 .dark {
-  --color-cream:      #0F0A06;
-  --bg-surface:       #1A1208;
-  --bg-surface-2:     #241810;
-  --border-color:     rgba(255,159,28,0.12);
-  --text-primary:     #FFF8EE;
-  --text-muted:       #C49A6C;
+  /* Surface */
+  --bg-app:                #0F0A06;
+  --bg-surface:            #1A1208;
+  --bg-surface-2:          #241810;
+  --bg-surface-3:          #2E1F10;
+  --border-color:          rgba(255, 159, 28, 0.12);
+
+  /* Text */
+  --text-primary:          #FFF8EE;
+  --text-secondary:        #EDD5B3;
+  --text-muted:            #C49A6C;
+  --text-brand:            #FFB84D;
+
+  /* Brand tints stay vivid — no change needed */
+  /* Semantic stays same for accessibility */
 }
 
 /* ── BASE RESETS ───────────────────────────────────────────────────────────── */
@@ -58,17 +76,20 @@ html {
   text-size-adjust: 100%;
   scroll-behavior: smooth;
   height: 100%;
+  /* Smooth theme transition on html element */
+  transition: background-color 300ms ease, color 300ms ease;
 }
 
 body {
   margin: 0;
   font-family: 'Baloo 2', 'Noto Sans Devanagari', system-ui, sans-serif;
-  background-color: var(--color-cream);
-  color: #111827;
+  background-color: var(--bg-app);
+  color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   min-height: 100dvh;
   overflow-x: hidden;
+  transition: background-color 300ms ease, color 300ms ease;
 }
 
 #root {
@@ -108,8 +129,11 @@ button, a, [role="button"] { min-height: 44px; min-width: 44px; }
     @apply max-w-md mx-auto w-full;
   }
 
+  /* Card — light + dark aware */
   .card {
-    @apply bg-white rounded-2xl shadow-card border border-cream-border p-4;
+    @apply rounded-2xl shadow-card border p-4;
+    background-color: var(--bg-surface);
+    border-color: var(--border-color);
   }
 
   .card-hover {
@@ -129,35 +153,43 @@ button, a, [role="button"] { min-height: 44px; min-width: 44px; }
   }
 
   .btn-ghost {
-    @apply text-brew font-medium rounded-xl px-4 py-2 hover:bg-cream-dark
+    @apply font-medium rounded-xl px-4 py-2
            active:scale-95 transition-all duration-150 min-h-[44px];
+    color: var(--text-secondary);
   }
+  .btn-ghost:hover { background-color: var(--bg-surface-2); }
 
   .bottom-sheet {
-    @apply fixed inset-x-0 bottom-0 z-50 bg-white rounded-t-3xl
-           shadow-[0_-8px_32px_rgba(0,0,0,0.12)] max-h-[90dvh] overflow-y-auto;
+    @apply fixed inset-x-0 bottom-0 z-50 rounded-t-3xl
+           shadow-[0_-8px_32px_rgba(0,0,0,0.18)] max-h-[90dvh] overflow-y-auto;
+    background-color: var(--bg-surface);
   }
 
   .bottom-sheet-handle {
-    @apply w-10 h-1 bg-gray-300 rounded-full mx-auto mt-3 mb-4;
+    @apply w-10 h-1 rounded-full mx-auto mt-3 mb-4;
+    background-color: var(--border-color);
   }
 
   .badge {
     @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
   }
 
-  .status-pending    { @apply text-amber-600 bg-amber-50; }
-  .status-preparing  { @apply text-blue-600 bg-blue-50; }
-  .status-on_the_way { @apply text-purple-600 bg-purple-50; }
-  .status-delivered  { @apply text-green-600 bg-green-50; }
-  .status-paid       { @apply text-emerald-600 bg-emerald-50; }
-  .status-cancelled  { @apply text-red-600 bg-red-50; }
+  .status-pending    { @apply text-amber-600 bg-amber-50 dark:bg-amber-950/40; }
+  .status-preparing  { @apply text-blue-600  bg-blue-50  dark:bg-blue-950/40; }
+  .status-on_the_way { @apply text-purple-600 bg-purple-50 dark:bg-purple-950/40; }
+  .status-delivered  { @apply text-green-600  bg-green-50  dark:bg-green-950/40; }
+  .status-paid       { @apply text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40; }
+  .status-cancelled  { @apply text-red-600    bg-red-50    dark:bg-red-950/40; }
 
+  /* Input — dark aware */
   .input-base {
-    @apply w-full px-4 py-3 rounded-xl border border-gray-200
+    @apply w-full px-4 py-3 rounded-xl border
            focus:outline-none focus:border-saffron focus:ring-2 focus:ring-saffron/20
-           bg-white text-gray-900 placeholder-gray-400
+           placeholder-gray-400 dark:placeholder-brew-soft
            transition-colors duration-150;
+    background-color: var(--bg-surface);
+    border-color: var(--border-color);
+    color: var(--text-primary);
   }
 
   .pb-bottom-nav {
@@ -178,18 +210,29 @@ button, a, [role="button"] { min-height: 44px; min-width: 44px; }
   .safe-bottom {
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
+
   .text-gradient-brand {
     background: linear-gradient(135deg, #FF9F1C, #E05C2A);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
+
   .bg-brand-gradient {
     background: linear-gradient(135deg, #FF9F1C, #E05C2A);
   }
+
   .scrollbar-hide {
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
   .scrollbar-hide::-webkit-scrollbar { display: none; }
+
+  /* Dark mode surface helpers — use these instead of hardcoded bg-white in dark */
+  .surface     { background-color: var(--bg-surface); }
+  .surface-2   { background-color: var(--bg-surface-2); }
+  .text-app    { color: var(--text-primary); }
+  .text-sub    { color: var(--text-secondary); }
+  .text-hint   { color: var(--text-muted); }
+  .border-app  { border-color: var(--border-color); }
 }

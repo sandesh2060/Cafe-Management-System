@@ -1,9 +1,7 @@
 // src/modules/table-session/algorithms/nearestTable.js
-import { KDTree } from 'kd-tree-javascript'
-import Table      from '../../table/table.model.js'
-import { cache }  from '../../../config/redis.js'
+import Table     from '../../table/table.model.js'
+import { cache } from '../../../config/redis.js'
 
-// Haversine distance for KD-Tree
 const haversineDistance = (a, b) => {
   const R    = 6371000
   const toR  = (d) => (d * Math.PI) / 180
@@ -14,24 +12,37 @@ const haversineDistance = (a, b) => {
   return R * 2 * Math.atan2(Math.sqrt(aH), Math.sqrt(1 - aH))
 }
 
-let kdTreeCache = null  // In-memory KD-tree per cafe
+// Phone GPS indoors is never reliably more accurate than this
+const GPS_ACCURACY_FLOOR_METERS = 15
 
 /**
  * Find the nearest table to given GPS coords.
- * Uses Redis for table coords (0 DB hits on GPS path).
+ * No KD-tree needed — with ≤ ~50 tables a linear scan is instant.
+ *
+ * effectiveRadius = max(table.radiusMeters, deviceGpsAccuracy, GPS_ACCURACY_FLOOR_METERS)
+ *
+ * @param {string}      cafeId
+ * @param {number}      lat
+ * @param {number}      lng
+ * @param {number|null} gpsAccuracy  device-reported accuracy in metres
  * @returns {{ table, distanceMeters }} | null
  */
-export const findNearestTable = async (cafeId, lat, lng) => {
+export const findNearestTable = async (cafeId, lat, lng, gpsAccuracy = null) => {
   const cacheKey = cache.KEYS.tableCoords(cafeId)
 
-  // Try Redis first (0 DB hit path)
   let tableCoords = await cache.get(cacheKey)
 
-  if (!tableCoords) {
-    // Cache miss — load from DB once, store in Redis indefinitely
+  // Redis may return a raw JSON string — always normalise
+  if (typeof tableCoords === 'string') {
+    try { tableCoords = JSON.parse(tableCoords) } catch { tableCoords = null }
+  }
+
+  if (!tableCoords || !Array.isArray(tableCoords) || tableCoords.length === 0) {
     const tables = await Table.find({ cafeId, isActive: true })
       .select('_id tableNumber lat lng radiusMeters zone')
       .lean()
+
+    if (!tables.length) return null
 
     tableCoords = tables.map((t) => ({
       _id:          t._id.toString(),
@@ -42,31 +53,52 @@ export const findNearestTable = async (cafeId, lat, lng) => {
       zone:         t.zone,
     }))
 
-    // Store without TTL — invalidated on table update
     await cache.set(cacheKey, tableCoords)
   }
 
-  if (!tableCoords.length) return null
+  // Linear scan — find the closest table
+  let nearest      = null
+  let nearestDist  = Infinity
 
-  // Build KD-Tree from cached coords
-  const tree = new KDTree(tableCoords, haversineDistance, ['lat', 'lng'])
-
-  // Find nearest table
-  const [[nearest]] = tree.nearest({ lat, lng }, 1)
-  if (!nearest) return null
-
-  const distanceMeters = haversineDistance({ lat, lng }, { lat: nearest.lat, lng: nearest.lng })
-
-  // Check if within table's detection radius
-  if (distanceMeters > nearest.radiusMeters) {
-    return null  // Not within any table boundary
+  for (const table of tableCoords) {
+    const dist = haversineDistance({ lat, lng }, { lat: table.lat, lng: table.lng })
+    if (dist < nearestDist) {
+      nearestDist = dist
+      nearest     = table
+    }
   }
 
-  return { table: nearest, distanceMeters }
+  if (!nearest) return null
+
+  // effectiveRadius = max of:
+  //   table.radiusMeters  — ideal configured radius
+  //   gpsAccuracy         — device-reported accuracy (e.g. 35 m indoors)
+  //   GPS_ACCURACY_FLOOR  — absolute minimum floor
+  const effectiveRadius = Math.max(
+    nearest.radiusMeters,
+    gpsAccuracy ?? 0,
+    GPS_ACCURACY_FLOOR_METERS
+  )
+
+  console.log(
+    `[GPS Detect] nearest=${nearest.tableNumber}` +
+    ` dist=${nearestDist.toFixed(1)}m` +
+    ` effectiveRadius=${effectiveRadius}m` +
+    ` (tableRadius=${nearest.radiusMeters}m, deviceAccuracy=${gpsAccuracy ?? 'unknown'}m)`
+  )
+
+  if (nearestDist > effectiveRadius) {
+    console.log(`[GPS Detect] ❌ No match — too far`)
+    return null
+  }
+
+  console.log(`[GPS Detect] ✅ Matched ${nearest.tableNumber} at ${nearestDist.toFixed(1)}m`)
+  return { table: nearest, distanceMeters: nearestDist }
 }
 
 /**
- * Invalidate KD-Tree cache for a cafe (call after table create/update/delete).
+ * Call after any table create/update/delete so the next GPS request
+ * reloads fresh coordinates from MongoDB.
  */
 export const invalidateTableCache = async (cafeId) => {
   await cache.del(cache.KEYS.tableCoords(cafeId))

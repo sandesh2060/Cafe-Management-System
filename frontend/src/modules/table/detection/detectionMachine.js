@@ -2,7 +2,7 @@
 import { createMachine, assign } from 'xstate'
 
 export const detectionMachine = createMachine({
-  id: 'tableDetection',
+  id:      'tableDetection',
   initial: 'idle',
   context: {
     coords:          null,
@@ -10,7 +10,7 @@ export const detectionMachine = createMachine({
     table:           null,
     sessionId:       null,
     error:           null,
-    method:          null,   // 'gps' | 'qr' | 'manual'
+    method:          null,
   },
   states: {
     idle: {
@@ -18,27 +18,32 @@ export const detectionMachine = createMachine({
     },
     requestingGPS: {
       on: {
-        GPS_GRANTED:  { target: 'collectingReadings', actions: 'storeCoords' },
-        GPS_DENIED:   'showingQR',
-        GPS_TIMEOUT:  'showingQR',
+        GPS_GRANTED:         { target: 'collectingReadings', actions: 'storeCoords' },
+        GPS_DENIED:          'showingQR',
+        GPS_TIMEOUT:         'showingQR',
+        GPS_HIGH_CONFIDENCE: {
+          target:  'creatingSession',
+          actions: [ assign({ method: () => 'gps' }), 'storeCoords' ],
+        },
+        GPS_LOW_CONFIDENCE:  'showingQR',
       },
     },
     collectingReadings: {
       on: {
-        GPS_LOW_CONFIDENCE: 'showingQR',
+        GPS_LOW_CONFIDENCE:  'showingQR',
         GPS_HIGH_CONFIDENCE: {
-          target: 'creatingSession',
-          actions: [
-            assign({ method: () => 'gps' }),
-            'storeCoords',
-          ],
+          target:  'creatingSession',
+          actions: [ assign({ method: () => 'gps' }), 'storeCoords' ],
         },
+        GPS_DENIED:  'showingQR',
+        GPS_TIMEOUT: 'showingQR',
       },
     },
     showingQR: {
       on: {
         QR_SCANNED:   { target: 'creatingSession', actions: assign({ method: () => 'qr' }) },
         MANUAL_ENTRY: { target: 'creatingSession', actions: assign({ method: () => 'manual' }) },
+        RETRY:        'idle',
       },
     },
     creatingSession: {
@@ -54,8 +59,12 @@ export const detectionMachine = createMachine({
   },
 }, {
   actions: {
-    storeCoords:  assign({ coords:    (_, e) => e.coords ?? null }),
-    storeSession: assign({ table: (_, e) => e.table, sessionId: (_, e) => e.sessionId }),
-    storeError:   assign({ error:     (_, e) => e.error }),
+    // FIX: XState v5 assign syntax — ({ event }) not (_, e)
+    storeCoords:  assign({ coords:    ({ event }) => event.coords ?? null }),
+    storeSession: assign({
+      table:     ({ event }) => event.table,
+      sessionId: ({ event }) => event.sessionId,
+    }),
+    storeError:   assign({ error: ({ event }) => event.error }),
   },
 })

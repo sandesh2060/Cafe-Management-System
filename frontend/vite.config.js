@@ -2,6 +2,20 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
+import fs from 'fs'
+import os from 'os'
+
+// ── HTTPS for localhost GPS ──────────────────────────────────────────────────
+// Chrome requires secure context (HTTPS) for geolocation on localhost.
+// Run once: npx @vitejs/plugin-basic-ssl (or use the mkcert approach below)
+// If certs don't exist yet, fall back to HTTP silently.
+let httpsConfig = undefined
+const certPath = path.resolve(__dirname, '.certs')
+const keyFile  = path.join(certPath, 'localhost-key.pem')
+const certFile = path.join(certPath, 'localhost.pem')
+if (fs.existsSync(keyFile) && fs.existsSync(certFile)) {
+  httpsConfig = { key: fs.readFileSync(keyFile), cert: fs.readFileSync(certFile) }
+}
 
 export default defineConfig({
   plugins: [
@@ -53,8 +67,9 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    https: httpsConfig,   // HTTPS when certs exist, HTTP fallback otherwise
     proxy: {
-      '/api': { target: 'http://localhost:5000', changeOrigin: true },
+      '/api':       { target: 'http://localhost:5000', changeOrigin: true },
       '/socket.io': { target: 'http://localhost:5000', ws: true },
     },
   },

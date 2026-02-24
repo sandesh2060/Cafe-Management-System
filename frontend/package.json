@@ -17,6 +17,7 @@
     "animejs": "^4.3.6",
     "axios": "^1.7.2",
     "canvas-confetti": "^1.9.3",
+    "date-fns": "^4.1.0",
     "face-api.js": "^0.22.2",
     "gsap": "^3.12.5",
     "jsqr": "^1.4.0",

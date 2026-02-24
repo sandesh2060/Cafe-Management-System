@@ -5,13 +5,12 @@ import { WEATHER_MENU_MAP } from './weatherMapping.js'
 import { getTimeBoost }     from './timeMapping.js'
 import { cache }            from '../../config/redis.js'
 
-const HISTORY_DAYS  = parseInt(process.env.RECOMMENDATION_HISTORY_DAYS || '30')
-const REC_COUNT     = parseInt(process.env.RECOMMENDATION_COUNT        || '6')
-const WEATHER_WT    = 0.4
-const HISTORY_WT    = 0.6
+const HISTORY_DAYS = parseInt(process.env.RECOMMENDATION_HISTORY_DAYS || '30')
+const REC_COUNT    = parseInt(process.env.RECOMMENDATION_COUNT        || '6')
+const WEATHER_WT   = 0.4
+const HISTORY_WT   = 0.6
 
 const isInFavCategory = (item, freqMap, allItems) => {
-  // Find user's favourite category by frequency
   const catFreq = {}
   allItems.forEach((i) => {
     if (freqMap[i._id.toString()]) {
@@ -23,51 +22,42 @@ const isInFavCategory = (item, freqMap, allItems) => {
 }
 
 export const getPersonalRecommendations = async (userId, cafeId, weatherCondition) => {
-  // Try cache
-  const cacheKey = cache.KEYS.recommendations(userId, cafeId)
+  // cache.KEYS.rec(uid, cid) → 'rec:uid:cid'  ✅ matches redis.js
+  const cacheKey = cache.KEYS.rec(userId, cafeId)
   const cached   = await cache.get(cacheKey)
   if (cached) return cached
 
-  // 1. Customer order history (last 30 days)
   const since = new Date(Date.now() - HISTORY_DAYS * 24 * 60 * 60 * 1000)
-  const history = await Order.find({ customerId: userId, cafeId, createdAt: { $gte: since } })
-    .sort({ createdAt: -1 }).limit(30)
-    .select('items')
-    .lean()
 
-  // 2. Frequency map
+  const [history, menuItems] = await Promise.all([
+    Order.find({ customerId: userId, cafeId, createdAt: { $gte: since } })
+      .sort({ createdAt: -1 }).limit(30)
+      .select('items')
+      .lean(),
+    MenuItem.find({ cafeId, isAvailable: true }).lean(),
+  ])
+
+  // Build frequency map — guard against missing menuItemId
   const freq = {}
   history.forEach((order) => {
-    order.items.forEach((item) => {
-      const id = item.menuItemId.toString()
-      freq[id] = (freq[id] || 0) + item.quantity
+    order.items?.forEach((item) => {
+      const id = item.menuItemId?.toString()
+      if (id) freq[id] = (freq[id] || 0) + (item.quantity || 1)
     })
   })
 
-  // 3. Time-of-day boost
-  const timeBoost    = getTimeBoost(new Date().getHours())
-  const weatherMap   = WEATHER_MENU_MAP[weatherCondition] || {}
+  const timeBoost  = getTimeBoost(new Date().getHours())
+  const weatherMap = WEATHER_MENU_MAP[weatherCondition] || {}
 
-  // 4. Fetch available menu items
-  const menuItems = await MenuItem.find({ cafeId, isAvailable: true }).lean()
-
-  // 5. Score each item
   const scored = menuItems.map((item) => {
-    let score  = 0
-    const id   = item._id.toString()
+    let score   = 0
+    const id    = item._id.toString()
     const freq_ = freq[id] || 0
 
-    // History signal (HISTORY_WT weight)
     score += freq_ * 10 * HISTORY_WT
-
-    // Weather signal (WEATHER_WT weight)
-    if (weatherMap.boost?.includes(item.category)) score += (weatherMap.score || 0) * WEATHER_WT
+    if (weatherMap.boost?.includes(item.category))  score += (weatherMap.score || 0) * WEATHER_WT
     if (weatherMap.reduce?.includes(item.category)) score -= 15
-
-    // Time-of-day
     if (timeBoost.categories?.includes(item.category)) score += timeBoost.bonus
-
-    // Discovery bonus — unseen item in fav category
     if (freq_ === 0 && isInFavCategory(item, freq, menuItems)) score += 8
 
     return {
@@ -79,16 +69,16 @@ export const getPersonalRecommendations = async (userId, cafeId, weatherConditio
     }
   })
 
-  // 6. Sort and take top N
   const results = scored.sort((a, b) => b.score - a.score).slice(0, REC_COUNT)
 
-  // Cache for 30 min
-  await cache.set(cacheKey, results, cache.TTL.RECOMMENDATIONS)
+  // cache.TTL.REC → 1800  ✅ matches redis.js (was wrongly .RECOMMENDATIONS before)
+  await cache.set(cacheKey, results, cache.TTL.REC)
   return results
 }
 
 export const getGuestRecommendations = async (cafeId, weatherCondition) => {
-  const cacheKey = cache.KEYS.guestRec(cafeId, weatherCondition)
+  // No cache.KEYS.guestRec in redis.js — build the key string directly
+  const cacheKey = `rec:guest:${cafeId}:${weatherCondition}`
   const cached   = await cache.get(cacheKey)
   if (cached) return cached
 
@@ -102,14 +92,14 @@ export const getGuestRecommendations = async (cafeId, weatherCondition) => {
     if (item.isFeatured) score += 5
     return {
       item,
-      score:      Math.max(0, score),
-      weatherTag: weatherMap.boost?.includes(item.category) ? weatherMap.tag : null,
+      score:       Math.max(0, score),
+      weatherTag:  weatherMap.boost?.includes(item.category) ? weatherMap.tag : null,
       isFavourite: false,
       isDiscovery: false,
     }
   })
 
   const results = scored.sort((a, b) => b.score - a.score).slice(0, REC_COUNT)
-  await cache.set(cacheKey, results, cache.TTL.RECOMMENDATIONS)
+  await cache.set(cacheKey, results, cache.TTL.REC)   // ✅ .REC not .RECOMMENDATIONS
   return results
 }

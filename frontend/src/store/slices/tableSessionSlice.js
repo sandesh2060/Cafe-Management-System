@@ -24,7 +24,7 @@ export const closeSession = createAsyncThunk(
 // ── Slice ─────────────────────────────────────────────────────────────────────
 
 const initialState = {
-  session:     null,       // { sessionId, tableId, table, status, ... }
+  session:     null,       // { sessionId, tableId, tableNumber, zone, cafeId, status, ... }
   tableInfo:   null,       // { tableId, sessionId }
   detecting:   false,      // true while GPS/QR detection is running
   loading:     false,
@@ -79,10 +79,14 @@ export const { setDetecting, setSession, setSessionError, clearSession } = table
 
 // ── Selectors ─────────────────────────────────────────────────────────────────
 
-export const selectSession       = (s) => s.tableSession.session
-export const selectIsDetecting   = (s) => s.tableSession.detecting
-export const selectSessionError  = (s) => s.tableSession.error
-export const selectTableId       = (s) => s.tableSession.session?.tableId
-export const selectSessionId     = (s) => s.tableSession.session?.sessionId
+export const selectSession      = (s) => s.tableSession.session
+export const selectIsDetecting  = (s) => s.tableSession.detecting
+export const selectSessionError = (s) => s.tableSession.error
+export const selectTableId      = (s) => s.tableSession.session?.tableId
+export const selectSessionId    = (s) => s.tableSession.session?.sessionId
+
+// ✅ FIXED — tableNumber is flat on the session object (not nested under table.tableNumber)
+// Backend createSession stores: { sessionId, tableId, cafeId, tableNumber, zone, ... }
+export const selectTableNumber  = (s) => s.tableSession.session?.tableNumber ?? null
 
 export default tableSessionSlice.reducer

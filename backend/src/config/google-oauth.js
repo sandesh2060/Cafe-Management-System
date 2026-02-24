@@ -1,22 +1,46 @@
-// src/config/google-oauth.js
-import passport       from 'passport'
-import { Strategy as GoogleStrategy } from 'passport-google-oauth20'
-import { googleLogin }  from '../modules/auth/auth.service.js'
-import { signToken }    from './jwt.js'
+// backend/src/config/google-oauth.js
+// NOTE: Renamed to github-oauth internally but kept filename for app.js compatibility
+import passport     from 'passport'
+import { Strategy } from 'passport-github2'
+import User         from '../modules/user/user.model.js'
 
 export const configurePassport = () => {
-  passport.use(new GoogleStrategy(
+  passport.use(new Strategy(
     {
-      clientID:     process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL:  `${process.env.BACKEND_URL || 'http://localhost:5000'}/api/auth/google/callback`,
+      clientID:     process.env.GITHUB_CLIENT_ID,
+      clientSecret: process.env.GITHUB_CLIENT_SECRET,
+      callbackURL:  process.env.GITHUB_CALLBACK_URL
+                    || 'http://localhost:5000/api/auth/github/callback',
+      scope: ['user:email'],
     },
-    async (accessToken, refreshToken, profile, done) => {
+    async (_accessToken, _refreshToken, profile, done) => {
       try {
-        const { user, token } = await googleLogin(profile)
-        done(null, { user, token })
+        const email  = profile.emails?.[0]?.value
+        const avatar = profile.photos?.[0]?.value
+
+        let user = await User.findOne({
+          $or: [
+            { githubId: profile.id },
+            ...(email ? [{ email }] : []),
+          ],
+        })
+
+        if (user) {
+          if (!user.githubId) { user.githubId = profile.id; await user.save() }
+        } else {
+          user = await User.create({
+            name:     profile.displayName || profile.username,
+            email:    email || `github_${profile.id}@noemail.com`,
+            githubId: profile.id,
+            avatar,
+            role:     'customer',
+            cafeId:   process.env.DEFAULT_CAFE_ID,
+          })
+        }
+
+        return done(null, user)
       } catch (err) {
-        done(err, null)
+        return done(err, null)
       }
     }
   ))

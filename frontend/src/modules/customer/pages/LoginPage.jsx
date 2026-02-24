@@ -1,63 +1,74 @@
-// src/modules/customer/pages/LoginPage.jsx
-import { useEffect, useRef, useState } from 'react'
-import { useDispatch, useSelector }    from 'react-redux'
-import { useNavigate, useSearchParams } from 'react-router-dom'
-import { loginWithGoogle, loginAsGuest, selectAuthLoading, selectAuthError } from '@store/slices/authSlice'
-import { selectTableNumber } from '@store/slices/tableSessionSlice'
-import { selectTier }        from '@store/slices/loyaltySlice'
-import { COLORS }            from '@colors'
-import { preloadSounds }     from '@shared/utils/soundPlayer'
-import { Chrome, UserRound, Star } from 'lucide-react'
-import gsap from 'gsap'
+// frontend/src/modules/customer/pages/LoginPage.jsx
+import { useEffect, useRef, useState } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import {
+  loginWithGoogle,
+  loginAsGuest,
+  selectAuthLoading,
+  selectAuthError,
+} from "@store/slices/authSlice";
+import { selectTableNumber } from "@store/slices/tableSessionSlice";
+import { COLORS } from "@colors";
+import { preloadSounds } from "@shared/utils/soundPlayer";
+import { Github, UserRound, Star } from "lucide-react";
+import gsap from "gsap";
 
 const LoginPage = () => {
-  const dispatch      = useDispatch()
-  const navigate      = useNavigate()
-  const [params]      = useSearchParams()
-  const loading       = useSelector(selectAuthLoading)
-  const error         = useSelector(selectAuthError)
-  const tableNumber   = useSelector(selectTableNumber)
-  const cardRef       = useRef(null)
-  const [guestLoading, setGuestLoading] = useState(false)
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const loading = useSelector(selectAuthLoading);
+  const error = useSelector(selectAuthError);
+  const tableNumber = useSelector(selectTableNumber);
+  const cardRef = useRef(null);
+  const [guestLoading, setGuestLoading] = useState(false);
 
-  // Handle Google OAuth token redirect
+  // Handle GitHub OAuth token redirect — GitHub redirects back to /login?token=...
   useEffect(() => {
-    const token = params.get('token')
+    const token = params.get("token");
     if (token) {
-      localStorage.setItem('kc_token', token)
-      // Decode user from token and set in store
-      const decoded = JSON.parse(atob(token.split('.')[1]))
-      dispatch(loginWithGoogle.fulfilled({ token, user: { _id: decoded.userId, role: decoded.role } }))
-      preloadSounds(decoded.role)
-      navigate('/menu', { replace: true })
+      localStorage.setItem("kc_token", result.payload.token);
+      const decoded = JSON.parse(atob(token.split(".")[1]));
+      dispatch(
+        loginWithGoogle.fulfilled({
+          token,
+          user: { _id: decoded.id, role: decoded.role },
+        }),
+      );
+      preloadSounds(decoded.role);
+      navigate("/menu", { replace: true });
     }
-  }, [params, dispatch, navigate])
+  }, [params, dispatch, navigate]);
 
   useEffect(() => {
-    gsap.fromTo(cardRef.current,
+    gsap.fromTo(
+      cardRef.current,
       { y: 50, opacity: 0 },
-      { y: 0,  opacity: 1, duration: 0.6, ease: 'power3.out' }
-    )
-  }, [])
+      { y: 0, opacity: 1, duration: 0.6, ease: "power3.out" },
+    );
+  }, []);
 
-  const handleGoogleLogin = () => {
-    window.location.href = `${import.meta.env.VITE_API_URL}/api/auth/google`
-  }
+  const handleGithubLogin = () => {
+    window.location.href = `${import.meta.env.VITE_API_URL}/auth/github`;
+  };
 
   const handleGuest = async () => {
-    setGuestLoading(true)
-    const result = await dispatch(loginAsGuest())
-    setGuestLoading(false)
+    setGuestLoading(true);
+    const result = await dispatch(loginAsGuest());
+    setGuestLoading(false);
     if (!result.error) {
-      localStorage.setItem('kc_token', result.payload.token)
-      preloadSounds('customer')
-      navigate('/menu', { replace: true })
+      localStorage.setItem("kc_token", result.payload.token);
+      preloadSounds("customer");
+      navigate("/menu", { replace: true });
     }
-  }
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-brew to-brew-light
-                    flex flex-col items-center justify-center px-5">
+    <div
+      className="min-h-screen bg-gradient-to-b from-brew to-brew-light
+                    flex flex-col items-center justify-center px-5"
+    >
       {/* Hero */}
       <div className="text-center mb-8">
         <div className="text-6xl mb-4">☕</div>
@@ -77,17 +88,17 @@ const LoginPage = () => {
           </div>
         )}
 
-        {/* Google Login */}
+        {/* GitHub Login */}
         <button
-          onClick={handleGoogleLogin}
+          onClick={handleGithubLogin}
           disabled={loading}
           className="w-full flex items-center justify-center gap-3 bg-white
                      rounded-xl px-5 py-4 font-semibold text-gray-700 shadow-md
                      hover:shadow-lg active:scale-95 transition-all duration-150
                      disabled:opacity-60 min-h-[56px]"
         >
-          <Chrome size={22} className="text-blue-500" />
-          Continue with Google
+          <Github size={22} className="text-gray-800" />
+          Continue with GitHub
         </button>
 
         {/* Divider */}
@@ -107,14 +118,21 @@ const LoginPage = () => {
                      disabled:opacity-60 min-h-[56px]"
         >
           <UserRound size={22} />
-          {guestLoading ? 'Setting up…' : 'Continue as Guest'}
+          {guestLoading ? "Setting up…" : "Continue as Guest"}
         </button>
 
         {/* Loyalty teaser */}
         <div className="card mt-2 flex items-start gap-3 bg-saffron-soft border-saffron/20">
-          <Star size={18} color={COLORS.saffron.DEFAULT} fill={COLORS.saffron.DEFAULT} className="flex-shrink-0 mt-0.5" />
+          <Star
+            size={18}
+            color={COLORS.saffron.DEFAULT}
+            fill={COLORS.saffron.DEFAULT}
+            className="flex-shrink-0 mt-0.5"
+          />
           <div>
-            <p className="text-sm font-semibold text-brew">Sign in to earn loyalty points</p>
+            <p className="text-sm font-semibold text-brew">
+              Sign in to earn loyalty points
+            </p>
             <p className="text-xs text-brew-soft mt-0.5">
               Bronze → Silver → Gold · Up to 15% discount
             </p>
@@ -122,7 +140,7 @@ const LoginPage = () => {
         </div>
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default LoginPage
+export default LoginPage;

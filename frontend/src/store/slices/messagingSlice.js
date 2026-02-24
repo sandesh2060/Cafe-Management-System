@@ -55,3 +55,4 @@ export const selectActiveThread = (s) => s.messaging.activeThread
 export const selectChatOpen    = (s) => s.messaging.isOpen
 
 export default messagingSlice.reducer
+export const selectUnreadMessages = (s) => s.messaging.totalUnread
