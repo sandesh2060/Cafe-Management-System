@@ -1,0 +1,90 @@
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: ['./index.html', './src/**/*.{js,jsx}'],
+  darkMode: 'class',
+  theme: {
+    screens: {
+      xs:  '375px',
+      sm:  '640px',
+      md:  '768px',
+      lg:  '1024px',
+      xl:  '1280px',
+      '2xl': '1536px',
+    },
+    extend: {
+      colors: {
+        saffron: {
+          DEFAULT: '#FF9F1C',
+          light:   '#FFB84D',
+          dark:    '#E08800',
+          soft:    '#FFF3DC',
+          muted:   '#FFE0A3',
+        },
+        terra: {
+          DEFAULT: '#E05C2A',
+          light:   '#F0784A',
+          dark:    '#C44A1A',
+          soft:    '#FDE8DF',
+        },
+        brew: {
+          DEFAULT: '#5C3317',
+          light:   '#8B5E3C',
+          soft:    '#C49A6C',
+          cream:   '#EDD5B3',
+        },
+        matcha: {
+          DEFAULT: '#2D9B5A',
+          light:   '#38C26F',
+          dark:    '#1E7A42',
+          soft:    '#D4F0E0',
+        },
+        cream: {
+          DEFAULT: '#FFF8EE',
+          dark:    '#FFF0D6',
+          deep:    '#FFE4B5',
+          border:  '#F0D9B5',
+        },
+      },
+      fontFamily: {
+        display: ['"Baloo 2"', 'system-ui', 'sans-serif'],
+        body:    ['"Baloo 2"', 'system-ui', 'sans-serif'],
+        devanagari: ['"Noto Sans Devanagari"', 'sans-serif'],
+      },
+      animation: {
+        'scan-line':   'scanLine 1.5s ease-in-out infinite alternate',
+        'fade-in':     'fadeIn 0.3s ease-out both',
+        'pulse-ring':  'pulseRing 1.5s ease-out infinite',
+        'slide-up':     'slideUp 0.3s ease-out',
+        'slide-down':   'slideDown 0.3s ease-out',
+        'fade-in':      'fadeIn 0.2s ease-out',
+        'bounce-soft':  'bounceSoft 0.5s ease-in-out',
+        'spin-slow':    'spin 3s linear infinite',
+        'pulse-brand':  'pulseBrand 2s ease-in-out infinite',
+      },
+      keyframes: {
+        slideUp:     { from: { transform: 'translateY(100%)', opacity: 0 }, to: { transform: 'translateY(0)', opacity: 1 } },
+        slideDown:   { from: { transform: 'translateY(-100%)', opacity: 0 }, to: { transform: 'translateY(0)', opacity: 1 } },
+        fadeIn:      { from: { opacity: 0 }, to: { opacity: 1 } },
+        bounceSoft:  { '0%,100%': { transform: 'translateY(0)' }, '50%': { transform: 'translateY(-4px)' } },
+        pulseBrand:  { '0%,100%': { boxShadow: '0 0 0 0 rgba(255,159,28,0.4)' }, '50%': { boxShadow: '0 0 0 12px rgba(255,159,28,0)' } },
+      },
+      boxShadow: {
+        brand:  '0 4px 20px rgba(255,159,28,0.35)',
+        card:   '0 2px 8px rgba(92,51,23,0.08)',
+        'card-hover': '0 8px 24px rgba(92,51,23,0.16)',
+      },
+      backgroundImage: {
+        'brand-gradient':     'linear-gradient(135deg, #FF9F1C, #E05C2A)',
+        'matcha-gradient':    'linear-gradient(135deg, #2D9B5A, #38C26F)',
+        'bronze-gradient':    'linear-gradient(135deg, #CD7F32, #E8A96A)',
+        'silver-gradient':    'linear-gradient(135deg, #9CA3AF, #D1D5DB)',
+        'gold-gradient':      'linear-gradient(135deg, #F59E0B, #FCD34D)',
+        'dark-gradient':      'linear-gradient(180deg, #1A1208, #0F0A06)',
+      },
+      spacing: { 18: '4.5rem', 22: '5.5rem' },
+      borderRadius: { '4xl': '2rem', '5xl': '2.5rem' },
+      minHeight: { screen: '100dvh' },
+    },
+  },
+  plugins: [],
+}
