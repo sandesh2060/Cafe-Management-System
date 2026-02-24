@@ -198,7 +198,7 @@ const MenuCard = ({ item }) => {
         {/* Price + Add */}
         <div className="flex items-center justify-between mt-auto pt-0.5">
           <span className="text-sm font-black" style={{ color: 'var(--text-primary)' }}>
-            ₹{item.price}
+            Rs {item.price}
           </span>
 
           <div className="relative">

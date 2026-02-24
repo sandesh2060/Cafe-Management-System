@@ -5,6 +5,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   loginWithGoogle,
   loginAsGuest,
+  setCredentials,
   selectAuthLoading,
   selectAuthError,
 } from "@store/slices/authSlice";
@@ -27,17 +28,24 @@ const LoginPage = () => {
   // Handle GitHub OAuth token redirect — GitHub redirects back to /login?token=...
   useEffect(() => {
     const token = params.get("token");
-    if (token) {
-      localStorage.setItem("kc_token", result.payload.token);
+    if (!token) return;
+
+    try {
       const decoded = JSON.parse(atob(token.split(".")[1]));
-      dispatch(
-        loginWithGoogle.fulfilled({
-          token,
-          user: { _id: decoded.id, role: decoded.role },
-        }),
-      );
+
+      // Save to localStorage so bootstrap can rehydrate on refresh
+      localStorage.setItem("kc_token", token);
+
+      // Put into Redux using setCredentials (same shape as guest/google login)
+      dispatch(setCredentials({
+        token,
+        user: { _id: decoded.userId ?? decoded.id, role: decoded.role },
+      }));
+
       preloadSounds(decoded.role);
       navigate("/menu", { replace: true });
+    } catch {
+      // Malformed token — ignore and let user log in normally
     }
   }, [params, dispatch, navigate]);
 
@@ -57,7 +65,9 @@ const LoginPage = () => {
     setGuestLoading(true);
     const result = await dispatch(loginAsGuest());
     setGuestLoading(false);
+
     if (!result.error) {
+      // Save token so App.jsx bootstrap can rehydrate Redux on page refresh
       localStorage.setItem("kc_token", result.payload.token);
       preloadSounds("customer");
       navigate("/menu", { replace: true });

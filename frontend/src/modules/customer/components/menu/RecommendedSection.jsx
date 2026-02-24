@@ -34,13 +34,12 @@ const RecommendedSection = ({ items = [], weather, loading }) => {
   const headerRef  = useRef(null)
 
   useEffect(() => {
-    if (loading || !items.length || !sectionRef.current) return
+    if (loading || !items.length || !headerRef.current) return
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     if (reduced) return
-
     gsap.fromTo(headerRef.current,
       { x: -16, opacity: 0 },
-      { x: 0,   opacity: 1, duration: 0.45, ease: 'power3.out', delay: 0.1 }
+      { x: 0, opacity: 1, duration: 0.45, ease: 'power3.out', delay: 0.1 }
     )
   }, [loading, items.length])
 
@@ -49,10 +48,7 @@ const RecommendedSection = ({ items = [], weather, loading }) => {
   return (
     <section ref={sectionRef} className="mt-5">
       {/* Header */}
-      <div
-        ref={headerRef}
-        className="px-4 flex items-center justify-between mb-3"
-      >
+      <div ref={headerRef} className="px-4 flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <div
             className="w-1 h-4 rounded-full"
@@ -60,7 +56,7 @@ const RecommendedSection = ({ items = [], weather, loading }) => {
           />
           <h2
             className="text-sm font-black"
-            style={{ color: 'var(--text-primary)', fontFamily: '"Baloo 2",sans-serif' }}
+            style={{ color: 'var(--text-primary)', fontFamily: '"Fraunces", serif' }}
           >
             Recommended for You
           </h2>
@@ -95,7 +91,6 @@ const RecommendedSection = ({ items = [], weather, loading }) => {
           spaceBetween={12}
           slidesOffsetBefore={16}
           slidesOffsetAfter={16}
-          className="!overflow-visible"
         >
           {items.map((rec, i) => (
             <SwiperSlide key={rec.item?._id ?? i} style={{ width: 'auto' }}>
