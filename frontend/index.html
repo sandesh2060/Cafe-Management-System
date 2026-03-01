@@ -1,4 +1,3 @@
-<!-- index.html -->
 <!doctype html>
 <html lang="ne" class="h-full">
   <head>
@@ -8,10 +7,7 @@
       content="width=device-width, initial-scale=1.0, viewport-fit=cover"
     />
     <meta name="theme-color" content="#FF9F1C" />
-    <meta
-      name="description"
-      content="कौसी चिया — Smart Cafe Management System"
-    />
+    <meta name="description" content="कौसी चिया — Smart Cafe Management System" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -21,9 +17,140 @@
     <link rel="manifest" href="/manifest.webmanifest" />
 
     <title>कौसी चिया</title>
+
+    <style>
+      /*
+       * ── ZOOM LOCK ────────────────────────────────────────────────────────
+       * Strategy: wrap the entire app in #zoom-wrap and apply an inverse
+       * CSS `zoom` value equal to 1/devicePixelRatio-delta.
+       *
+       * Why `zoom` not `transform: scale()`?
+       *   • `zoom` keeps the element in normal flow — no clipping or offset issues
+       *   • Supported in Chrome, Edge, Safari (since forever), Firefox 126+
+       *   • Works perfectly with percentage-based layouts
+       *
+       * Why `#zoom-wrap` not `<html>` / `<body>`?
+       *   • Avoids touching root elements that browsers treat specially
+       *   • Transition on the wrapper gives smooth animated resize
+       * ─────────────────────────────────────────────────────────────────────
+       */
+      *, *::before, *::after { box-sizing: border-box; }
+
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden; /* outer container never scrolls — #zoom-wrap handles it */
+      }
+
+      #zoom-wrap {
+        width: 100%;
+        height: 100%;
+        /* Smooth zoom animation — fires when JS sets the zoom property */
+        transition: zoom 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+        transform-origin: top left;
+        overflow: auto;
+      }
+
+      #root {
+        width: 100%;
+        height: 100%;
+      }
+    </style>
   </head>
+
   <body class="h-full">
-    <div id="root" class="h-full"></div>
+    <!--
+      #zoom-wrap sits between <body> and <div id="root">.
+      The zoom lock script sets zoom: 0.8 (for example) here,
+      which shrinks the entire app uniformly — no clipping, no offsets.
+    -->
+    <div id="zoom-wrap">
+      <div id="root"></div>
+    </div>
+
+    <!--
+      Zoom-lock script — runs synchronously before React mounts.
+      Sets the initial zoom immediately so there is ZERO layout flash.
+    -->
+    <script>
+      (function () {
+        var wrap     = document.getElementById('zoom-wrap')
+        var rafId    = null
+        var lastZoom = -1          // force first apply
+        var baseDPR  = window.devicePixelRatio || 1  // DPR at page load (= zoom 100%)
+
+        /**
+         * Returns the current browser zoom level as a decimal.
+         * 100% zoom → 1.0 | 150% zoom → 1.5 | 75% zoom → 0.75
+         *
+         * Method: devicePixelRatio divided by the base DPR captured at load.
+         * This is the most reliable cross-browser approach:
+         *   • Chrome/Edge: DPR changes 1:1 with zoom level
+         *   • Firefox:     same
+         *   • Safari:      same (but fractional HiDPI base — handled by baseDPR)
+         */
+        function getZoomLevel() {
+          var dpr = window.devicePixelRatio || 1
+          var zoom = dpr / baseDPR
+          // Round to nearest 5% step to avoid fighting subpixel jitter
+          return Math.round(zoom * 20) / 20  // e.g. 1.0, 1.05, 1.1, 1.25 ...
+        }
+
+        function applyZoom() {
+          var zoomLevel   = getZoomLevel()
+          var counterZoom = 1 / zoomLevel  // inverse: cancel out the browser zoom
+
+          // Skip if nothing changed (avoids unnecessary style mutations)
+          if (Math.abs(counterZoom - lastZoom) < 0.005) return
+          lastZoom = counterZoom
+
+          // CSS `zoom` property — scales content uniformly, stays in flow
+          wrap.style.zoom = counterZoom
+
+          // Compensate dimensions: at zoom 0.8 the wrap needs to be 125% wide/tall
+          // so it fills the full viewport after scaling
+          var pct = (zoomLevel * 100).toFixed(1) + '%'
+          wrap.style.width  = pct
+          wrap.style.height = pct
+        }
+
+        function onResize() {
+          if (rafId) cancelAnimationFrame(rafId)
+          rafId = requestAnimationFrame(applyZoom)
+        }
+
+        // ── Initial apply (sync, before React) ───────────────────────────
+        applyZoom()
+
+        // ── Listen for window resize (catches Ctrl+/- zoom in most browsers)
+        window.addEventListener('resize', onResize, { passive: true })
+
+        // ── Firefox + Chrome: watch devicePixelRatio changes via matchMedia ─
+        // When the user zooms, DPR changes. We re-register after each change
+        // because matchMedia only fires once per threshold crossing.
+        if (window.matchMedia) {
+          var dprMql = null
+
+          function watchDPR() {
+            if (dprMql) dprMql.removeEventListener('change', onDPRChange)
+            dprMql = window.matchMedia(
+              '(resolution: ' + (window.devicePixelRatio || 1) + 'dppx)'
+            )
+            dprMql.addEventListener('change', onDPRChange)
+          }
+
+          function onDPRChange() {
+            onResize()   // recalculate zoom
+            watchDPR()   // re-register for the next DPR change
+          }
+
+          watchDPR()
+        }
+      })()
+    </script>
+
     <script type="module" src="/src/app/main.jsx"></script>
   </body>
 </html>

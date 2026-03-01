@@ -4,7 +4,7 @@ import gsap from 'gsap'
 import { ThemeContext } from '@shared/context/ThemeContext'
 
 const LABELS = {
-  all:          { icon: '✦', text: 'All'      },
+  all:          { icon: '✦',  text: 'All'      },
   hot_drinks:   { icon: '☕', text: 'Hot'      },
   cold_drinks:  { icon: '🧋', text: 'Cold'     },
   snacks:       { icon: '🥐', text: 'Snacks'   },
@@ -21,46 +21,50 @@ const LABELS = {
 
 const CategoryPills = ({ categories = [], active = 'all', onChange }) => {
   const { isDark } = useContext(ThemeContext)
+  const D = isDark
 
   const scrollRef  = useRef(null)
   const trackRef   = useRef(null)
   const pillRefs   = useRef({})
   const prevActive = useRef(null)
   const isFirst    = useRef(true)
-  const tlRef      = useRef(null)   // current animation timeline
+  const tlRef      = useRef(null)
 
-  const IDLE_COLOR   = isDark ? 'rgba(255,255,255,0.4)' : 'rgba(100,60,15,0.5)'
+  const IDLE_COLOR   = D ? 'rgba(255,200,120,0.45)' : 'rgba(92,51,23,0.45)'
   const ACTIVE_COLOR = '#ffffff'
 
-  // ── Stagger in on mount ──────────────────────────────────────
+  /* ── Stagger mount animation ────────────────────────────────────────── */
   useEffect(() => {
     const pills = Object.values(pillRefs.current).filter(Boolean)
     if (!pills.length) return
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
     gsap.fromTo(pills,
-      { y: 14, opacity: 0, scale: 0.82 },
-      { y: 0, opacity: 1, scale: 1, duration: 0.44, stagger: 0.06,
-        ease: 'back.out(2.2)', force3D: true, clearProps: 'all', delay: 0.1 }
+      { y: 16, opacity: 0, scale: 0.8 },
+      {
+        y: 0, opacity: 1, scale: 1,
+        duration: 0.42, stagger: 0.055,
+        ease: 'back.out(2.4)',
+        force3D: true, clearProps: 'all',
+        delay: 0.08,
+      }
     )
   }, [categories])
 
-  // ── Liquid morph animation ───────────────────────────────────
+  /* ── Liquid morphing track ──────────────────────────────────────────── */
   useLayoutEffect(() => {
     const activePill = pillRefs.current[active]
     const wrap       = scrollRef.current
     const track      = trackRef.current
     if (!activePill || !wrap || !track) return
 
-    // Geometry of target pill
     const pillRect = activePill.getBoundingClientRect()
     const wrapRect = wrap.getBoundingClientRect()
     const targetX  = pillRect.left - wrapRect.left + wrap.scrollLeft
     const targetW  = pillRect.width
 
-    // Kill any running animation
     if (tlRef.current) tlRef.current.kill()
 
     if (isFirst.current) {
-      // Snap immediately on first render
       gsap.set(track, { x: targetX, width: targetW, opacity: 1 })
       categories.forEach(cat => {
         const el = pillRefs.current[cat]
@@ -71,71 +75,60 @@ const CategoryPills = ({ categories = [], active = 'all', onChange }) => {
       return
     }
 
-    // Get current track position
-    const currentX = gsap.getProperty(track, 'x')
-    const currentW = gsap.getProperty(track, 'width')
-
-    // Decide direction: moving left or right?
+    const currentX    = gsap.getProperty(track, 'x')
     const movingRight = targetX > currentX
-
-    // Mid-stretch: bridge between old and new position
-    // Stretch the pill to cover both from-position and to-position
-    const stretchX = movingRight ? currentX : targetX
-    const stretchW = (targetX + targetW) - currentX
+    const stretchX    = movingRight ? currentX : targetX
+    const stretchW    = Math.abs((targetX + targetW) - currentX)
 
     const tl = gsap.timeline()
     tlRef.current = tl
 
-    // Phase 1 — STRETCH toward target (like a rubber band pulling)
+    // Phase 1: stretch toward target
     tl.to(track, {
-      x: stretchX,
-      width: Math.abs(stretchW),
-      duration: 0.22,
-      ease: 'power2.in',
-      force3D: true,
+      x: stretchX, width: stretchW,
+      duration: 0.2, ease: 'power2.in', force3D: true,
     })
 
-    // Phase 2 — SNAP to final position (rubber band releases)
+    // Phase 2: snap to final
     tl.to(track, {
-      x: targetX,
-      width: targetW,
-      duration: 0.32,
-      ease: 'expo.out',
-      force3D: true,
-    }, '-=0.04')  // slight overlap for seamlessness
+      x: targetX, width: targetW,
+      duration: 0.3, ease: 'expo.out', force3D: true,
+    }, '-=0.04')
 
-    // Color transitions — sync with the timeline
-    // Previous active pill fades to idle
+    // Previous pill → idle color
     if (prevActive.current && prevActive.current !== active) {
       const prevEl = pillRefs.current[prevActive.current]
       if (prevEl) {
-        tl.to(prevEl, {
-          color: IDLE_COLOR,
-          duration: 0.22,
-          ease: 'power1.out',
-        }, 0)
+        tl.to(prevEl, { color: IDLE_COLOR, duration: 0.2, ease: 'power1.out' }, 0)
       }
     }
 
-    // New active pill brightens to white — slightly delayed so it starts as track arrives
-    tl.to(activePill, {
-      color: ACTIVE_COLOR,
-      duration: 0.2,
-      ease: 'power2.out',
-    }, 0.16)
-
-    // Tiny bounce on the activated pill
+    // New active pill → white + micro bounce
+    tl.to(activePill, { color: ACTIVE_COLOR, duration: 0.18, ease: 'power2.out' }, 0.14)
     tl.fromTo(activePill,
-      { scale: 0.94 },
-      { scale: 1, duration: 0.45, ease: 'elastic.out(1.2, 0.55)', force3D: true },
-      0.18
+      { scale: 0.92 },
+      { scale: 1, duration: 0.42, ease: 'elastic.out(1.2, 0.5)', force3D: true },
+      0.16
     )
 
     prevActive.current = active
 
-    // Scroll into view
+    // Scroll active pill into view
     activePill.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+
   }, [active, categories])
+
+  /* ── Handle theme change — reset colors ─────────────────────────────── */
+  useEffect(() => {
+    categories.forEach(cat => {
+      const el = pillRefs.current[cat]
+      if (!el) return
+      gsap.to(el, {
+        color: cat === active ? ACTIVE_COLOR : IDLE_COLOR,
+        duration: 0.22, ease: 'power2.out',
+      })
+    })
+  }, [isDark])
 
   return (
     <>
@@ -143,7 +136,7 @@ const CategoryPills = ({ categories = [], active = 'all', onChange }) => {
         <div ref={scrollRef} className="cp-scroll">
 
           {/* Liquid morphing track */}
-          <div ref={trackRef} className="cp-track" style={{ opacity: 0 }} />
+          <div ref={trackRef} className="cp-track" style={{ opacity: 0 }} aria-hidden="true" />
 
           {categories.map((cat) => {
             const meta = LABELS[cat] || { icon: '•', text: cat.replace(/_/g, ' ') }
@@ -154,9 +147,10 @@ const CategoryPills = ({ categories = [], active = 'all', onChange }) => {
                 onClick={() => { if (cat !== active) onChange(cat) }}
                 className="cp-pill"
                 aria-pressed={cat === active}
+                aria-label={`Filter by ${meta.text}`}
                 style={{ color: IDLE_COLOR }}
               >
-                <span className="cp-icon">{meta.icon}</span>
+                <span className="cp-icon" aria-hidden="true">{meta.icon}</span>
                 <span className="cp-text">{meta.text}</span>
               </button>
             )
@@ -164,7 +158,7 @@ const CategoryPills = ({ categories = [], active = 'all', onChange }) => {
         </div>
 
         {/* Right-edge fade */}
-        <div className="cp-fade" />
+        <div className="cp-edge-fade" aria-hidden="true" />
       </div>
 
       <style>{`
@@ -179,29 +173,30 @@ const CategoryPills = ({ categories = [], active = 'all', onChange }) => {
           align-items: center;
           gap: 5px;
           overflow-x: auto;
-          padding: 3px 16px 6px;
+          padding: 2px 16px 6px;
           -ms-overflow-style: none;
           scrollbar-width: none;
         }
         .cp-scroll::-webkit-scrollbar { display: none; }
 
-        /* Liquid track */
+        /* ── Liquid track ── */
         .cp-track {
           position: absolute;
-          top: 3px;
+          top: 2px;
           left: 0;
-          height: calc(100% - 9px);
+          height: calc(100% - 8px);
           border-radius: 100px;
           background: linear-gradient(135deg, #FF9F1C 0%, #E05C2A 100%);
           box-shadow:
-            0 4px 20px rgba(255,130,0,0.4),
-            0 1px 0 rgba(255,255,255,0.2) inset;
+            0 4px 20px rgba(255,130,0,0.38),
+            0 1px 0 rgba(255,255,255,0.22) inset;
           pointer-events: none;
           z-index: 0;
           will-change: transform, width;
           transform-origin: left center;
         }
 
+        /* ── Pill ── */
         .cp-pill {
           position: relative;
           z-index: 1;
@@ -212,43 +207,46 @@ const CategoryPills = ({ categories = [], active = 'all', onChange }) => {
           padding: 0 13px;
           height: 34px;
           border-radius: 100px;
-          border: 1px solid ${isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)'};
-          background: ${isDark ? 'rgba(255,255,255,0.035)' : 'rgba(0,0,0,0.025)'};
+          border: 1px solid ${D ? 'rgba(255,255,255,0.07)' : 'rgba(237,217,184,0.7)'};
+          background: ${D ? 'rgba(255,255,255,0.03)' : 'rgba(255,248,238,0.6)'};
           cursor: pointer;
           white-space: nowrap;
           font-family: "DM Sans", sans-serif;
           font-size: 12.5px;
           font-weight: 600;
-          letter-spacing: 0.01em;
+          letter-spacing: 0.005em;
           -webkit-tap-highlight-color: transparent;
           outline: none;
-          transition: background 0.18s, border-color 0.18s;
+          transition:
+            background 0.18s ease,
+            border-color 0.18s ease;
         }
         .cp-pill:hover {
-          background: ${isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)'};
-          border-color: ${isDark ? 'rgba(255,255,255,0.13)' : 'rgba(0,0,0,0.09)'};
+          background: ${D ? 'rgba(255,255,255,0.07)' : 'rgba(237,217,184,0.35)'};
+          border-color: ${D ? 'rgba(255,255,255,0.12)' : 'rgba(237,170,80,0.5)'};
         }
-        .cp-pill:active { transform: scale(0.95); }
-
-        .cp-icon {
-          font-size: 14px;
-          line-height: 1;
-        }
-        .cp-text {
-          line-height: 1;
+        .cp-pill:active { transform: scale(0.94); }
+        .cp-pill:focus-visible {
+          outline: 2px solid rgba(255,159,28,0.5);
+          outline-offset: 2px;
         }
 
-        .cp-fade {
+        .cp-icon { font-size: 13px; line-height: 1; }
+        .cp-text  { line-height: 1; }
+
+        /* ── Right edge fade ── */
+        .cp-edge-fade {
           position: absolute;
           top: 0; right: 0;
-          width: 40px; height: 100%;
+          width: 48px; height: 100%;
           background: linear-gradient(
             to left,
-            ${isDark ? 'rgba(10,7,4,1)' : 'rgba(255,251,244,1)'} 0%,
+            ${D ? 'rgba(12,8,4,1)' : 'rgba(253,249,242,1)'} 0%,
             transparent 100%
           );
           pointer-events: none;
-          z-index: 3;
+          z-index: 5;
+          transition: background var(--transition-theme);
         }
       `}</style>
     </>

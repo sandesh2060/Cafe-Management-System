@@ -56,7 +56,7 @@ const RecommendedSection = ({ items = [], weather, loading }) => {
           />
           <h2
             className="text-sm font-black"
-            style={{ color: 'var(--text-primary)', fontFamily: '"Fraunces", serif' }}
+            style={{ color: 'var(--text-primary)', fontFamily: '"sans-serif", serif' }}
           >
             Recommended for You
           </h2>

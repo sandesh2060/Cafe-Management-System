@@ -3,12 +3,8 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
 import fs from 'fs'
-import os from 'os'
 
 // ── HTTPS for localhost GPS ──────────────────────────────────────────────────
-// Chrome requires secure context (HTTPS) for geolocation on localhost.
-// Run once: npx @vitejs/plugin-basic-ssl (or use the mkcert approach below)
-// If certs don't exist yet, fall back to HTTP silently.
 let httpsConfig = undefined
 const certPath = path.resolve(__dirname, '.certs')
 const keyFile  = path.join(certPath, 'localhost-key.pem')
@@ -66,11 +62,23 @@ export default defineConfig({
     },
   },
   server: {
+    host: true,           // expose on all network interfaces (192.168.x.x)
     port: 5173,
-    https: httpsConfig,   // HTTPS when certs exist, HTTP fallback otherwise
+    https: httpsConfig,
     proxy: {
-      '/api':       { target: 'http://localhost:5000', changeOrigin: true },
-      '/socket.io': { target: 'http://localhost:5000', ws: true },
+      // All /api and /socket.io calls go directly to local backend
+      // This runs server-side on your Mac — no CORS, no ngrok needed
+      '/api': {
+        target:       'http://localhost:5000',
+        changeOrigin: true,
+        secure:       false,
+      },
+      '/socket.io': {
+        target:       'http://localhost:5000',
+        changeOrigin: true,
+        secure:       false,
+        ws:           true,
+      },
     },
   },
   build: {

@@ -1,13 +1,16 @@
 // src/shared/services/socket.service.js
 import { io } from 'socket.io-client'
 
+// VITE_SOCKET_URL must point to the backend root (no /api suffix).
+// In dev with ngrok: VITE_SOCKET_URL=https://xxxx.ngrok-free.dev
+// In production:     VITE_SOCKET_URL=https://api.yourdomain.com
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000'
 
 class SocketService {
   constructor() {
     this.socket    = null
     this.listeners = new Map()
-    this._token    = null          // cache the last valid token
+    this._token    = null
   }
 
   connect(token) {
@@ -38,6 +41,12 @@ class SocketService {
       reconnectionDelay:    1000,
       reconnectionAttempts: 10,
       timeout:              20000,
+      // Bypass ngrok browser warning for WebSocket upgrade requests in dev.
+      // Without this, ngrok returns an HTML interstitial page instead of
+      // upgrading the connection, causing the WebSocket to close immediately.
+      extraHeaders: import.meta.env.DEV
+        ? { 'ngrok-skip-browser-warning': 'true' }
+        : {},
     })
 
     this.socket.on('connect', () => {
@@ -49,15 +58,12 @@ class SocketService {
     })
 
     // ── Auth / user-not-found errors ────────────────────────────
-    // Socket.IO surfaces these as connect_error with err.data from the server
     this.socket.on('connect_error', (err) => {
       const msg     = err.message || ''
       const errData = err.data   || {}
 
       console.error('[Socket] Connection error:', msg, errData)
 
-      // Server sends "User not found" → token is invalid / user deleted
-      // Stop reconnecting so we don't spam the server
       if (
         msg === 'User not found' ||
         errData?.type === 'UnauthorizedError' ||
@@ -65,11 +71,9 @@ class SocketService {
         msg.toLowerCase().includes('invalid token')
       ) {
         console.warn('[Socket] Auth failure — disconnecting and clearing token')
-        this.socket.io.opts.reconnection = false   // stop auto-reconnect
+        this.socket.io.opts.reconnection = false
         this.socket.disconnect()
         this._token = null
-
-        // Dispatch a custom event so the app can react (e.g. redirect to login)
         window.dispatchEvent(new CustomEvent('socket:auth-error', { detail: { message: msg } }))
       }
     })
@@ -85,7 +89,6 @@ class SocketService {
     this._token = null
   }
 
-  // Emit with optional ack callback
   emit(event, data, ack) {
     if (!this.socket?.connected) {
       console.warn('[Socket] Not connected — cannot emit:', event)
@@ -95,7 +98,6 @@ class SocketService {
     else this.socket.emit(event, data)
   }
 
-  // Subscribe to an event — returns unsubscribe fn
   on(event, handler) {
     if (!this.socket) return () => {}
     this.socket.on(event, handler)

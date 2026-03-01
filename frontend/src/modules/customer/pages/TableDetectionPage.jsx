@@ -1,535 +1,485 @@
-// // src/modules/customer/pages/TableDetectionPage.jsx
-// import { useEffect, useRef } from "react";
-// import { useTableDetection } from "@modules/table/hooks/useTableDetection";
-// import { useNavigate } from "react-router-dom";
-// import { useSelector } from "react-redux";
-// import { selectIsLoggedIn } from "@store/slices/authSlice";
-// import QrScannerOverlay from "@modules/table/components/QrScannerOverlay";
-// import { Wifi, QrCode, Hash, Navigation } from "lucide-react";
-// import gsap from "gsap";
-
-// const TableDetectionPage = () => {
-//   const isLoggedIn = useSelector(selectIsLoggedIn);
-//   const navigate = useNavigate();
-//   const logoRef = useRef(null);
-//   const cardRef = useRef(null);
-//   const ring1Ref = useRef(null);
-//   const ring2Ref = useRef(null);
-//   const ring3Ref = useRef(null);
-
-//   const {
-//     state,
-//     context,
-//     startGPS,
-//     onQrScanned,
-//     onManualEntry,
-//     retry,
-//     isDetecting,
-//     isQR,
-//     isDone,
-//     isError,
-//   } = useTableDetection();
-
-//   // Only redirect if already logged in with a session
-//   useEffect(() => {
-//     if (isLoggedIn) navigate("/menu", { replace: true });
-//   }, [isLoggedIn, navigate]);
-
-//   // GSAP animations
-//   useEffect(() => {
-//     if (logoRef.current) {
-//       gsap.fromTo(
-//         logoRef.current,
-//         { y: -36, opacity: 0, scale: 0.88 },
-//         { y: 0, opacity: 1, scale: 1, duration: 0.9, ease: "back.out(1.7)" },
-//       );
-//     }
-//     if (cardRef.current) {
-//       gsap.fromTo(
-//         cardRef.current,
-//         { y: 48, opacity: 0 },
-//         { y: 0, opacity: 1, duration: 0.7, delay: 0.25, ease: "power4.out" },
-//       );
-//     }
-//     [ring1Ref, ring2Ref, ring3Ref].forEach((ref, i) => {
-//       if (!ref.current) return;
-//       gsap.fromTo(
-//         ref.current,
-//         { scale: 1, opacity: 0.6 },
-//         {
-//           scale: 2.8,
-//           opacity: 0,
-//           duration: 2.5,
-//           delay: i * 0.75,
-//           repeat: -1,
-//           ease: "power2.out",
-//         },
-//       );
-//     });
-//   }, []);
-
-//   useEffect(() => {
-//     startGPS();
-//   }, [startGPS]);
-
-//   // ── FIX: isScanning must NOT overlap with isQR ──
-//   // isQR = state.matches('showingQR') — when true, show QR card, not scanning card
-//   const isScanning =
-//     state === "idle" ||
-//     state === "requestingGPS" ||
-//     state === "collectingReadings";
-//   // isQR comes from the hook — do NOT include showingQR in isScanning
-
-//   return (
-//     <div className="min-h-screen bg-[#0d0907] flex flex-col items-center justify-center px-5 py-12 relative overflow-hidden">
-//       {/* Ambient glow */}
-//       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[500px] h-[260px] rounded-full bg-amber-600/[0.18] blur-[90px] pointer-events-none" />
-//       <div className="absolute bottom-0 right-0 w-[260px] h-[260px] rounded-full bg-orange-800/[0.10] blur-[70px] pointer-events-none" />
-
-//       {/* Logo */}
-//       <div ref={logoRef} className="text-center mb-10 relative z-10">
-//         <div className="relative w-[78px] h-[78px] mx-auto mb-5">
-//           <div className="absolute inset-0 rounded-[22px] bg-amber-500/25 blur-2xl scale-150" />
-//           <div className="relative w-full h-full rounded-[22px] bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center text-[38px] shadow-2xl shadow-amber-950/70 ring-1 ring-white/[0.12]">
-//             ☕
-//           </div>
-//         </div>
-//         <h1 className="text-[32px] font-black text-amber-50 leading-none tracking-tight mb-2">
-//           कौसी चिया
-//         </h1>
-//         <div className="flex items-center justify-center gap-2">
-//           <div className="w-8 h-px bg-amber-500/30" />
-//           <p className="text-[10px] font-semibold tracking-[3.5px] text-amber-400/50 uppercase">
-//             Smart Cafe · Kathmandu
-//           </p>
-//           <div className="w-8 h-px bg-amber-500/30" />
-//         </div>
-//       </div>
-
-//       {/* Detection card */}
-//       <div ref={cardRef} className="w-full max-w-[348px] relative z-10">
-//         {/* ── GPS Scanning ── */}
-//         {isScanning && (
-//           <div className="rounded-[30px] bg-white/[0.035] border border-white/[0.07] backdrop-blur-3xl px-7 py-10 text-center shadow-[0_32px_80px_rgba(0,0,0,0.55)] ring-1 ring-inset ring-amber-400/[0.07]">
-//             <div className="relative w-[88px] h-[88px] mx-auto mb-8 flex items-center justify-center">
-//               <div
-//                 ref={ring1Ref}
-//                 className="absolute w-[88px] h-[88px] rounded-full border border-amber-500/40"
-//               />
-//               <div
-//                 ref={ring2Ref}
-//                 className="absolute w-[88px] h-[88px] rounded-full border border-amber-500/30"
-//               />
-//               <div
-//                 ref={ring3Ref}
-//                 className="absolute w-[88px] h-[88px] rounded-full border border-amber-500/20"
-//               />
-//               <div className="relative w-[52px] h-[52px] rounded-full bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center shadow-xl shadow-amber-950/60 z-10 ring-1 ring-white/[0.15]">
-//                 <Navigation
-//                   size={21}
-//                   className="text-white"
-//                   strokeWidth={2.5}
-//                 />
-//               </div>
-//             </div>
-
-//             <h2 className="text-[21px] font-bold text-amber-50 tracking-tight mb-2">
-//               Finding Your Table
-//             </h2>
-//             <p className="text-[13px] leading-relaxed text-amber-100/35 mb-8 px-2">
-//               {state === "collectingReadings"
-//                 ? "Collecting accurate GPS readings…"
-//                 : "Allow location access to detect your table automatically"}
-//             </p>
-
-//             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-amber-500/[0.10] border border-amber-500/[0.18]">
-//               <Wifi size={12} className="text-amber-400" />
-//               <span className="text-[11px] font-semibold text-amber-400 tracking-wide">
-//                 GPS · No QR needed
-//               </span>
-//             </div>
-
-//             <div className="mt-8 h-[2px] rounded-full bg-white/[0.05] overflow-hidden">
-//               <div
-//                 className="h-full w-2/5 rounded-full bg-gradient-to-r from-transparent via-amber-400 to-transparent"
-//                 style={{ animation: "slideShimmer 1.8s ease-in-out infinite" }}
-//               />
-//             </div>
-
-//             {/* Dev debug pill */}
-//             {import.meta.env.DEV && (
-//               <p className="mt-4 text-[10px] text-amber-400/40 font-mono">
-//                 state:{" "}
-//                 {typeof state === "string" ? state : JSON.stringify(state)}
-//               </p>
-//             )}
-//           </div>
-//         )}
-
-//         {/* ── QR Fallback ── shown when GPS times out / denied / low confidence */}
-//         {isQR && (
-//           <div className="rounded-[30px] bg-white/[0.035] border border-white/[0.07] backdrop-blur-3xl px-7 py-8 shadow-[0_32px_80px_rgba(0,0,0,0.55)] ring-1 ring-inset ring-amber-400/[0.07]">
-//             <div className="text-center mb-6">
-//               <div className="w-[54px] h-[54px] rounded-[16px] bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mx-auto mb-4">
-//                 <QrCode size={25} className="text-amber-400" />
-//               </div>
-//               <h2 className="text-[20px] font-bold text-amber-50 tracking-tight mb-1.5">
-//                 Scan Table QR
-//               </h2>
-//               <p className="text-[13px] text-amber-100/35 leading-relaxed">
-//                 GPS unavailable. Scan the QR on your table.
-//               </p>
-//             </div>
-
-//             <QrScannerOverlay onScan={onQrScanned} />
-
-//             <div className="mt-5 pt-5 border-t border-white/[0.05]">
-//               <p className="text-center text-[10px] font-semibold tracking-[3px] uppercase text-amber-200/25 mb-3.5">
-//                 No QR code?
-//               </p>
-//               <ManualTableEntry onSubmit={onManualEntry} />
-//             </div>
-
-//             {import.meta.env.DEV && (
-//               <p className="mt-4 text-center text-[10px] text-amber-400/40 font-mono">
-//                 state:{" "}
-//                 {typeof state === "string" ? state : JSON.stringify(state)}
-//               </p>
-//             )}
-//           </div>
-//         )}
-
-//         {/* ── Creating Session ── */}
-//         {state === "creatingSession" && (
-//           <div className="rounded-[30px] bg-white/[0.035] border border-white/[0.07] backdrop-blur-3xl px-7 py-14 text-center shadow-[0_32px_80px_rgba(0,0,0,0.55)]">
-//             <div className="relative w-14 h-14 mx-auto mb-6">
-//               <div className="absolute inset-0 rounded-full bg-amber-500/20 blur-xl" />
-//               <div className="w-14 h-14 rounded-full border-[3px] border-amber-900/30 border-t-amber-400 animate-spin" />
-//             </div>
-//             <p className="text-[16px] font-semibold text-amber-50 mb-1">
-//               Setting up your session…
-//             </p>
-//             <p className="text-[12px] text-amber-200/30">Just a moment</p>
-//           </div>
-//         )}
-
-//         {/* ── Error ── */}
-//         {isError && (
-//           <div className="rounded-[30px] bg-white/[0.035] border border-white/[0.07] backdrop-blur-3xl px-7 py-10 text-center shadow-[0_32px_80px_rgba(0,0,0,0.55)]">
-//             <div className="text-5xl mb-5">😕</div>
-//             <h2 className="text-[20px] font-bold text-amber-50 tracking-tight mb-2">
-//               Detection Failed
-//             </h2>
-//             <p className="text-[13px] text-amber-100/35 leading-relaxed mb-8">
-//               {context.error}
-//             </p>
-//             <button
-//               onClick={retry}
-//               className="w-full py-4 rounded-2xl bg-gradient-to-r from-amber-400 to-orange-600 text-white text-[14px] font-semibold tracking-wide shadow-xl shadow-amber-950/50 active:scale-[0.97] transition-transform duration-150"
-//             >
-//               Try Again
-//             </button>
-//           </div>
-//         )}
-//       </div>
-
-//       {/* Footer */}
-//       <p className="mt-9 text-[10px] font-medium tracking-[3px] uppercase text-amber-200/[0.18] relative z-10">
-//         Powered by ConvoS
-//       </p>
-
-//       <style>{`
-//         @keyframes slideShimmer {
-//           0%   { transform: translateX(-100%) }
-//           100% { transform: translateX(340%) }
-//         }
-//       `}</style>
-//     </div>
-//   );
-// };
-
-// const ManualTableEntry = ({ onSubmit }) => {
-//   const ref = useRef("");
-//   return (
-//     <div className="flex gap-2.5">
-//       <div className="flex-1 relative">
-//         <Hash
-//           size={14}
-//           className="absolute left-3.5 top-1/2 -translate-y-1/2 text-amber-400/40"
-//         />
-//         <input
-//           type="text"
-//           placeholder="Table number"
-//           className="w-full bg-white/[0.05] border border-white/[0.08] rounded-xl pl-9 pr-3 py-3 text-[13px] text-amber-50 placeholder-amber-100/20 outline-none focus:border-amber-500/35 focus:bg-white/[0.07] transition-all duration-200"
-//           onChange={(e) => {
-//             ref.current = e.target.value;
-//           }}
-//         />
-//       </div>
-//       <button
-//         className="shrink-0 px-5 py-3 rounded-xl bg-gradient-to-br from-amber-400 to-orange-600 text-white text-[13px] font-semibold shadow-lg shadow-amber-950/40 active:scale-95 transition-transform duration-150"
-//         onClick={() => ref.current && onSubmit(ref.current.trim())}
-//       >
-//         Go
-//       </button>
-//     </div>
-//   );
-// };
-
-// export default TableDetectionPage;
-
-// top code is the original code with table detection flow, but it's currently disabled for a smoother experience during development and testing. The component now simply redirects to the menu page immediately. To re-enable table detection, replace the current component with the original code below.
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-
 // src/modules/customer/pages/TableDetectionPage.jsx
-// TEMP: Table detection fully disabled — redirects straight to /menu
-import { useEffect } from "react";
+import { useEffect, useRef, useContext } from "react";
+import { useTableDetection } from "@modules/table/hooks/useTableDetection";
 import { useNavigate } from "react-router-dom";
+import { useSelector } from "react-redux";
+import { selectIsLoggedIn } from "@store/slices/authSlice";
+import { ThemeContext } from "@shared/context/ThemeContext";
+import QrScannerOverlay from "@modules/table/components/QrScannerOverlay";
+import { Navigation, QrCode, Hash, Wifi, RefreshCw } from "lucide-react";
+import gsap from "gsap";
+
+const LOGO = "https://res.cloudinary.com/dszy3sf5c/image/upload/v1771076878/kausi_chiya_logo_q8qult.png";
 
 const TableDetectionPage = () => {
-  const navigate = useNavigate();
+  const isLoggedIn = useSelector(selectIsLoggedIn);
+  const navigate   = useNavigate();
+  const { isDark } = useContext(ThemeContext);
+  const D = isDark;
 
-  // TEMP: skip all detection, go straight to menu
+  /* ── Refs ── */
+  const logoRef  = useRef(null);
+  const cardRef  = useRef(null);
+  const ring1Ref = useRef(null);
+  const ring2Ref = useRef(null);
+  const ring3Ref = useRef(null);
+  const orbRef   = useRef(null);
+
+  const {
+    state, context, startGPS, onQrScanned, onManualEntry, retry, isQR, isError,
+  } = useTableDetection();
+
+  /* ── Redirect if already logged in ── */
   useEffect(() => {
-    navigate("/menu", { replace: true });
-  }, []);
+    if (isLoggedIn) navigate("/menu", { replace: true });
+  }, [isLoggedIn, navigate]);
 
-  return null;
+  /* ── GSAP entrance — once only ── */
+  useEffect(() => {
+    const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
+    if (logoRef.current) tl.fromTo(logoRef.current, { y: -34, opacity: 0, scale: 0.9 }, { y: 0, opacity: 1, scale: 1, duration: 0.85 }, 0);
+    if (cardRef.current) tl.fromTo(cardRef.current, { y: 48, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7 }, 0.2);
+
+    /* Pulse rings */
+    [ring1Ref, ring2Ref, ring3Ref].forEach((ref, i) => {
+      if (!ref.current) return;
+      gsap.fromTo(ref.current,
+        { scale: 1, opacity: D ? 0.5 : 0.4 },
+        { scale: 3.4, opacity: 0, duration: 2.8, delay: i * 0.88, repeat: -1, ease: "power2.out" }
+      );
+    });
+
+    /* Float orb */
+    if (orbRef.current) {
+      gsap.to(orbRef.current, { y: -20, duration: 3.8, repeat: -1, yoyo: true, ease: "sine.inOut" });
+    }
+  }, []); // eslint-disable-line
+
+  /* ── Call startGPS once ── */
+  const startGPSRef = useRef(startGPS);
+  useEffect(() => { startGPSRef.current = startGPS; }, [startGPS]);
+  useEffect(() => { startGPSRef.current(); }, []);
+
+  const isScanning = state === "idle" || state === "requestingGPS" || state === "collectingReadings";
+
+  /* ── Theme tokens ── */
+  const bg         = D ? "#0C0804"                     : "#F0EAD6";
+  const cardBg     = D ? "rgba(14, 8, 3, 0.82)"        : "rgba(255, 252, 244, 0.87)";
+  const cardBorder = D ? "rgba(255,159,28,0.13)"        : "rgba(255,255,255,0.84)";
+  const cardShadow = D
+    ? "0 32px 80px rgba(0,0,0,0.72), 0 0 0 1px rgba(255,159,28,0.07)"
+    : "0 24px 60px rgba(92,51,23,0.18), 0 0 0 1px rgba(210,175,110,0.2)";
+  const textPri    = D ? "#FFF8EE"                     : "#120D06";
+  const textMut    = D ? "rgba(255,196,100,0.42)"       : "rgba(92,51,23,0.44)";
+  const ringColor  = D ? "rgba(255,159,28,0.38)"        : "rgba(200,104,10,0.28)";
+  const orbColor   = D ? "rgba(255,140,20,0.18)"        : "rgba(255,159,28,0.14)";
+
+  return (
+    <div style={{
+      minHeight: "100dvh",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      background: bg,
+      position: "relative",
+      overflow: "hidden",
+      padding: "max(52px, calc(env(safe-area-inset-top) + 28px)) 18px max(36px, calc(env(safe-area-inset-bottom) + 20px))",
+    }}>
+
+      {/* ── Ambient top orb ── */}
+      <div ref={orbRef} style={{
+        position: "absolute", top: "-6%", left: "50%", transform: "translateX(-50%)",
+        width: 360, height: 360, borderRadius: "50%",
+        background: `radial-gradient(circle, ${orbColor} 0%, transparent 72%)`,
+        filter: "blur(50px)", pointerEvents: "none", zIndex: 0, willChange: "transform",
+      }} />
+      {/* Bottom terra orb */}
+      <div style={{
+        position: "absolute", bottom: "-8%", right: "-12%",
+        width: 240, height: 240, borderRadius: "50%",
+        background: D
+          ? "radial-gradient(circle, rgba(224,92,42,0.12) 0%, transparent 70%)"
+          : "radial-gradient(circle, rgba(224,92,42,0.1) 0%, transparent 70%)",
+        filter: "blur(36px)", pointerEvents: "none", zIndex: 0,
+      }} />
+
+      {/* ═══ LOGO / BRAND ════════════════════════════════════════════ */}
+      <div ref={logoRef} style={{ textAlign: "center", marginBottom: 30, position: "relative", zIndex: 10 }}>
+        {/* Logo icon */}
+        <div style={{ position: "relative", width: 82, height: 82, margin: "0 auto 14px" }}>
+          <div style={{
+            position: "absolute", inset: -10, borderRadius: 26,
+            background: "radial-gradient(circle, rgba(255,159,28,0.32) 0%, transparent 72%)",
+            filter: "blur(10px)",
+          }} />
+          <img
+            src={LOGO}
+            alt="कौसी चिया"
+            style={{
+              width: 82, height: 82, borderRadius: 22,
+              objectFit: "contain",
+              position: "relative", zIndex: 1,
+              padding: 9,
+              background: D ? "rgba(12,6,2,0.56)" : "rgba(255,250,240,0.74)",
+              backdropFilter: "blur(14px)",
+              border: D ? "1px solid rgba(255,159,28,0.2)" : "1px solid rgba(255,255,255,0.78)",
+              boxShadow: D
+                ? "0 8px 30px rgba(0,0,0,0.52), 0 0 0 1px rgba(255,159,28,0.1)"
+                : "0 8px 24px rgba(92,51,23,0.18), 0 0 0 1px rgba(255,255,255,0.55)",
+            }}
+          />
+        </div>
+
+        {/* Brand name */}
+        <h1 style={{
+          fontFamily: '"Noto Sans Devanagari", serif',
+          fontWeight: 900,
+          fontSize: "clamp(28px, 7.5vw, 34px)",
+          letterSpacing: "-0.025em",
+          lineHeight: 1.1,
+          margin: "0 0 7px",
+          background: D
+            ? "linear-gradient(128deg, #FFE8A0 0%, #FF9F1C 42%, #E05C2A 100%)"
+            : "linear-gradient(128deg, #C8680A 0%, #E05C2A 100%)",
+          WebkitBackgroundClip: "text",
+          WebkitTextFillColor: "transparent",
+          backgroundClip: "text",
+          filter: "drop-shadow(0 2px 8px rgba(255,140,20,0.3))",
+        }}>
+          कौसी चिया
+        </h1>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+          <div style={{ width: 26, height: 1, background: D ? "rgba(255,159,28,0.25)" : "rgba(200,104,10,0.22)", borderRadius: 99 }} />
+          <p style={{
+            fontFamily: '"DM Sans", system-ui, sans-serif',
+            fontSize: 10, fontWeight: 700, letterSpacing: "0.22em",
+            textTransform: "uppercase",
+            color: D ? "rgba(255,184,77,0.38)" : "rgba(92,51,23,0.36)",
+            margin: 0,
+          }}>
+            Smart Café · Kathmandu
+          </p>
+          <div style={{ width: 26, height: 1, background: D ? "rgba(255,159,28,0.25)" : "rgba(200,104,10,0.22)", borderRadius: 99 }} />
+        </div>
+      </div>
+
+      {/* ═══ DETECTION CARD ══════════════════════════════════════════ */}
+      <div
+        ref={cardRef}
+        style={{
+          width: "100%", maxWidth: 368,
+          position: "relative", zIndex: 10,
+          borderRadius: 28, overflow: "hidden",
+          background: cardBg,
+          backdropFilter: "blur(36px) saturate(165%)",
+          WebkitBackdropFilter: "blur(36px) saturate(165%)",
+          border: `1px solid ${cardBorder}`,
+          boxShadow: cardShadow,
+        }}
+      >
+        {/* Gold top accent line */}
+        <div style={{
+          position: "absolute", top: 0, left: "12%", right: "12%",
+          height: 1.5, borderRadius: 99,
+          background: "linear-gradient(90deg, transparent, #FF9F1C 28%, #FFD580 50%, #E05C2A 72%, transparent)",
+          opacity: D ? 0.6 : 0.48,
+        }} />
+
+        {/* ── GPS SCANNING ── */}
+        {isScanning && (
+          <div style={{ padding: "36px 26px 30px", textAlign: "center" }}>
+
+            {/* Pulse rings + nav icon */}
+            <div style={{
+              position: "relative", width: 96, height: 96,
+              margin: "0 auto 28px",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              {[ring1Ref, ring2Ref, ring3Ref].map((ref, i) => (
+                <div key={i} ref={ref} style={{
+                  position: "absolute",
+                  width: "100%", height: "100%",
+                  borderRadius: "50%",
+                  border: `1.5px solid ${ringColor}`,
+                  transformOrigin: "center",
+                  opacity: 0.5 - i * 0.12,
+                }} />
+              ))}
+              {/* Center orb */}
+              <div style={{
+                width: 56, height: 56, borderRadius: "50%", zIndex: 5, position: "relative",
+                background: "linear-gradient(135deg, #FF9F1C 0%, #E05C2A 100%)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                boxShadow: "0 6px 26px rgba(255,159,28,0.42), 0 2px 8px rgba(224,92,42,0.3)",
+                border: "1.5px solid rgba(255,255,255,0.22)",
+              }}>
+                <Navigation size={22} color="#fff" strokeWidth={2.5} />
+              </div>
+            </div>
+
+            <h2 style={{
+              fontFamily: '"DM Sans", system-ui, sans-serif',
+              fontWeight: 800, fontSize: "clamp(19px, 5vw, 22px)",
+              letterSpacing: "-0.03em",
+              color: textPri, margin: "0 0 8px", lineHeight: 1.2,
+            }}>
+              Finding Your Table
+            </h2>
+            <p style={{
+              fontFamily: '"DM Sans", system-ui, sans-serif',
+              fontSize: 13, lineHeight: 1.55,
+              color: textMut, margin: "0 0 24px", padding: "0 6px",
+            }}>
+              {state === "collectingReadings"
+                ? "Collecting GPS readings…"
+                : "Allow location access to detect your table automatically"}
+            </p>
+
+            {/* GPS pill */}
+            <div style={{
+              display: "inline-flex", alignItems: "center", gap: 7,
+              padding: "8px 16px", borderRadius: 99, marginBottom: 22,
+              background: D ? "rgba(255,159,28,0.08)" : "rgba(255,159,28,0.09)",
+              border: D ? "1px solid rgba(255,159,28,0.18)" : "1px solid rgba(255,159,28,0.22)",
+            }}>
+              <Wifi size={12} color="#FF9F1C" strokeWidth={2.2} />
+              <span style={{
+                fontFamily: '"DM Sans", system-ui, sans-serif',
+                fontSize: 11, fontWeight: 700, color: "#FF9F1C", letterSpacing: "0.04em",
+              }}>
+                GPS · No QR Needed
+              </span>
+            </div>
+
+            {/* Progress bar */}
+            <div style={{
+              height: 2, borderRadius: 99, overflow: "hidden",
+              background: D ? "rgba(255,255,255,0.05)" : "rgba(92,51,23,0.06)",
+            }}>
+              <div style={{
+                height: "100%", width: "42%", borderRadius: 99,
+                background: "linear-gradient(90deg, transparent, #FF9F1C, transparent)",
+                animation: "tdp-slide 1.85s ease-in-out infinite",
+              }} />
+            </div>
+
+            {import.meta.env.DEV && (
+              <p style={{
+                marginTop: 12, fontSize: 10,
+                fontFamily: '"DM Mono", monospace',
+                color: D ? "rgba(255,159,28,0.28)" : "rgba(92,51,23,0.28)",
+              }}>
+                state: {typeof state === "string" ? state : JSON.stringify(state)}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* ── QR FALLBACK ── */}
+        {isQR && (
+          <div style={{ padding: "28px 22px" }}>
+            <div style={{ textAlign: "center", marginBottom: 20 }}>
+              <div style={{
+                width: 54, height: 54, borderRadius: 16, margin: "0 auto 14px",
+                background: D ? "rgba(255,159,28,0.09)" : "rgba(255,159,28,0.09)",
+                border: D ? "1px solid rgba(255,159,28,0.2)" : "1px solid rgba(255,159,28,0.22)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                <QrCode size={25} color="#FF9F1C" />
+              </div>
+              <h2 style={{
+                fontFamily: '"DM Sans", system-ui, sans-serif',
+                fontWeight: 800, fontSize: 20, letterSpacing: "-0.03em",
+                color: textPri, margin: "0 0 6px",
+              }}>
+                Scan Table QR
+              </h2>
+              <p style={{
+                fontFamily: '"DM Sans", system-ui, sans-serif',
+                fontSize: 13, color: textMut, margin: 0, lineHeight: 1.5,
+              }}>
+                GPS unavailable — scan the QR on your table
+              </p>
+            </div>
+
+            <QrScannerOverlay onScan={onQrScanned} />
+
+            <div style={{
+              marginTop: 20, paddingTop: 20,
+              borderTop: D ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(92,51,23,0.07)",
+            }}>
+              <p style={{
+                textAlign: "center", fontSize: 10, fontWeight: 700,
+                letterSpacing: "0.2em", textTransform: "uppercase",
+                color: textMut, margin: "0 0 12px",
+                fontFamily: '"DM Sans", system-ui, sans-serif',
+              }}>
+                No QR Code?
+              </p>
+              <ManualTableEntry onSubmit={onManualEntry} isDark={D} textPri={textPri} />
+            </div>
+
+            {import.meta.env.DEV && (
+              <p style={{
+                marginTop: 14, textAlign: "center", fontSize: 10,
+                fontFamily: '"DM Mono", monospace',
+                color: D ? "rgba(255,159,28,0.28)" : "rgba(92,51,23,0.28)",
+              }}>
+                state: {typeof state === "string" ? state : JSON.stringify(state)}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* ── CREATING SESSION ── */}
+        {state === "creatingSession" && (
+          <div style={{ padding: "48px 26px", textAlign: "center" }}>
+            <div style={{ position: "relative", width: 56, height: 56, margin: "0 auto 20px" }}>
+              <div style={{
+                position: "absolute", inset: 0, borderRadius: "50%",
+                background: "rgba(255,159,28,0.14)", filter: "blur(10px)",
+              }} />
+              <div style={{
+                width: 56, height: 56, borderRadius: "50%",
+                border: "3px solid",
+                borderColor: D ? "rgba(255,159,28,0.14)" : "rgba(200,104,10,0.14)",
+                borderTopColor: "#FF9F1C",
+                animation: "tdp-spin 0.82s linear infinite",
+              }} />
+            </div>
+            <p style={{
+              fontFamily: '"DM Sans", system-ui, sans-serif',
+              fontWeight: 700, fontSize: 16, color: textPri, margin: "0 0 5px",
+            }}>
+              Setting up your session…
+            </p>
+            <p style={{
+              fontFamily: '"DM Sans", system-ui, sans-serif',
+              fontSize: 12, color: textMut, margin: 0,
+            }}>
+              Just a moment
+            </p>
+          </div>
+        )}
+
+        {/* ── ERROR ── */}
+        {isError && (
+          <div style={{ padding: "38px 26px", textAlign: "center" }}>
+            <div style={{ fontSize: 48, marginBottom: 16, lineHeight: 1 }}>😕</div>
+            <h2 style={{
+              fontFamily: '"DM Sans", system-ui, sans-serif',
+              fontWeight: 800, fontSize: 20, letterSpacing: "-0.03em",
+              color: textPri, margin: "0 0 8px",
+            }}>
+              Detection Failed
+            </h2>
+            <p style={{
+              fontFamily: '"DM Sans", system-ui, sans-serif',
+              fontSize: 13, color: textMut, margin: "0 0 28px", lineHeight: 1.55,
+            }}>
+              {context?.error || "Could not detect your table. Please try again."}
+            </p>
+            <button
+              onClick={retry}
+              onTouchStart={e => { e.currentTarget.style.transform = "scale(0.97)"; }}
+              onTouchEnd={e => { e.currentTarget.style.transform = ""; }}
+              style={{
+                width: "100%", padding: "15px 20px",
+                borderRadius: 16, border: "none",
+                background: "linear-gradient(135deg, #FF9F1C 0%, #E05C2A 100%)",
+                color: "#fff",
+                fontFamily: '"DM Sans", system-ui, sans-serif',
+                fontWeight: 700, fontSize: 15,
+                boxShadow: "0 6px 24px rgba(255,159,28,0.38)",
+                cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                WebkitTapHighlightColor: "transparent",
+                transition: "transform 0.15s",
+              }}
+            >
+              <RefreshCw size={16} strokeWidth={2.4} />
+              Try Again
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <p style={{
+        marginTop: 26, position: "relative", zIndex: 10,
+        fontFamily: '"DM Sans", system-ui, sans-serif',
+        fontSize: 10, fontWeight: 600, letterSpacing: "0.22em",
+        textTransform: "uppercase",
+        color: D ? "rgba(255,159,28,0.16)" : "rgba(92,51,23,0.2)",
+      }}>
+        Powered by ConvoS
+      </p>
+
+      <style>{`
+        @keyframes tdp-slide {
+          0%   { transform: translateX(-130%) }
+          100% { transform: translateX(340%)  }
+        }
+        @keyframes tdp-spin {
+          to { transform: rotate(360deg) }
+        }
+      `}</style>
+    </div>
+  );
+};
+
+/* ── Manual Table Entry ───────────────────────────────────────────────── */
+const ManualTableEntry = ({ onSubmit, isDark, textPri }) => {
+  const inputRef = useRef("");
+  const D = isDark;
+  return (
+    <div style={{ display: "flex", gap: 10 }}>
+      <div style={{ flex: 1, position: "relative" }}>
+        <Hash size={13} style={{
+          position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)",
+          color: D ? "rgba(255,159,28,0.32)" : "rgba(92,51,23,0.28)",
+          pointerEvents: "none",
+        }} />
+        <input
+          type="text"
+          inputMode="numeric"
+          placeholder="Table number"
+          onChange={e => { inputRef.current = e.target.value; }}
+          style={{
+            width: "100%", padding: "13px 12px 13px 32px",
+            borderRadius: 14,
+            background: D ? "rgba(255,255,255,0.05)" : "rgba(92,51,23,0.05)",
+            border: D ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(92,51,23,0.1)",
+            color: textPri,
+            fontFamily: '"DM Sans", system-ui, sans-serif',
+            fontSize: 13, fontWeight: 500,
+            outline: "none",
+            WebkitAppearance: "none",
+          }}
+        />
+      </div>
+      <button
+        onClick={() => inputRef.current && onSubmit(inputRef.current.trim())}
+        onTouchStart={e => { e.currentTarget.style.transform = "scale(0.95)"; }}
+        onTouchEnd={e => { e.currentTarget.style.transform = ""; }}
+        style={{
+          flexShrink: 0, padding: "13px 20px",
+          borderRadius: 14, border: "none",
+          background: "linear-gradient(135deg, #FF9F1C 0%, #E05C2A 100%)",
+          color: "#fff",
+          fontFamily: '"DM Sans", system-ui, sans-serif',
+          fontWeight: 700, fontSize: 13,
+          cursor: "pointer",
+          boxShadow: "0 4px 16px rgba(255,159,28,0.32)",
+          WebkitTapHighlightColor: "transparent",
+          transition: "transform 0.15s",
+        }}
+      >
+        Go
+      </button>
+    </div>
+  );
 };
 
 export default TableDetectionPage;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ORIGINAL CODE — TEMP DISABLED
-// Re-enable by removing the component above and uncommenting everything below
-// ─────────────────────────────────────────────────────────────────────────────
-
-// import { useEffect, useRef } from "react";
-// import { useTableDetection } from "@modules/table/hooks/useTableDetection";
-// import { useNavigate } from "react-router-dom";
-// import { useSelector } from "react-redux";
-// import { selectIsLoggedIn } from "@store/slices/authSlice";
-// import QrScannerOverlay from "@modules/table/components/QrScannerOverlay";
-// import { Wifi, QrCode, Hash, Navigation } from "lucide-react";
-// import gsap from "gsap";
-
-// const TableDetectionPage = () => {
-//   const isLoggedIn = useSelector(selectIsLoggedIn);
-//   const navigate = useNavigate();
-//   const logoRef = useRef(null);
-//   const cardRef = useRef(null);
-//   const ring1Ref = useRef(null);
-//   const ring2Ref = useRef(null);
-//   const ring3Ref = useRef(null);
-
-//   const {
-//     state,
-//     context,
-//     startGPS,
-//     onQrScanned,
-//     onManualEntry,
-//     retry,
-//     isDetecting,
-//     isQR,
-//     isDone,
-//     isError,
-//   } = useTableDetection();
-
-//   // Only redirect if already logged in with a session
-//   useEffect(() => {
-//     if (isLoggedIn) navigate("/menu", { replace: true });
-//   }, [isLoggedIn, navigate]);
-
-//   // GSAP animations
-//   useEffect(() => {
-//     if (logoRef.current) {
-//       gsap.fromTo(
-//         logoRef.current,
-//         { y: -36, opacity: 0, scale: 0.88 },
-//         { y: 0, opacity: 1, scale: 1, duration: 0.9, ease: "back.out(1.7)" },
-//       );
-//     }
-//     if (cardRef.current) {
-//       gsap.fromTo(
-//         cardRef.current,
-//         { y: 48, opacity: 0 },
-//         { y: 0, opacity: 1, duration: 0.7, delay: 0.25, ease: "power4.out" },
-//       );
-//     }
-//     [ring1Ref, ring2Ref, ring3Ref].forEach((ref, i) => {
-//       if (!ref.current) return;
-//       gsap.fromTo(
-//         ref.current,
-//         { scale: 1, opacity: 0.6 },
-//         {
-//           scale: 2.8,
-//           opacity: 0,
-//           duration: 2.5,
-//           delay: i * 0.75,
-//           repeat: -1,
-//           ease: "power2.out",
-//         },
-//       );
-//     });
-//   }, []);
-
-//   useEffect(() => {
-//     startGPS();
-//   }, [startGPS]);
-
-//   const isScanning =
-//     state === "idle" ||
-//     state === "requestingGPS" ||
-//     state === "collectingReadings";
-
-//   return (
-//     <div className="min-h-screen bg-[#0d0907] flex flex-col items-center justify-center px-5 py-12 relative overflow-hidden">
-//       {/* Ambient glow */}
-//       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[500px] h-[260px] rounded-full bg-amber-600/[0.18] blur-[90px] pointer-events-none" />
-//       <div className="absolute bottom-0 right-0 w-[260px] h-[260px] rounded-full bg-orange-800/[0.10] blur-[70px] pointer-events-none" />
-
-//       {/* Logo */}
-//       <div ref={logoRef} className="text-center mb-10 relative z-10">
-//         <div className="relative w-[78px] h-[78px] mx-auto mb-5">
-//           <div className="absolute inset-0 rounded-[22px] bg-amber-500/25 blur-2xl scale-150" />
-//           <div className="relative w-full h-full rounded-[22px] bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center text-[38px] shadow-2xl shadow-amber-950/70 ring-1 ring-white/[0.12]">
-//             ☕
-//           </div>
-//         </div>
-//         <h1 className="text-[32px] font-black text-amber-50 leading-none tracking-tight mb-2">
-//           कौसी चिया
-//         </h1>
-//         <div className="flex items-center justify-center gap-2">
-//           <div className="w-8 h-px bg-amber-500/30" />
-//           <p className="text-[10px] font-semibold tracking-[3.5px] text-amber-400/50 uppercase">
-//             Smart Cafe · Kathmandu
-//           </p>
-//           <div className="w-8 h-px bg-amber-500/30" />
-//         </div>
-//       </div>
-
-//       {/* Detection card */}
-//       <div ref={cardRef} className="w-full max-w-[348px] relative z-10">
-//         {/* GPS Scanning */}
-//         {isScanning && (
-//           <div className="rounded-[30px] bg-white/[0.035] border border-white/[0.07] backdrop-blur-3xl px-7 py-10 text-center shadow-[0_32px_80px_rgba(0,0,0,0.55)] ring-1 ring-inset ring-amber-400/[0.07]">
-//             <div className="relative w-[88px] h-[88px] mx-auto mb-8 flex items-center justify-center">
-//               <div ref={ring1Ref} className="absolute w-[88px] h-[88px] rounded-full border border-amber-500/40" />
-//               <div ref={ring2Ref} className="absolute w-[88px] h-[88px] rounded-full border border-amber-500/30" />
-//               <div ref={ring3Ref} className="absolute w-[88px] h-[88px] rounded-full border border-amber-500/20" />
-//               <div className="relative w-[52px] h-[52px] rounded-full bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center shadow-xl shadow-amber-950/60 z-10 ring-1 ring-white/[0.15]">
-//                 <Navigation size={21} className="text-white" strokeWidth={2.5} />
-//               </div>
-//             </div>
-//             <h2 className="text-[21px] font-bold text-amber-50 tracking-tight mb-2">Finding Your Table</h2>
-//             <p className="text-[13px] leading-relaxed text-amber-100/35 mb-8 px-2">
-//               {state === "collectingReadings" ? "Collecting accurate GPS readings…" : "Allow location access to detect your table automatically"}
-//             </p>
-//             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-amber-500/[0.10] border border-amber-500/[0.18]">
-//               <Wifi size={12} className="text-amber-400" />
-//               <span className="text-[11px] font-semibold text-amber-400 tracking-wide">GPS · No QR needed</span>
-//             </div>
-//             <div className="mt-8 h-[2px] rounded-full bg-white/[0.05] overflow-hidden">
-//               <div className="h-full w-2/5 rounded-full bg-gradient-to-r from-transparent via-amber-400 to-transparent" style={{ animation: "slideShimmer 1.8s ease-in-out infinite" }} />
-//             </div>
-//             {import.meta.env.DEV && (
-//               <p className="mt-4 text-[10px] text-amber-400/40 font-mono">state: {typeof state === "string" ? state : JSON.stringify(state)}</p>
-//             )}
-//           </div>
-//         )}
-
-//         {/* QR Fallback */}
-//         {isQR && (
-//           <div className="rounded-[30px] bg-white/[0.035] border border-white/[0.07] backdrop-blur-3xl px-7 py-8 shadow-[0_32px_80px_rgba(0,0,0,0.55)] ring-1 ring-inset ring-amber-400/[0.07]">
-//             <div className="text-center mb-6">
-//               <div className="w-[54px] h-[54px] rounded-[16px] bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mx-auto mb-4">
-//                 <QrCode size={25} className="text-amber-400" />
-//               </div>
-//               <h2 className="text-[20px] font-bold text-amber-50 tracking-tight mb-1.5">Scan Table QR</h2>
-//               <p className="text-[13px] text-amber-100/35 leading-relaxed">GPS unavailable. Scan the QR on your table.</p>
-//             </div>
-//             <QrScannerOverlay onScan={onQrScanned} />
-//             <div className="mt-5 pt-5 border-t border-white/[0.05]">
-//               <p className="text-center text-[10px] font-semibold tracking-[3px] uppercase text-amber-200/25 mb-3.5">No QR code?</p>
-//               <ManualTableEntry onSubmit={onManualEntry} />
-//             </div>
-//             {import.meta.env.DEV && (
-//               <p className="mt-4 text-center text-[10px] text-amber-400/40 font-mono">state: {typeof state === "string" ? state : JSON.stringify(state)}</p>
-//             )}
-//           </div>
-//         )}
-
-//         {/* Creating Session */}
-//         {state === "creatingSession" && (
-//           <div className="rounded-[30px] bg-white/[0.035] border border-white/[0.07] backdrop-blur-3xl px-7 py-14 text-center shadow-[0_32px_80px_rgba(0,0,0,0.55)]">
-//             <div className="relative w-14 h-14 mx-auto mb-6">
-//               <div className="absolute inset-0 rounded-full bg-amber-500/20 blur-xl" />
-//               <div className="w-14 h-14 rounded-full border-[3px] border-amber-900/30 border-t-amber-400 animate-spin" />
-//             </div>
-//             <p className="text-[16px] font-semibold text-amber-50 mb-1">Setting up your session…</p>
-//             <p className="text-[12px] text-amber-200/30">Just a moment</p>
-//           </div>
-//         )}
-
-//         {/* Error */}
-//         {isError && (
-//           <div className="rounded-[30px] bg-white/[0.035] border border-white/[0.07] backdrop-blur-3xl px-7 py-10 text-center shadow-[0_32px_80px_rgba(0,0,0,0.55)]">
-//             <div className="text-5xl mb-5">😕</div>
-//             <h2 className="text-[20px] font-bold text-amber-50 tracking-tight mb-2">Detection Failed</h2>
-//             <p className="text-[13px] text-amber-100/35 leading-relaxed mb-8">{context.error}</p>
-//             <button onClick={retry} className="w-full py-4 rounded-2xl bg-gradient-to-r from-amber-400 to-orange-600 text-white text-[14px] font-semibold tracking-wide shadow-xl shadow-amber-950/50 active:scale-[0.97] transition-transform duration-150">
-//               Try Again
-//             </button>
-//           </div>
-//         )}
-//       </div>
-
-//       {/* Footer */}
-//       <p className="mt-9 text-[10px] font-medium tracking-[3px] uppercase text-amber-200/[0.18] relative z-10">Powered by ConvoS</p>
-
-//       <style>{`
-//         @keyframes slideShimmer {
-//           0%   { transform: translateX(-100%) }
-//           100% { transform: translateX(340%) }
-//         }
-//       `}</style>
-//     </div>
-//   );
-// };
-
-// const ManualTableEntry = ({ onSubmit }) => {
-//   const ref = useRef("");
-//   return (
-//     <div className="flex gap-2.5">
-//       <div className="flex-1 relative">
-//         <Hash size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-amber-400/40" />
-//         <input
-//           type="text"
-//           placeholder="Table number"
-//           className="w-full bg-white/[0.05] border border-white/[0.08] rounded-xl pl-9 pr-3 py-3 text-[13px] text-amber-50 placeholder-amber-100/20 outline-none focus:border-amber-500/35 focus:bg-white/[0.07] transition-all duration-200"
-//           onChange={(e) => { ref.current = e.target.value; }}
-//         />
-//       </div>
-//       <button
-//         className="shrink-0 px-5 py-3 rounded-xl bg-gradient-to-br from-amber-400 to-orange-600 text-white text-[13px] font-semibold shadow-lg shadow-amber-950/40 active:scale-95 transition-transform duration-150"
-//         onClick={() => ref.current && onSubmit(ref.current.trim())}
-//       >
-//         Go
-//       </button>
-//     </div>
-//   );
-// };
-
-// export default TableDetectionPage;

@@ -1,48 +1,29 @@
 // src/modules/customer/services/authService.js
-import axios from 'axios'
-
-const API = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
-  withCredentials: true,
-})
-
-// ── Single source of truth for token key ─────────────────────────────────────
-// Use kc_token everywhere — the old 'token' key is now dead
-const TOKEN_KEY = 'kc_token'
-
-// Attach token to every request if present
-API.interceptors.request.use((config) => {
-  const token = localStorage.getItem(TOKEN_KEY)
-  if (token) config.headers.Authorization = `Bearer ${token}`
-  return config
-})
+import api from '@api/axios'
 
 export const authService = {
-  /**
-   * Exchange Google OAuth credential for your app's token
-   */
-  googleLogin: async (credential) => {
-    const { data } = await API.post('/auth/google', { credential })
-    if (data.token) localStorage.setItem(TOKEN_KEY, data.token)
-    return data // { user, token }
+  checkUsername: async (username) => {
+    const { data } = await api.post('/auth/check-username', { username })
+    return data.data ?? data
   },
 
-  /**
-   * Log in as a guest tied to a specific table
-   */
-  guestLogin: async (tableId) => {
-    const { data } = await API.post('/auth/guest', { tableId })
-    if (data.token) localStorage.setItem(TOKEN_KEY, data.token)
-    return data // { user, token }
+  registerUser: async ({ username, name, cafeId }) => {
+    const { data } = await api.post('/auth/register', { username, name, cafeId })
+    return data.data ?? data
   },
 
-  /**
-   * Log out the current user
-   */
+  loginUser: async ({ username }) => {
+    const { data } = await api.post('/auth/login', { username })
+    return data.data ?? data
+  },
+
+  guestLogin: async (cafeId) => {
+    const { data } = await api.post('/auth/guest', { cafeId })
+    return data.data ?? data
+  },
+
   logout: async () => {
-    await API.post('/auth/logout')
-    localStorage.removeItem(TOKEN_KEY)
+    const { data } = await api.post('/auth/logout')
+    return data
   },
 }
-
-export default authService

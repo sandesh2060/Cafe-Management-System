@@ -1,0 +1,1 @@
+// file : frontend/src/shared/services/geofencing.service.js

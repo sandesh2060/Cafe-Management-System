@@ -2,6 +2,7 @@
 import crypto      from 'node:crypto'
 import Table       from './table.model.js'
 import AppError    from '../../shared/utils/AppError.js'
+import { invalidateTableCache } from '../table-session/algorithms/nearestTable.js'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -21,17 +22,14 @@ export const createTable = async (req, res, next) => {
   try {
     const { tableNumber, lat, lng, radiusMeters, capacity, zone, cafeId } = req.body
 
-    // Validate required fields explicitly for a clear error message
     if (!tableNumber) return next(new AppError('tableNumber is required', 400))
     if (lat  == null) return next(new AppError('lat is required', 400))
     if (lng  == null) return next(new AppError('lng is required', 400))
     if (!cafeId)      return next(new AppError('cafeId is required', 400))
 
-    // Duplicate check — cafeId + tableNumber is unique (schema index)
     const exists = await Table.findOne({ cafeId, tableNumber })
     if (exists) return next(new AppError(`Table ${tableNumber} already exists in this cafe`, 409))
 
-    // Create without qrToken first so we have the _id for the HMAC payload
     const table = await Table.create({
       tableNumber,
       lat,
@@ -41,16 +39,16 @@ export const createTable = async (req, res, next) => {
       zone:         zone         ?? 'Indoor',
       cafeId,
       isActive:     true,
-      // loc is auto-set by the pre-save hook in the model
     })
 
-    // Generate HMAC qrToken using the real _id
     table.qrToken = generateQrToken(table._id, tableNumber, cafeId)
     await table.save()
 
+    // Bug fix #D: invalidate GPS cache whenever table coords change
+    await invalidateTableCache(cafeId)
+
     return ok(res, { table }, 201)
   } catch (err) {
-    // Mongoose duplicate key (race condition safety net)
     if (err.code === 11000) return next(new AppError('Table number already exists in this cafe', 409))
     next(err)
   }
@@ -84,19 +82,20 @@ export const updateTable = async (req, res, next) => {
       Object.entries(req.body).filter(([k]) => allowed.includes(k))
     )
 
-    // If coords changed, the pre-save hook will re-sync loc automatically
     const table = await Table.findByIdAndUpdate(req.params.id, updates, {
-      new:         true,
+      new:           true,
       runValidators: true,
     })
     if (!table) return next(new AppError('Table not found', 404))
 
-    // If lat/lng changed, re-save to trigger pre-save hook for loc sync
     if (updates.lat || updates.lng) {
       table.lat = updates.lat ?? table.lat
       table.lng = updates.lng ?? table.lng
       await table.save()
     }
+
+    // Bug fix #D: invalidate GPS cache whenever table coords/radius change
+    await invalidateTableCache(table.cafeId.toString())
 
     return ok(res, { table })
   } catch (err) { next(err) }
@@ -124,6 +123,10 @@ export const deleteTable = async (req, res, next) => {
       { new: true }
     )
     if (!table) return next(new AppError('Table not found', 404))
+
+    // Bug fix #D: soft-deleted table must also be removed from GPS cache
+    await invalidateTableCache(table.cafeId.toString())
+
     return ok(res, { message: `Table ${table.tableNumber} deactivated` })
   } catch (err) { next(err) }
 }

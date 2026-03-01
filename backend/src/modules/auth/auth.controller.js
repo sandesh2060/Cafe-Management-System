@@ -1,10 +1,27 @@
+// backend/src/modules/auth/auth.controller.js
 import * as authService from './auth.service.js'
-import { sendSuccess } from '../../shared/utils/response.js'
+import { sendSuccess }  from '../../shared/utils/response.js'
+
+export const checkUsername = async (req, res, next) => {
+  try {
+    const data = await authService.checkUsername(req.body.username)
+    sendSuccess(res, data, 'OK')
+  } catch (err) { next(err) }
+}
+
 export const register = async (req, res, next) => {
-  try { const data = await authService.registerUser(req.body); sendSuccess(res, data, 'Registered', 201) } catch (err) { next(err) }
+  try {
+    const data = await authService.registerUser(req.body)
+    sendSuccess(res, data, 'Registered', 201)
+  } catch (err) { next(err) }
 }
+
 export const login = async (req, res, next) => {
-  try { const data = await authService.loginUser(req.body); sendSuccess(res, data, 'Logged in') } catch (err) { next(err) }
+  try {
+    const data = await authService.loginUser(req.body)
+    sendSuccess(res, data, 'Logged in')
+  } catch (err) { next(err) }
 }
+
 export const logout = (req, res) => res.json({ success: true, message: 'Logged out' })
-export const me = (req, res) => res.json({ success: true, data: req.user })
+export const me     = (req, res) => res.json({ success: true, data: req.user })

@@ -6,36 +6,61 @@ import morgan      from 'morgan'
 import rateLimit   from 'express-rate-limit'
 import passport    from 'passport'
 
-import { errorHandler }     from './shared/middleware/errorHandler.js'
+import { errorHandler }      from './shared/middleware/errorHandler.js'
 import { configurePassport } from './config/google-oauth.js'
 
 // Route imports
-import authRoutes              from './modules/auth/auth.routes.js'
-import tableRoutes             from './modules/table/table.routes.js'
-import tableSessionRoutes      from './modules/table-session/tableSession.routes.js'
+import authRoutes               from './modules/auth/auth.routes.js'
+import tableRoutes              from './modules/table/table.routes.js'
+import tableSessionRoutes       from './modules/table-session/tableSession.routes.js'
 import tableSessionActiveRoutes from './modules/table-session/tableSession.active.routes.js'
-import menuRoutes              from './modules/menu/menu.routes.js'
-import orderRoutes             from './modules/order/order.routes.js'
-import waiterCallRoutes        from './modules/waiter-call/waiterCall.routes.js'
-import recommendationRoutes    from './modules/recommendations/recommendation.routes.js'
-import weatherRoutes           from './modules/weather/weather.routes.js'
-import loyaltyRoutes           from './modules/loyalty/loyalty.routes.js'
-import messagingRoutes         from './modules/messaging/message.routes.js'
-import callingRoutes           from './modules/calling/calling.routes.js'
-import billingRoutes           from './modules/billing/billing.routes.js'
-import inventoryRoutes         from './modules/inventory/inventory.routes.js'
-import staffRoutes             from './modules/staff/staff.routes.js'
-import reportRoutes            from './modules/reports/reports.routes.js'
-import adminRoutes             from './modules/admin/admin.routes.js'
+import menuRoutes               from './modules/menu/menu.routes.js'
+import orderRoutes              from './modules/order/order.routes.js'
+import waiterCallRoutes         from './modules/waiter-call/waiterCall.routes.js'
+import recommendationRoutes     from './modules/recommendations/recommendation.routes.js'
+import weatherRoutes            from './modules/weather/weather.routes.js'
+import loyaltyRoutes            from './modules/loyalty/loyalty.routes.js'
+import messagingRoutes          from './modules/messaging/message.routes.js'
+import callingRoutes            from './modules/calling/calling.routes.js'
+import billingRoutes            from './modules/billing/billing.routes.js'
+import inventoryRoutes          from './modules/inventory/inventory.routes.js'
+import staffRoutes              from './modules/staff/staff.routes.js'
+import reportRoutes             from './modules/reports/reports.routes.js'
+import adminRoutes              from './modules/admin/admin.routes.js'
 
 const app = express()
 
-// ── Security ─────────────────────────────────────────────────────────────────
+// ── Trust proxy (required for rate limiting behind ngrok/reverse proxy) ────────
+app.set('trust proxy', 1)
+
+// ── Security ──────────────────────────────────────────────────────────────────
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }))
 
-// ── CORS ─────────────────────────────────────────────────────────────────────
+// ── CORS ──────────────────────────────────────────────────────────────────────
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://192.168.101.8:5173',
+  'http://192.168.1.112:5173',
+  process.env.FRONTEND_URL,
+  process.env.CLIENT_URL,
+  process.env.NGROK_FRONTEND_URL,
+].filter(Boolean)
+
 app.use(cors({
-  origin:      process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (Postman, curl, native mobile)
+    if (!origin) return callback(null, true)
+    if (
+      allowedOrigins.includes(origin) ||
+      origin.endsWith('.ngrok-free.dev') ||
+      origin.endsWith('.ngrok.io')
+    ) {
+      return callback(null, true)
+    }
+    console.warn(`[CORS] Blocked origin: ${origin}`)
+    callback(new Error(`CORS blocked: ${origin}`))
+  },
   credentials: true,
   methods:     ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 }))
@@ -44,7 +69,7 @@ app.use(cors({
 app.use('/api/auth', rateLimit({
   windowMs: 15 * 60 * 1000,
   max:      20,
-  message: { success: false, message: 'Too many auth attempts. Try again in 15 minutes.' },
+  message:  { success: false, message: 'Too many auth attempts. Try again in 15 minutes.' },
 }))
 
 app.use('/api', rateLimit({
@@ -52,21 +77,25 @@ app.use('/api', rateLimit({
   max:      200,
 }))
 
-// ── Body parsing ─────────────────────────────────────────────────────────────
+// ── Body parsing ──────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '2mb' }))
 app.use(express.urlencoded({ extended: true }))
 
-// ── Logging ──────────────────────────────────────────────────────────────────
+// ── Logging ───────────────────────────────────────────────────────────────────
 if (process.env.NODE_ENV !== 'test') {
   app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'))
 }
 
-// ── Passport ─────────────────────────────────────────────────────────────────
+// ── Passport ──────────────────────────────────────────────────────────────────
 configurePassport()
 app.use(passport.initialize())
 
-// ── Health check ─────────────────────────────────────────────────────────────
-app.get('/health', (_, res) => res.json({ status: 'ok', service: 'कौसी चिया API', timestamp: new Date() }))
+// ── Health check ──────────────────────────────────────────────────────────────
+app.get('/health', (_, res) => res.json({
+  status:    'ok',
+  service:   'कौसी चिया API',
+  timestamp: new Date(),
+}))
 
 // ── API Routes ────────────────────────────────────────────────────────────────
 const api = '/api'

@@ -1,0 +1,1 @@
+// file : fontend/src/modules/table/detection/GpsDetector.js

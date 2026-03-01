@@ -1,427 +1,1228 @@
 // src/modules/customer/pages/MenuPage.jsx
-import { useEffect, useRef, useContext, useState, useCallback } from 'react'
-import { useDispatch, useSelector }                              from 'react-redux'
-import { useNavigate }                                           from 'react-router-dom'
-import gsap                                                      from 'gsap'
-import { ScrollTrigger }                                         from 'gsap/ScrollTrigger'
-import { ScrollToPlugin }                                        from 'gsap/ScrollToPlugin'
+import { useEffect, useRef, useContext, useState, useCallback } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import { useNavigate, useLocation } from "react-router-dom";
+import gsap from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { ScrollToPlugin } from "gsap/ScrollToPlugin";
 import {
-  fetchMenu, selectFilteredItems, selectCategories,
-  selectActiveCategory, selectSearchQuery,
-  setActiveCategory, setSearchQuery,
-} from '@store/slices/menuSlice'
-import { selectUser }              from '@store/slices/authSlice'
-import { selectCallStatus }        from '@store/slices/callWaiterSlice'
-import { ThemeContext }            from '@shared/context/ThemeContext'
-import FloatingActions             from '../components/menu/FloatingActions'
-import RecommendedSection          from '../components/menu/RecommendedSection'
-import MenuGrid                    from '../components/menu/MenuGrid'
-import CategoryPills               from '../components/menu/CategoryPills'
-import WelcomeCard                 from '../components/menu/WelcomeCard'
-import NavAvatar                   from '../components/menu/NavAvatar'
-import NotificationBell            from '../components/notifications/NotificationBell'
-import CallStatusBanner            from '../components/callwaiter/CallStatusBanner'
-import { useRecommendations }      from '../hooks/useRecommendations'
-import { usePaymentLogoutTrigger } from '../hooks/usePaymentLogoutTrigger'
-import { Search, X, Sparkles, ChevronUp, Moon, Sun } from 'lucide-react'
+  fetchMenu,
+  selectFilteredItems,
+  selectCategories,
+  selectActiveCategory,
+  selectSearchQuery,
+  setActiveCategory,
+  setSearchQuery,
+} from "@store/slices/menuSlice";
+import MenuTour from "../components/menu/MenuTour";
+import { selectUser } from "@store/slices/authSlice";
+import { selectCallStatus } from "@store/slices/callWaiterSlice";
+import { selectTableNumber } from "@store/slices/tableSessionSlice";
+import { ThemeContext } from "@shared/context/ThemeContext";
+import FloatingActions from "../components/menu/FloatingActions";
+import RecommendedSection from "../components/menu/RecommendedSection";
+import MenuGrid from "../components/menu/MenuGrid";
+import CategoryPills from "../components/menu/CategoryPills";
+import WelcomeCard from "../components/menu/WelcomeCard";
+import NavAvatar from "../components/menu/NavAvatar";
+import NotificationBell from "../components/notifications/NotificationBell";
+import CallStatusBanner from "../components/callwaiter/CallStatusBanner";
+import { useRecommendations } from "../hooks/useRecommendations";
+import { usePaymentLogoutTrigger } from "../hooks/usePaymentLogoutTrigger";
+import { Search, X, Sparkles, ChevronUp } from "lucide-react";
 
-gsap.registerPlugin(ScrollTrigger, ScrollToPlugin)
+gsap.registerPlugin(ScrollTrigger, ScrollToPlugin);
 
-const CAFE_ID = import.meta.env.VITE_CAFE_ID || 'demo'
+const CAFE_ID = import.meta.env.VITE_CAFE_ID || "demo";
 
 const injectFonts = () => {
-  if (document.getElementById('mp-fonts')) return
-  const l = document.createElement('link')
-  l.id = 'mp-fonts'; l.rel = 'stylesheet'
-  l.href = 'https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700;9..144,900&family=DM+Sans:wght@400;500;600;700&display=swap'
-  document.head.appendChild(l)
-}
+  if (document.getElementById("mp-fonts")) return;
+  const pc1 = document.createElement("link");
+  pc1.rel = "preconnect";
+  pc1.href = "https://fonts.googleapis.com";
+  const pc2 = document.createElement("link");
+  pc2.rel = "preconnect";
+  pc2.href = "https://fonts.gstatic.com";
+  pc2.crossOrigin = "anonymous";
+  document.head.appendChild(pc1);
+  document.head.appendChild(pc2);
+  const l = document.createElement("link");
+  l.id = "mp-fonts";
+  l.rel = "stylesheet";
+  l.href =
+    "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap";
+  document.head.appendChild(l);
+};
 
 const MenuPage = () => {
-  const dispatch       = useDispatch()
-  const navigate       = useNavigate()
-  const user           = useSelector(selectUser)
-  const items          = useSelector(selectFilteredItems)
-  const categories     = useSelector(selectCategories)
-  const activeCategory = useSelector(selectActiveCategory)
-  const searchQuery    = useSelector(selectSearchQuery)
-  const callStatus     = useSelector(selectCallStatus)
-  const { isDark, toggleTheme } = useContext(ThemeContext)
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const user = useSelector(selectUser);
+  const items = useSelector(selectFilteredItems);
+  const categories = useSelector(selectCategories);
+  const activeCategory = useSelector(selectActiveCategory);
+  const searchQuery = useSelector(selectSearchQuery);
+  const callStatus = useSelector(selectCallStatus);
+  const tableNumber = useSelector(selectTableNumber);
+  const { isDark } = useContext(ThemeContext);
 
-  const { recommendations, weather, loading: recLoading } = useRecommendations(CAFE_ID)
-  usePaymentLogoutTrigger()
+  const {
+    recommendations,
+    weather,
+    loading: recLoading,
+  } = useRecommendations(CAFE_ID);
+  usePaymentLogoutTrigger();
 
-  const [searchOpen,    setSearchOpen]    = useState(false)
-  const [searchFocused, setSearchFocused] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
 
-  const pageRef        = useRef(null)
-  const headerRef      = useRef(null)
-  const navLeftRef     = useRef(null)
-  const navRightRef    = useRef(null)
-  const searchBtnRef   = useRef(null)
-  const searchRowRef   = useRef(null)
-  const searchInputRef = useRef(null)
-  const searchFieldRef = useRef(null)
-  const clearBtnRef    = useRef(null)
-  const scrollerRef    = useRef(null)
-  const welcomeRef     = useRef(null)
-  const recRef         = useRef(null)
-  const pillsRef       = useRef(null)
-  const gridRef        = useRef(null)
-  const scrollBtnRef   = useRef(null)
-  const brandDotRef    = useRef(null)
-
-  useEffect(() => { injectFonts(); dispatch(fetchMenu(CAFE_ID)) }, [dispatch])
-
-  useEffect(() => {
-    if (!brandDotRef.current) return
-    gsap.to(brandDotRef.current, {
-      scale: 1.8, opacity: 0,
-      duration: 1.6, repeat: -1,
-      ease: 'power2.out',
-    })
-  }, [])
-
-  const animateGrid = useCallback(() => {
-    if (!gridRef.current) return
-    const cards = gridRef.current.querySelectorAll('.mc')
-    if (!cards.length) return
-    gsap.fromTo(cards,
-      { y: 24, opacity: 0, scale: 0.95 },
-      { y: 0, opacity: 1, scale: 1, duration: 0.38, stagger: 0.05, ease: 'power2.out', force3D: true, clearProps: 'all' }
-    )
-  }, [])
+  /* ── Refs ── */
+  const pageRef = useRef(null);
+  const islandRef = useRef(null); // the floating pill
+  const islandInnerRef = useRef(null); // inner content row
+  const glowRef = useRef(null); // glow halo behind island
+  const brandRef = useRef(null);
+  const brandDotRef = useRef(null);
+  const avatarWrapRef = useRef(null);
+  const navRightRef = useRef(null);
+  const searchBtnRef = useRef(null);
+  const searchRowRef = useRef(null);
+  const searchInputRef = useRef(null);
+  const searchFieldRef = useRef(null);
+  const clearBtnRef = useRef(null);
+  const welcomeRef = useRef(null);
+  const recRef = useRef(null);
+  const pillsRef = useRef(null);
+  const gridRef = useRef(null);
+  const scrollBtnRef = useRef(null);
+  const prevScrollY = useRef(0);
+  const shimmerRef = useRef(null);
+  const particlesRef = useRef([]);
+  const location = useLocation();
+  const [showTour, setShowTour] = useState(false);
 
   useEffect(() => {
-    const mm = gsap.matchMedia()
-    mm.add('(prefers-reduced-motion: no-preference)', () => {
-      const ctx = gsap.context(() => {
-        gsap.fromTo(headerRef.current,
-          { y: -56, opacity: 0 },
-          { y: 0, opacity: 1, duration: 0.5, ease: 'power3.out', force3D: true, clearProps: 'transform' }
-        )
-        gsap.fromTo(navLeftRef.current,
-          { x: -20, opacity: 0 },
-          { x: 0, opacity: 1, duration: 0.44, delay: 0.12, ease: 'power3.out', force3D: true, clearProps: 'transform' }
-        )
-        gsap.fromTo(
-          navRightRef.current?.children ? Array.from(navRightRef.current.children) : [],
-          { scale: 0.5, opacity: 0 },
-          { scale: 1, opacity: 1, duration: 0.36, delay: 0.18, stagger: 0.08, ease: 'back.out(2.5)', force3D: true, clearProps: 'transform' }
-        )
-        ;[welcomeRef, recRef, pillsRef].forEach((r, i) => {
-          if (!r.current) return
-          gsap.fromTo(r.current,
-            { y: 32, opacity: 0 },
-            {
-              y: 0, opacity: 1, duration: 0.52, ease: 'power2.out', force3D: true, clearProps: 'transform',
-              scrollTrigger: { trigger: r.current, scroller: scrollerRef.current, start: 'top 96%' },
-              delay: i * 0.06,
-            }
-          )
-        })
-        ScrollTrigger.create({
-          trigger: gridRef.current, scroller: scrollerRef.current, start: 'top 94%',
-          onEnter: animateGrid,
-        })
-        ScrollTrigger.create({
-          trigger: scrollerRef.current, scroller: scrollerRef.current, start: 'top-=1',
-          onUpdate: self => {
-            const p = Math.min(self.scroll() / 60, 1)
-            gsap.set(headerRef.current, { paddingTop: `${11 - p * 3}px`, paddingBottom: `${10 - p * 2}px` })
-          },
-        })
-      }, pageRef)
-      return () => { ctx.revert(); ScrollTrigger.getAll().forEach(t => t.kill()) }
-    })
-    return () => mm.revert()
-  }, [animateGrid])
-
-  useEffect(() => {
-    if (!items.length) return
-    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) animateGrid()
-  }, [activeCategory, searchQuery, items.length, animateGrid])
-
-  useEffect(() => {
-    const scroller = scrollerRef.current
-    if (!scroller || !scrollBtnRef.current) return
-    const btn = scrollBtnRef.current
-    let visible = false
-    const onScroll = () => {
-      const scrolled = scroller.scrollTop
-      if (scrolled > 80 && !visible) {
-        visible = true; btn.style.pointerEvents = 'auto'
-        gsap.to(btn, { scale: 1, opacity: 1, duration: 0.35, ease: 'back.out(2.4)', overwrite: true })
-      } else if (scrolled <= 80 && visible) {
-        visible = false; btn.style.pointerEvents = 'none'
-        gsap.to(btn, { scale: 0, opacity: 0, duration: 0.2, ease: 'power2.in', overwrite: true })
-      }
+    // Only show tour for first-time users (flagged via navigation state)
+    if (location.state?.firstTimeUser) {
+      // Small delay so menu renders first
+      const t = setTimeout(() => setShowTour(true), 800);
+      return () => clearTimeout(t);
     }
-    scroller.addEventListener('scroll', onScroll, { passive: true })
-    return () => scroller.removeEventListener('scroll', onScroll)
-  }, [])
+  }, [location.state]);
 
-  const openSearch = () => {
-    setSearchOpen(true)
-    const tl = gsap.timeline({ defaults: { ease: 'power3.out' } })
-    tl.to(navLeftRef.current, { opacity: 0, x: -12, duration: 0.18, force3D: true }, 0)
-    tl.to(
-      Array.from(navRightRef.current?.children ?? []).filter(el => el !== searchBtnRef.current),
-      { opacity: 0, scale: 0.8, duration: 0.16, stagger: 0.04 }, 0
-    )
-    tl.to(searchBtnRef.current, { rotate: 90, duration: 0.22, ease: 'back.out(3)' }, 0)
-    tl.set(searchRowRef.current, { display: 'block' }, 0.12)
-    tl.fromTo(searchRowRef.current,
-      { height: 0, opacity: 0, paddingTop: 0, paddingBottom: 0 },
-      { height: 'auto', opacity: 1, paddingTop: 10, paddingBottom: 10, duration: 0.34 }, 0.12
-    )
-    tl.fromTo(searchInputRef.current,
-      { scaleX: 0.88, opacity: 0, transformOrigin: 'right center' },
-      { scaleX: 1, opacity: 1, duration: 0.38, ease: 'expo.out', clearProps: 'transform',
-        onComplete: () => searchFieldRef.current?.focus() }, 0.2
-    )
-  }
-
-  const closeSearch = () => {
-    if (searchQuery) { dispatch(setSearchQuery('')); searchFieldRef.current?.focus(); return }
-    const tl = gsap.timeline({
-      defaults: { ease: 'power3.inOut' },
-      onComplete: () => {
-        setSearchOpen(false)
-        gsap.set(searchRowRef.current, { display: 'none', height: 0, opacity: 0, paddingTop: 0, paddingBottom: 0 })
-      },
-    })
-    tl.to(searchInputRef.current,  { opacity: 0, scaleX: 0.88, duration: 0.18 }, 0)
-    tl.to(searchRowRef.current,    { height: 0, opacity: 0, paddingTop: 0, paddingBottom: 0, duration: 0.26 }, 0.06)
-    tl.to(searchBtnRef.current,    { rotate: 0, duration: 0.22, ease: 'back.out(2)', clearProps: 'transform' }, 0)
-    tl.to(navLeftRef.current,      { opacity: 1, x: 0, duration: 0.28, clearProps: 'transform' }, 0.12)
-    tl.to(
-      Array.from(navRightRef.current?.children ?? []).filter(el => el !== searchBtnRef.current),
-      { opacity: 1, scale: 1, duration: 0.28, stagger: 0.05, ease: 'back.out(2)', clearProps: 'transform' }, 0.16
-    )
-  }
+  const handleTourComplete = () => {
+    setShowTour(false);
+    // Clear the state so refresh doesn't re-trigger
+    window.history.replaceState({}, "", window.location.pathname);
+  };
 
   useEffect(() => {
-    if (!clearBtnRef.current) return
-    gsap.to(clearBtnRef.current, searchQuery
-      ? { scale: 1, opacity: 1, rotate: 0,  duration: 0.22, ease: 'back.out(2.5)', clearProps: 'transform' }
-      : { scale: 0, opacity: 0, rotate: 45, duration: 0.16, ease: 'power2.in' }
-    )
-  }, [searchQuery])
+    injectFonts();
+    dispatch(fetchMenu(CAFE_ID));
+  }, [dispatch]);
 
-  const handleScrollTop = () => {
-    gsap.fromTo(scrollBtnRef.current, { scale: 0.82 }, { scale: 1, duration: 0.45, ease: 'elastic.out(1.2,0.5)' })
-    gsap.to(scrollerRef.current, { scrollTo: { y: 0 }, duration: 0.65, ease: 'power3.inOut' })
-  }
+  /* ── Island entrance ── */
+  useEffect(() => {
+    if (!islandRef.current) return;
+    const tl = gsap.timeline({ defaults: { ease: "expo.out" } });
+    // island drops in from top with spring
+    tl.fromTo(
+      islandRef.current,
+      { y: -80, opacity: 0, scale: 0.88 },
+      { y: 0, opacity: 1, scale: 1, duration: 0.9, ease: "back.out(1.8)" },
+    );
+    // glow blooms in
+    if (glowRef.current)
+      tl.fromTo(
+        glowRef.current,
+        { opacity: 0, scale: 0.7 },
+        { opacity: 1, scale: 1, duration: 0.7, ease: "power2.out" },
+        0.3,
+      );
+    // inner items stagger in
+    const kids = islandInnerRef.current
+      ? Array.from(islandInnerRef.current.children)
+      : [];
+    tl.fromTo(
+      kids,
+      { opacity: 0, y: -6 },
+      { opacity: 1, y: 0, duration: 0.35, stagger: 0.07, ease: "power2.out" },
+      0.4,
+    );
+    // shimmer sweep on load
+    if (shimmerRef.current)
+      tl.fromTo(
+        shimmerRef.current,
+        { x: "-120%" },
+        { x: "120%", duration: 0.9, ease: "power2.out" },
+        0.5,
+      );
+  }, []);
 
-  // Theme-aware values
-  const navBg         = isDark ? 'rgba(8,5,2,0.85)'          : 'rgba(255,251,244,0.85)'
-  const navBorder     = isDark ? 'rgba(255,159,28,0.08)'      : 'rgba(210,168,110,0.22)'
-  const navShadow     = isDark
-    ? '0 1px 0 rgba(255,159,28,0.05), 0 6px 28px rgba(0,0,0,0.5)'
-    : '0 1px 0 rgba(210,168,110,0.3), 0 4px 18px rgba(92,51,23,0.06)'
-  const iconColor     = isDark ? 'rgba(255,200,120,0.5)'      : 'rgba(92,51,23,0.4)'
-  const iconHover     = isDark ? '#FFB84D'                    : '#8B5E3C'
+  /* ── Shimmer loop ── */
+  useEffect(() => {
+    if (!shimmerRef.current) return;
+    const loop = () => {
+      gsap.fromTo(
+        shimmerRef.current,
+        { x: "-120%" },
+        { x: "120%", duration: 2.8, ease: "none", delay: 4, onComplete: loop },
+      );
+    };
+    const t = setTimeout(loop, 3000);
+    return () => clearTimeout(t);
+  }, []);
+
+  /* ── Grid entrance ── */
+  const animateGrid = useCallback(() => {
+    if (!gridRef.current) return;
+    const cards = gridRef.current.querySelectorAll(".mc");
+    if (!cards.length) return;
+    gsap.fromTo(
+      cards,
+      { y: 28, opacity: 0, scale: 0.94 },
+      {
+        y: 0,
+        opacity: 1,
+        scale: 1,
+        duration: 0.42,
+        stagger: 0.055,
+        ease: "power2.out",
+        force3D: true,
+        clearProps: "all",
+      },
+    );
+  }, []);
+
+  /* ── Scroll behavior — hide on scroll DOWN, reveal on scroll UP ── */
+  useEffect(() => {
+    let islandVisible = true;
+    let lastScrollY = window.scrollY;
+    let ticking = false;
+    let accumulated = 0;
+    const HIDE_THRESHOLD = 8;
+    const SHOW_THRESHOLD = 6;
+    const TOP_GRACE = 80;
+
+    // The fixed outer wrapper div (parent of glow + island)
+    const wrapper = islandRef.current?.parentElement;
+
+    const update = () => {
+      const s = window.scrollY;
+      const dy = s - lastScrollY;
+      lastScrollY = s;
+      ticking = false;
+      accumulated += dy;
+
+      const atTop = s < TOP_GRACE;
+      const scrolled = s > 60;
+
+      // ── HIDE on scroll DOWN ──
+      if (!atTop && accumulated > HIDE_THRESHOLD && islandVisible) {
+        islandVisible = false;
+        accumulated = 0;
+        gsap.to(wrapper, {
+          y: -110,
+          opacity: 0,
+          scale: 0.92,
+          duration: 0.36,
+          ease: "power3.in",
+          overwrite: "auto",
+        });
+        if (glowRef.current)
+          gsap.to(glowRef.current, {
+            opacity: 0,
+            duration: 0.22,
+            overwrite: "auto",
+          });
+      }
+
+      // ── SHOW on scroll UP (or snap back to top) ──
+      else if ((accumulated < -SHOW_THRESHOLD || atTop) && !islandVisible) {
+        islandVisible = true;
+        accumulated = 0;
+        gsap.to(wrapper, {
+          y: 0,
+          opacity: 1,
+          scale: 1,
+          duration: 0.52,
+          ease: "expo.out",
+          overwrite: "auto",
+        });
+        if (glowRef.current)
+          gsap.to(glowRef.current, {
+            opacity: 0.55,
+            duration: 0.4,
+            overwrite: "auto",
+          });
+        // micro spring bounce on re-entry
+        gsap.fromTo(
+          islandRef.current,
+          { scale: 0.95 },
+          { scale: 1, duration: 0.5, ease: "back.out(2.4)", overwrite: "auto" },
+        );
+      }
+
+      // clamp so accumulator doesn't drift
+      if (Math.abs(accumulated) > 60) accumulated = Math.sign(accumulated) * 60;
+
+      // ── morph pill shape when scrolled ──
+      if (scrolled !== isScrolled) {
+        setIsScrolled(scrolled);
+        gsap.to(islandRef.current, {
+          borderRadius: scrolled ? 999 : 28,
+          duration: 0.4,
+          ease: "power3.out",
+          overwrite: "auto",
+        });
+      }
+
+      // ── scroll-to-top FAB ──
+      if (scrollBtnRef.current) {
+        if (s > 300 && prevScrollY.current <= 300) {
+          scrollBtnRef.current.style.pointerEvents = "auto";
+          gsap.to(scrollBtnRef.current, {
+            scale: 1,
+            opacity: 1,
+            duration: 0.4,
+            ease: "back.out(2.4)",
+            overwrite: true,
+          });
+        } else if (s <= 300 && prevScrollY.current > 300) {
+          scrollBtnRef.current.style.pointerEvents = "none";
+          gsap.to(scrollBtnRef.current, {
+            scale: 0,
+            opacity: 0,
+            duration: 0.22,
+            ease: "power2.in",
+            overwrite: true,
+          });
+        }
+      }
+      prevScrollY.current = s;
+    };
+
+    const onScroll = () => {
+      if (!ticking) {
+        requestAnimationFrame(update);
+        ticking = true;
+      }
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [isScrolled]);
+
+  /* ── Section scroll triggers ── */
+  useEffect(() => {
+    const mm = gsap.matchMedia();
+    mm.add("(prefers-reduced-motion: no-preference)", () => {
+      const ctx = gsap.context(() => {
+        [welcomeRef, recRef, pillsRef].forEach((r, i) => {
+          if (!r.current) return;
+          gsap.fromTo(
+            r.current,
+            { y: 36, opacity: 0 },
+            {
+              y: 0,
+              opacity: 1,
+              duration: 0.55,
+              ease: "power2.out",
+              force3D: true,
+              clearProps: "transform",
+              delay: i * 0.05,
+              scrollTrigger: { trigger: r.current, start: "top 95%" },
+            },
+          );
+        });
+        if (gridRef.current) {
+          ScrollTrigger.create({
+            trigger: gridRef.current,
+            start: "top 94%",
+            onEnter: animateGrid,
+          });
+        }
+      }, pageRef);
+      return () => {
+        ctx.revert();
+        ScrollTrigger.getAll().forEach((t) => t.kill());
+      };
+    });
+    return () => mm.revert();
+  }, [animateGrid]);
+
+  useEffect(() => {
+    if (!items.length) return;
+    if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+      animateGrid();
+  }, [activeCategory, searchQuery, items.length, animateGrid]);
+
+  /* ── Hide welcome + rec when searching, reveal when cleared ── */
+  useEffect(() => {
+    const els = [welcomeRef.current, recRef.current].filter(Boolean);
+    if (!els.length) return;
+
+    if (searchQuery) {
+      // collapse out: fade + slide up + shrink height to 0
+      gsap.to(els, {
+        opacity: 0,
+        y: -12,
+        height: 0,
+        paddingTop: 0,
+        paddingBottom: 0,
+        marginBottom: 0,
+        duration: 0.32,
+        ease: "power3.in",
+        stagger: 0.05,
+        overwrite: "auto",
+        onComplete: () => {
+          els.forEach((el) => {
+            el.style.visibility = "hidden";
+            el.style.pointerEvents = "none";
+          });
+        },
+      });
+    } else {
+      // restore: expand back down with spring
+      els.forEach((el) => {
+        el.style.visibility = "";
+        el.style.pointerEvents = "";
+        el.style.height = ""; // let it re-measure natural height
+      });
+      gsap.fromTo(
+        els,
+        { opacity: 0, y: -10 },
+        {
+          opacity: 1,
+          y: 0,
+          height: "auto",
+          duration: 0.45,
+          ease: "expo.out",
+          stagger: 0.07,
+          overwrite: "auto",
+          clearProps: "height,padding,margin",
+        },
+      );
+    }
+  }, [searchQuery]);
+
+  /* ── Island hover: lift + glow brighten ── */
+  const handleIslandHover = useCallback((entering) => {
+    if (!islandRef.current || !glowRef.current) return;
+    gsap.to(islandRef.current, {
+      y: entering ? -2 : 0,
+      duration: entering ? 0.35 : 0.5,
+      ease: entering ? "power2.out" : "elastic.out(1.2, 0.6)",
+      overwrite: "auto",
+    });
+    gsap.to(glowRef.current, {
+      opacity: entering ? 0.85 : 0.5,
+      scale: entering ? 1.12 : 1,
+      duration: 0.4,
+      ease: "power2.out",
+      overwrite: "auto",
+    });
+  }, []);
+
+  /* ── Search open/close ── */
+  const openSearch = useCallback(() => {
+    setSearchOpen(true);
+    const navIcons = Array.from(navRightRef.current?.children ?? []).filter(
+      (el) => el !== searchBtnRef.current,
+    );
+
+    const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
+    tl.to(brandRef.current, { opacity: 0, x: -10, duration: 0.18 }, 0);
+    tl.to(avatarWrapRef.current, { opacity: 0, scale: 0.8, duration: 0.15 }, 0);
+    tl.to(
+      navIcons,
+      { opacity: 0, scale: 0.7, duration: 0.15, stagger: 0.04 },
+      0,
+    );
+    tl.to(
+      searchBtnRef.current,
+      { rotate: 90, duration: 0.24, ease: "back.out(3)" },
+      0,
+    );
+    tl.set(searchRowRef.current, { display: "block" }, 0.12);
+    tl.fromTo(
+      searchRowRef.current,
+      { height: 0, opacity: 0, marginTop: 0 },
+      {
+        height: "auto",
+        opacity: 1,
+        marginTop: 8,
+        duration: 0.35,
+        ease: "expo.out",
+      },
+      0.12,
+    );
+    tl.fromTo(
+      searchInputRef.current,
+      { scaleX: 0.82, opacity: 0, transformOrigin: "right center" },
+      {
+        scaleX: 1,
+        opacity: 1,
+        duration: 0.4,
+        ease: "expo.out",
+        clearProps: "transform",
+        onComplete: () => searchFieldRef.current?.focus(),
+      },
+      0.2,
+    );
+  }, []);
+
+  const closeSearch = useCallback(() => {
+    if (searchQuery) {
+      dispatch(setSearchQuery(""));
+      searchFieldRef.current?.focus();
+      return;
+    }
+    const navIcons = Array.from(navRightRef.current?.children ?? []).filter(
+      (el) => el !== searchBtnRef.current,
+    );
+
+    const tl = gsap.timeline({
+      defaults: { ease: "power3.inOut" },
+      onComplete: () => {
+        setSearchOpen(false);
+        gsap.set(searchRowRef.current, {
+          display: "none",
+          height: 0,
+          opacity: 0,
+          marginTop: 0,
+        });
+      },
+    });
+    tl.to(
+      searchInputRef.current,
+      { opacity: 0, scaleX: 0.86, duration: 0.18 },
+      0,
+    );
+    tl.to(
+      searchRowRef.current,
+      { height: 0, opacity: 0, marginTop: 0, duration: 0.26 },
+      0.06,
+    );
+    tl.to(
+      searchBtnRef.current,
+      {
+        rotate: 0,
+        duration: 0.24,
+        ease: "back.out(2)",
+        clearProps: "transform",
+      },
+      0,
+    );
+    tl.to(
+      brandRef.current,
+      { opacity: 1, x: 0, duration: 0.3, clearProps: "transform" },
+      0.14,
+    );
+    tl.to(
+      avatarWrapRef.current,
+      {
+        opacity: 1,
+        scale: 1,
+        duration: 0.28,
+        ease: "back.out(2)",
+        clearProps: "transform",
+      },
+      0.14,
+    );
+    tl.to(
+      navIcons,
+      {
+        opacity: 1,
+        scale: 1,
+        duration: 0.28,
+        stagger: 0.05,
+        ease: "back.out(2)",
+        clearProps: "transform",
+      },
+      0.16,
+    );
+  }, [dispatch, searchQuery]);
+
+  useEffect(() => {
+    if (!clearBtnRef.current) return;
+    gsap.to(
+      clearBtnRef.current,
+      searchQuery
+        ? {
+            scale: 1,
+            opacity: 1,
+            rotate: 0,
+            duration: 0.24,
+            ease: "back.out(2.5)",
+            clearProps: "transform",
+          }
+        : {
+            scale: 0,
+            opacity: 0,
+            rotate: 45,
+            duration: 0.16,
+            ease: "power2.in",
+          },
+    );
+  }, [searchQuery]);
+
+  const handleScrollTop = useCallback(() => {
+    gsap.fromTo(
+      scrollBtnRef.current,
+      { scale: 0.82 },
+      { scale: 1, duration: 0.55, ease: "elastic.out(1.2, 0.5)" },
+    );
+    gsap.to(window, {
+      scrollTo: { y: 0 },
+      duration: 0.75,
+      ease: "power3.inOut",
+    });
+  }, []);
+
+  /* ── Icon press animation ── */
+  const pressIcon = useCallback((el) => {
+    gsap
+      .timeline()
+      .to(el, { scale: 0.82, duration: 0.1, ease: "power2.in" })
+      .to(el, { scale: 1.08, duration: 0.28, ease: "back.out(3)" })
+      .to(el, { scale: 1, duration: 0.2, ease: "power2.out" });
+  }, []);
+
+  const D = isDark;
+
+  /* ── Token colors ── */
+  const iconMuted = D ? "rgba(255,184,77,0.5)" : "rgba(120,70,15,0.5)";
+  const iconActive = D ? "#FFB84D" : "#C8680A";
+  const pillBg = D ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.55)";
+  const pillBorder = D ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.75)";
+  const pillShadow = D
+    ? "0 1px 0 rgba(255,255,255,0.07) inset, 0 2px 8px rgba(0,0,0,0.3)"
+    : "0 1px 0 rgba(255,255,255,0.95) inset, 0 2px 6px rgba(130,80,20,0.08)";
+  const bottomBorder = D ? "rgba(255,140,20,0.18)" : "rgba(200,160,80,0.38)";
+  const pillsStickyBg = D ? "rgba(8,4,1,0.55)" : "rgba(255,250,240,0.52)";
 
   return (
     <div
       ref={pageRef}
-      className="mp-root customer-container min-h-screen flex flex-col"
-      style={{ backgroundColor: 'var(--bg-app)', fontFamily: '"DM Sans", sans-serif' }}
+      className="customer-container min-h-dvh flex flex-col"
+      style={{
+        backgroundColor: "var(--bg-app)",
+        fontFamily: '"Plus Jakarta Sans", system-ui, sans-serif',
+        position: "relative",
+      }}
     >
-
-      {/* ══════════ NAVBAR ══════════ */}
-      <header
-        ref={headerRef}
+      {/* ════════════════════════════════════════════════════
+          FLOATING ISLAND NAVBAR
+          — fixed position, pill-shaped, hovering 16px from top
+          — dramatic glow halo behind it
+      ════════════════════════════════════════════════════ */}
+      <div
         style={{
-          position: 'sticky', top: 0, zIndex: 40,
-          padding: '11px 18px 10px',
-          background: navBg,
-          backdropFilter: 'blur(32px) saturate(160%)',
-          WebkitBackdropFilter: 'blur(32px) saturate(160%)',
-          borderBottom: `1px solid ${navBorder}`,
-          boxShadow: navShadow,
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 50,
+          display: "flex",
+          justifyContent: "center",
+          paddingTop: "max(14px, calc(env(safe-area-inset-top) + 10px))",
+          paddingLeft: 16,
+          paddingRight: 16,
+          pointerEvents: "none",
+          // GPU layer for silky hide/show transforms
+          willChange: "transform, opacity",
+          transform: "translateY(0px)",
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        {/* GLOW HALO — blurred blob behind the island */}
+        <div
+          ref={glowRef}
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            top: "max(10px, calc(env(safe-area-inset-top) + 6px))",
+            left: "50%",
+            transform: "translateX(-50%)",
+            width: 320,
+            height: 80,
+            borderRadius: 999,
+            background: D
+              ? "radial-gradient(ellipse, rgba(255,140,20,0.38) 0%, rgba(224,80,30,0.18) 50%, transparent 75%)"
+              : "radial-gradient(ellipse, rgba(255,159,28,0.32) 0%, rgba(224,92,42,0.14) 50%, transparent 75%)",
+            filter: "blur(18px)",
+            opacity: 0.5,
+            pointerEvents: "none",
+            willChange: "transform, opacity",
+          }}
+        />
 
-          {/* LEFT: avatar + brand */}
-          <div ref={navLeftRef} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <NavAvatar
-              name={user?.name}
-              avatar={user?.avatar}
-              isOnline={true}
-              onClick={() => navigate('/profile')}
-            />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{
-                  fontFamily: '"Fraunces", serif',
-                  fontWeight: 900, fontSize: 16,
-                  letterSpacing: '-0.03em', lineHeight: 1,
-                  background: isDark
-                    ? 'linear-gradient(120deg,#FFD580 0%,#FF9F1C 55%,#E05C2A 100%)'
-                    : 'linear-gradient(120deg,#E08800 0%,#E05C2A 100%)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  backgroundClip: 'text',
-                }}>
-                  कौसी चिया
-                </span>
-                {/* pulsing live dot */}
-                <span style={{ position: 'relative', width: 6, height: 6, flexShrink: 0 }}>
-                  <span ref={brandDotRef} style={{
-                    position: 'absolute', inset: -2,
-                    borderRadius: '50%',
-                    background: 'rgba(34,197,94,0.45)',
-                    transformOrigin: 'center',
-                  }} />
-                  <span style={{
-                    position: 'absolute', inset: 0,
-                    borderRadius: '50%', background: '#22c55e',
-                  }} />
-                </span>
-              </div>
+        {/* THE ISLAND PILL */}
+        <div
+          ref={islandRef}
+          onMouseEnter={() => handleIslandHover(true)}
+          onMouseLeave={() => handleIslandHover(false)}
+          style={{
+            pointerEvents: "auto",
+            width: "100%",
+            maxWidth: 480,
+            borderRadius: 28,
+            padding: "10px 16px",
+            /* Liquid glass */
+            background: D
+              ? "rgba(10, 5, 1, 0.72)"
+              : "rgba(255, 251, 243, 0.72)",
+            backdropFilter: "blur(48px) saturate(200%) brightness(1.04)",
+            WebkitBackdropFilter: "blur(48px) saturate(200%) brightness(1.04)",
+            border: D
+              ? "1px solid rgba(255,159,28,0.18)"
+              : "1px solid rgba(255,255,255,0.82)",
+            boxShadow: D
+              ? [
+                  "0 1px 0 rgba(255,255,255,0.09) inset",
+                  "0 -1px 0 rgba(255,255,255,0.04) inset",
+                  "0 20px 60px rgba(0,0,0,0.65)",
+                  "0 4px 16px rgba(0,0,0,0.4)",
+                  "0 0 0 0.5px rgba(255,159,28,0.12)",
+                ].join(", ")
+              : [
+                  "0 1px 0 rgba(255,255,255,0.95) inset",
+                  "0 20px 48px rgba(130,80,20,0.14)",
+                  "0 4px 12px rgba(130,80,20,0.08)",
+                  "0 0 0 0.5px rgba(210,175,110,0.35)",
+                ].join(", "),
+            overflow: "hidden",
+            position: "relative",
+            willChange: "transform, border-radius",
+            transition: "background 0.3s, border-color 0.3s, box-shadow 0.3s",
+          }}
+        >
+          {/* ── SHIMMER SWEEP across the island ── */}
+          <div
+            ref={shimmerRef}
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              left: 0,
+              width: "38%",
+              background: D
+                ? "linear-gradient(105deg, transparent 0%, rgba(255,255,255,0.03) 35%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.03) 65%, transparent 100%)"
+                : "linear-gradient(105deg, transparent 0%, rgba(255,255,255,0.1) 35%, rgba(255,255,255,0.28) 50%, rgba(255,255,255,0.1) 65%, transparent 100%)",
+              pointerEvents: "none",
+              zIndex: 1,
+              transform: "translateX(-120%)",
+            }}
+          />
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ fontSize: 10, fontWeight: 500, color: iconColor, lineHeight: 1 }}>
-                  {user?.name ? `Hey, ${user.name.split(' ')[0]} 👋` : 'Smart Cafe · Kathmandu'}
-                </span>
-                {weather?.condition && (
-                  <>
-                    <span style={{ color: iconColor, opacity: 0.4, fontSize: 8 }}>·</span>
-                    <span style={{ fontSize: 10, lineHeight: 1 }}>{weather.icon || '🌤️'}</span>
-                    {weather.temp && (
-                      <span style={{ fontSize: 10, fontWeight: 600, color: iconColor, lineHeight: 1 }}>
-                        {Math.round(weather.temp)}°
-                      </span>
-                    )}
-                  </>
-                )}
+          {/* ── WET TOP EDGE ── */}
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              top: 0,
+              left: "8%",
+              right: "8%",
+              height: 1,
+              background: D
+                ? "linear-gradient(90deg, transparent, rgba(255,255,255,0.14) 30%, rgba(255,255,255,0.22) 50%, rgba(255,255,255,0.14) 70%, transparent)"
+                : "linear-gradient(90deg, transparent, rgba(255,255,255,0.75) 30%, rgba(255,255,255,0.95) 50%, rgba(255,255,255,0.75) 70%, transparent)",
+              pointerEvents: "none",
+              zIndex: 2,
+            }}
+          />
+
+          {/* ── GOLD BOTTOM GLOW LINE ── */}
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              bottom: 0,
+              left: "15%",
+              right: "15%",
+              height: 1,
+              background:
+                "linear-gradient(90deg, transparent, #FF9F1C 30%, #FFD580 50%, #E05C2A 70%, transparent)",
+              opacity: D ? 0.55 : 0.45,
+              pointerEvents: "none",
+              zIndex: 2,
+            }}
+          />
+
+          {/* ── MAIN CONTENT ROW: Avatar · Table · Bell · Search ── */}
+          <div
+            ref={islandInnerRef}
+            style={{
+              position: "relative",
+              zIndex: 3,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 8,
+            }}
+          >
+            {/* ① AVATAR */}
+            <div
+              ref={avatarWrapRef}
+              style={{ position: "relative", flexShrink: 0 }}
+            >
+              {/* spinning conic halo */}
+              <div
+                style={{
+                  position: "absolute",
+                  inset: -3,
+                  borderRadius: "50%",
+                  background:
+                    "conic-gradient(from 0deg, #FF9F1C, #E05C2A, #FFD580, #FF9F1C)",
+                  opacity: D ? 0.55 : 0.4,
+                  filter: "blur(5px)",
+                  animation: "mp-halo-spin 4s linear infinite",
+                }}
+              />
+              <div style={{ position: "relative", zIndex: 1 }}>
+                <NavAvatar
+                  name={user?.name}
+                  avatar={user?.avatar}
+                  isOnline={true}
+                  onClick={() => navigate("/profile")}
+                />
               </div>
             </div>
-          </div>
 
-          {/* RIGHT: bare icon buttons */}
-          <div ref={navRightRef} style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-
-            {/* Theme toggle */}
-            <button onClick={toggleTheme} aria-label="Toggle theme" className="nb-icon">
-              {isDark ? <Sun size={19} /> : <Moon size={19} />}
-            </button>
-
-            {/* Bell — wrapped to override its internal styles */}
-            <span className="nb-bell-wrap">
-              <NotificationBell />
-            </span>
-
-            {/* Search */}
-            <button
-              ref={searchBtnRef}
-              onClick={searchOpen ? closeSearch : openSearch}
-              aria-label={searchOpen ? 'Close search' : 'Search'}
-              className="nb-icon"
-              style={{ color: searchOpen ? '#FF9F1C' : undefined }}
+            {/* ② TABLE NUMBER PILL — grows to fill space */}
+            <div
+              ref={brandRef}
+              style={{ flex: 1, display: "flex", justifyContent: "center" }}
             >
-              {searchOpen ? <X size={19} /> : <Search size={19} />}
-            </button>
-          </div>
-        </div>
-
-        {/* Search expand row */}
-        <div ref={searchRowRef} style={{ display: 'none', height: 0, opacity: 0, overflow: 'hidden' }}>
-          <div ref={searchInputRef} style={{ position: 'relative', marginTop: 9 }}>
-            <span style={{
-              position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)',
-              pointerEvents: 'none',
-              color: searchFocused ? '#FF9F1C' : iconColor,
-              transition: 'color 0.2s',
-              display: 'flex',
-            }}>
-              <Search size={14} />
-            </span>
-            <input
-              ref={searchFieldRef}
-              type="text" inputMode="search"
-              value={searchQuery}
-              onChange={e => dispatch(setSearchQuery(e.target.value))}
-              onFocus={() => setSearchFocused(true)}
-              onBlur={() => setSearchFocused(false)}
-              placeholder="Search dishes, flavours…"
-              className="mp-search-input"
-            />
-            <div style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center', gap: 6 }}>
-              {searchQuery && items.length > 0 && (
-                <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: 'rgba(255,159,28,0.12)', color: '#FF9F1C' }}>
-                  {items.length}
+              {tableNumber ? (
+                <div
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "6px 14px",
+                    borderRadius: 99,
+                    background: D
+                      ? "rgba(255,159,28,0.1)"
+                      : "rgba(255,159,28,0.09)",
+                    border: `1px solid ${D ? "rgba(255,159,28,0.28)" : "rgba(255,159,28,0.32)"}`,
+                    boxShadow: D
+                      ? "0 1px 0 rgba(255,255,255,0.06) inset, 0 0 14px rgba(255,159,28,0.12)"
+                      : "0 1px 0 rgba(255,255,255,0.9) inset, 0 0 10px rgba(255,159,28,0.1)",
+                    backdropFilter: "blur(12px)",
+                  }}
+                >
+                  <span style={{ fontSize: 14 }}>🪑</span>
+                  <div
+                    style={{ display: "flex", flexDirection: "column", gap: 1 }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 8,
+                        fontWeight: 700,
+                        letterSpacing: "0.14em",
+                        textTransform: "uppercase",
+                        color: D
+                          ? "rgba(255,184,77,0.5)"
+                          : "rgba(140,75,10,0.5)",
+                        lineHeight: 1,
+                      }}
+                    >
+                      Table
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 16,
+                        fontWeight: 900,
+                        letterSpacing: "-0.04em",
+                        lineHeight: 1,
+                        background: D
+                          ? "linear-gradient(135deg, #FFE0A0 0%, #FF9F1C 100%)"
+                          : "linear-gradient(135deg, #C8680A 0%, #E05C2A 100%)",
+                        WebkitBackgroundClip: "text",
+                        WebkitTextFillColor: "transparent",
+                        backgroundClip: "text",
+                      }}
+                    >
+                      {tableNumber}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                /* fallback: brand name when no table */
+                <span
+                  style={{
+                    fontFamily: '"Plus Jakarta Sans", system-ui, sans-serif',
+                    fontWeight: 800,
+                    fontSize: 15,
+                    letterSpacing: "-0.03em",
+                    lineHeight: 1,
+                    background: D
+                      ? "linear-gradient(118deg, #FFE0A0 0%, #FF9F1C 48%, #E05C2A 100%)"
+                      : "linear-gradient(118deg, #C8680A 0%, #E05C2A 100%)",
+                    WebkitBackgroundClip: "text",
+                    WebkitTextFillColor: "transparent",
+                    backgroundClip: "text",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  कौसी चिया
                 </span>
               )}
-              <button
-                ref={clearBtnRef}
-                onClick={() => { dispatch(setSearchQuery('')); searchFieldRef.current?.focus() }}
-                aria-label="Clear"
+            </div>
+
+            {/* ③ NOTIFICATION + ④ SEARCH */}
+            <div
+              ref={navRightRef}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                flexShrink: 0,
+              }}
+            >
+              {/* Bell */}
+              <span
+                className="mp-icon-pill"
+                onClick={(e) => pressIcon(e.currentTarget)}
+              >
+                <NotificationBell />
+              </span>
+
+              {/* Hairline divider */}
+              <span
                 style={{
-                  width: 24, height: 24, borderRadius: 7, border: 'none',
-                  background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
-                  color: iconColor, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  cursor: 'pointer', opacity: 0,
+                  width: 1,
+                  height: 16,
+                  borderRadius: 99,
+                  flexShrink: 0,
+                  background: D
+                    ? "rgba(255,255,255,0.1)"
+                    : "rgba(190,150,80,0.3)",
+                }}
+              />
+
+              {/* Search toggle */}
+              <button
+                ref={searchBtnRef}
+                onClick={() => {
+                  pressIcon(searchBtnRef.current);
+                  setTimeout(
+                    () => (searchOpen ? closeSearch() : openSearch()),
+                    80,
+                  );
+                }}
+                className="mp-icon-pill mp-search-btn"
+                aria-label={searchOpen ? "Close search" : "Open search"}
+                aria-expanded={searchOpen}
+                style={{
+                  background: searchOpen
+                    ? D
+                      ? "rgba(255,159,28,0.2)"
+                      : "rgba(255,159,28,0.15)"
+                    : pillBg,
+                  border: `1px solid ${searchOpen ? "rgba(255,159,28,0.5)" : pillBorder}`,
+                  boxShadow: searchOpen
+                    ? `0 0 18px rgba(255,159,28,0.28), ${pillShadow}`
+                    : pillShadow,
+                  color: searchOpen ? "var(--color-saffron)" : iconMuted,
                 }}
               >
-                <X size={12} />
+                {searchOpen ? (
+                  <X size={16} strokeWidth={2.2} />
+                ) : (
+                  <Search size={16} strokeWidth={1.9} />
+                )}
               </button>
             </div>
           </div>
-          {searchQuery && (
-            <p style={{ fontSize: 11, marginTop: 6, paddingLeft: 4, color: iconColor }}>
-              {items.length > 0
-                ? <>{items.length} result{items.length !== 1 ? 's' : ''} for <strong style={{ color: '#FF9F1C' }}>"{searchQuery}"</strong></>
-                : <>No results for <strong style={{ color: '#E05C2A' }}>"{searchQuery}"</strong></>
-              }
-            </p>
-          )}
-        </div>
-      </header>
 
-      {callStatus !== 'idle' && (
-        <div style={{ zIndex: 30, padding: '8px 16px 0' }}><CallStatusBanner /></div>
+          {/* ── SEARCH EXPAND ROW (inside island, below main row) ── */}
+          <div
+            ref={searchRowRef}
+            style={{
+              display: "none",
+              height: 0,
+              opacity: 0,
+              overflow: "hidden",
+              position: "relative",
+              zIndex: 3,
+            }}
+            role="search"
+          >
+            <div ref={searchInputRef}>
+              <div style={{ position: "relative" }}>
+                <span
+                  style={{
+                    position: "absolute",
+                    left: 13,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    pointerEvents: "none",
+                    display: "flex",
+                    color: searchFocused ? "var(--color-saffron)" : iconMuted,
+                    transition: "color 0.2s",
+                  }}
+                >
+                  <Search size={13} strokeWidth={1.9} />
+                </span>
+
+                <input
+                  ref={searchFieldRef}
+                  type="text"
+                  inputMode="search"
+                  autoComplete="off"
+                  spellCheck="false"
+                  value={searchQuery}
+                  onChange={(e) => dispatch(setSearchQuery(e.target.value))}
+                  onFocus={() => setSearchFocused(true)}
+                  onBlur={() => setSearchFocused(false)}
+                  onKeyDown={(e) => e.key === "Escape" && closeSearch()}
+                  placeholder="Search dishes, flavours…"
+                  aria-label="Search menu items"
+                  className="mp-search-input"
+                />
+
+                <div
+                  style={{
+                    position: "absolute",
+                    right: 8,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 5,
+                  }}
+                >
+                  {searchQuery && items.length > 0 && (
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 700,
+                        padding: "2px 7px",
+                        borderRadius: 99,
+                        background: D
+                          ? "rgba(255,159,28,0.15)"
+                          : "rgba(255,159,28,0.12)",
+                        border: `1px solid ${D ? "rgba(255,159,28,0.22)" : "rgba(255,159,28,0.2)"}`,
+                        color: "var(--color-saffron)",
+                        fontFamily: '"DM Mono", monospace',
+                      }}
+                    >
+                      {items.length}
+                    </span>
+                  )}
+                  <button
+                    ref={clearBtnRef}
+                    onClick={() => {
+                      dispatch(setSearchQuery(""));
+                      searchFieldRef.current?.focus();
+                    }}
+                    className="mp-clear-btn"
+                    aria-label="Clear search"
+                    style={{
+                      opacity: 0,
+                      transform: "scale(0) rotate(45deg)",
+                      width: 24,
+                      height: 24,
+                    }}
+                  >
+                    <X size={10} strokeWidth={2.5} />
+                  </button>
+                </div>
+              </div>
+
+              {searchQuery && (
+                <p
+                  style={{
+                    fontSize: 11,
+                    margin: "6px 0 0",
+                    paddingLeft: 4,
+                    color: iconMuted,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {items.length > 0 ? (
+                    <>
+                      <span
+                        style={{
+                          color: "var(--color-saffron)",
+                          fontWeight: 700,
+                        }}
+                      >
+                        {items.length}
+                      </span>{" "}
+                      result{items.length !== 1 ? "s" : ""} for &ldquo;
+                      {searchQuery}&rdquo;
+                    </>
+                  ) : (
+                    <>
+                      No results for &ldquo;
+                      <strong style={{ color: "var(--color-terra)" }}>
+                        {searchQuery}
+                      </strong>
+                      &rdquo;
+                    </>
+                  )}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+        {/* /island */}
+      </div>
+      {/* /island wrapper */}
+
+      {/* ── Call status banner ── */}
+      {callStatus !== "idle" && (
+        <div
+          style={{
+            zIndex: 30,
+            padding: "6px 16px 0",
+            marginTop: "max(80px, calc(env(safe-area-inset-top) + 76px))",
+          }}
+        >
+          <CallStatusBanner />
+        </div>
       )}
 
-      {/* SCROLL BODY */}
-      <div
-        ref={scrollerRef}
-        className="scrollbar-hide"
-        style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', paddingBottom: 112 }}
+      {/* ════════════════════════════════════════════════════════
+          MAIN CONTENT — padded top so island doesn't cover it
+      ════════════════════════════════════════════════════════ */}
+      <main
+        style={{
+          flex: 1,
+          paddingTop: "max(88px, calc(env(safe-area-inset-top) + 80px))",
+        }}
+        aria-label="Menu content"
       >
-        <div ref={welcomeRef}><WelcomeCard weather={weather} /></div>
-        {!searchQuery && (
-          <div ref={recRef}>
-            <RecommendedSection items={recommendations} weather={weather} loading={recLoading} />
-          </div>
-        )}
+        {/* Welcome + Rec: always mounted, animated in/out via GSAP */}
+        <div ref={welcomeRef} style={{ overflow: "hidden" }}>
+          <WelcomeCard weather={weather} />
+        </div>
+
+        <div ref={recRef} style={{ overflow: "hidden" }}>
+          <RecommendedSection
+            items={recommendations}
+            weather={weather}
+            loading={recLoading}
+          />
+        </div>
+
         {!searchQuery && (
           <div
             ref={pillsRef}
             style={{
-              position: 'sticky', top: 0, zIndex: 20,
-              padding: '10px 0 8px',
-              background: isDark ? 'rgba(8,5,2,0.93)' : 'rgba(255,251,244,0.93)',
-              backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
-              borderBottom: `1px solid ${navBorder}`,
+              position: "sticky",
+              top: 0,
+              zIndex: 20,
+              padding: "10px 0 8px",
+              background: pillsStickyBg,
+              backdropFilter: "blur(28px) saturate(180%)",
+              WebkitBackdropFilter: "blur(28px) saturate(180%)",
+              borderBottom: `1px solid ${bottomBorder}`,
+              boxShadow: D
+                ? "0 1px 0 rgba(255,255,255,0.04) inset, 0 4px 16px rgba(0,0,0,0.3)"
+                : "0 1px 0 rgba(255,255,255,0.8) inset, 0 4px 12px rgba(130,80,20,0.08)",
+              transition:
+                "background var(--transition-theme), border-color var(--transition-theme)",
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 16px', marginBottom: 8 }}>
-              <Sparkles size={13} style={{ color: '#FF9F1C' }} />
-              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: iconColor }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "0 16px",
+                marginBottom: 8,
+              }}
+            >
+              <Sparkles
+                size={12}
+                style={{ color: "var(--color-saffron)", flexShrink: 0 }}
+                strokeWidth={2}
+              />
+              <span
+                style={{
+                  fontSize: 9,
+                  fontWeight: 700,
+                  letterSpacing: "0.14em",
+                  textTransform: "uppercase",
+                  color: iconMuted,
+                  fontFamily: '"Plus Jakarta Sans", system-ui, sans-serif',
+                }}
+              >
                 Categories
               </span>
             </div>
-            <CategoryPills categories={categories} active={activeCategory} onChange={c => dispatch(setActiveCategory(c))} />
+            <CategoryPills
+              categories={categories}
+              active={activeCategory}
+              onChange={(cat) => dispatch(setActiveCategory(cat))}
+            />
           </div>
         )}
-        <div ref={gridRef} style={{ padding: '12px 16px 32px' }}>
+
+        <section
+          ref={gridRef}
+          aria-label="Menu items"
+          style={{ padding: "14px 16px 32px" }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              marginBottom: 14,
+            }}
+          >
+            <div
+              style={{
+                width: 3,
+                height: 18,
+                borderRadius: 99,
+                background: "linear-gradient(180deg, #FF9F1C 0%, #E05C2A 100%)",
+                flexShrink: 0,
+              }}
+            />
+            <h2
+              style={{
+                fontFamily: '"Plus Jakarta Sans", system-ui, sans-serif',
+                fontSize: "clamp(16px, 4vw, 19px)",
+                fontWeight: 800,
+                letterSpacing: "-0.04em",
+                color: "var(--text-primary)",
+                lineHeight: 1,
+                margin: 0,
+              }}
+            >
+              {searchQuery
+                ? "Search Results"
+                : activeCategory === "all"
+                  ? "Full Menu"
+                  : activeCategory.replace(/_/g, " ")}
+            </h2>
+            {items.length > 0 && (
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  padding: "2px 7px",
+                  borderRadius: 99,
+                  background: D ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)",
+                  color: iconMuted,
+                  fontFamily: '"DM Mono", monospace',
+                }}
+              >
+                {items.length}
+              </span>
+            )}
+          </div>
           <MenuGrid items={items} />
-        </div>
-      </div>
+        </section>
+      </main>
 
       <FloatingActions />
 
@@ -431,87 +1232,158 @@ const MenuPage = () => {
         onClick={handleScrollTop}
         aria-label="Scroll to top"
         style={{
-          position: 'fixed', bottom: 96, right: 16,
-          width: 38, height: 38, borderRadius: 12,
-          border: 'none', cursor: 'pointer',
-          background: isDark ? 'rgba(16,10,4,0.92)' : 'rgba(255,251,244,0.95)',
-          backdropFilter: 'blur(16px)', color: '#FF9F1C',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: isDark
-            ? '0 4px 20px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,159,28,0.1)'
-            : '0 4px 16px rgba(92,51,23,0.13), 0 0 0 1px rgba(210,168,110,0.18)',
-          zIndex: 40, opacity: 0, transform: 'scale(0)', pointerEvents: 'none',
+          position: "fixed",
+          bottom: "calc(88px + env(safe-area-inset-bottom, 0px))",
+          right: 16,
+          width: 40,
+          height: 40,
+          borderRadius: 13,
+          border: "none",
+          cursor: "pointer",
+          background: D ? "rgba(10,5,1,0.65)" : "rgba(255,252,247,0.65)",
+          backdropFilter: "blur(20px) saturate(180%)",
+          color: "var(--color-saffron)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          boxShadow: D
+            ? "0 1px 0 rgba(255,255,255,0.07) inset, 0 4px 24px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,159,28,0.14)"
+            : "0 1px 0 rgba(255,255,255,0.9) inset, 0 4px 18px rgba(140,90,30,0.14), 0 0 0 1px rgba(220,190,140,0.5)",
+          zIndex: 38,
+          opacity: 0,
+          transform: "scale(0)",
+          pointerEvents: "none",
+          transition:
+            "background var(--transition-theme), box-shadow var(--transition-theme)",
         }}
       >
-        <ChevronUp size={16} strokeWidth={2.5} />
+        <ChevronUp size={17} strokeWidth={2.5} />
       </button>
 
+      {/* ════════════ SCOPED STYLES ════════════ */}
       <style>{`
-        .scrollbar-hide::-webkit-scrollbar { display: none; }
-        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 
-        /* Minimal bare icon button — no box */
-        .nb-icon {
-          background: none;
-          border: none;
-          padding: 2px;
-          margin: 0;
-          cursor: pointer;
+        /* ── Spinning avatar halo ── */
+        @keyframes mp-halo-spin {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
+        }
+
+        /* ── Icon pill button base ── */
+        .mp-icon-pill {
           display: flex;
           align-items: center;
           justify-content: center;
-          color: ${iconColor};
-          border-radius: 6px;
-          transition: color 0.16s ease, transform 0.15s cubic-bezier(.34,1.56,.64,1), opacity 0.15s;
+          width: 38px;
+          height: 38px;
+          border-radius: 12px;
+          background: ${pillBg};
+          border: 1px solid ${pillBorder};
+          box-shadow: ${pillShadow};
+          backdrop-filter: blur(12px);
+          cursor: pointer;
+          transition: background 0.2s, border-color 0.2s, box-shadow 0.2s, color 0.18s;
           -webkit-tap-highlight-color: transparent;
           outline: none;
+          color: ${iconMuted};
+          padding: 0;
+          flex-shrink: 0;
         }
-        .nb-icon:hover  { color: ${iconHover}; transform: scale(1.15); }
-        .nb-icon:active { transform: scale(0.85); opacity: 0.7; }
-        .nb-icon:focus-visible { outline: 2px solid rgba(255,159,28,0.4); outline-offset: 3px; }
+        .mp-icon-pill:focus-visible {
+          outline: 2px solid rgba(255,159,28,0.5);
+          outline-offset: 2px;
+        }
 
-        /* Strip all styles from NotificationBell's internal button */
-        .nb-bell-wrap > button,
-        .nb-bell-wrap button {
+        /* ── Search button variant ── */
+        .mp-search-btn {
+          /* base overridden inline — just ensure no default styles */
+          background: none;
+        }
+
+        /* ── NotificationBell normalization ── */
+        .mp-icon-pill > button,
+        .mp-icon-pill button {
           all: unset !important;
           cursor: pointer !important;
           display: flex !important;
           align-items: center !important;
           justify-content: center !important;
-          padding: 2px !important;
-          border-radius: 6px !important;
-          color: ${iconColor} !important;
+          width: 100% !important;
+          height: 100% !important;
+          color: ${iconMuted} !important;
           position: relative !important;
-          transition: color 0.16s ease, transform 0.15s cubic-bezier(.34,1.56,.64,1) !important;
+          transition: color 0.18s ease, transform 0.2s cubic-bezier(0.34,1.56,0.64,1) !important;
           -webkit-tap-highlight-color: transparent !important;
         }
-        .nb-bell-wrap > button:hover,
-        .nb-bell-wrap button:hover  { color: ${iconHover} !important; transform: scale(1.15) !important; }
-        .nb-bell-wrap > button:active,
-        .nb-bell-wrap button:active { transform: scale(0.85) !important; }
-        .nb-bell-wrap button svg    { color: inherit !important; width: 19px !important; height: 19px !important; }
+        .mp-icon-pill button:hover {
+          color: ${iconActive} !important;
+          transform: scale(1.12) !important;
+        }
+        .mp-icon-pill button:active { transform: scale(0.88) !important; }
+        .mp-icon-pill button svg {
+          color: inherit !important;
+          width: 17px !important;
+          height: 17px !important;
+          stroke-width: 1.9 !important;
+        }
 
+        /* ── Search input ── */
         .mp-search-input {
-          width: 100%; height: 42px;
-          padding: 0 68px 0 36px;
-          border-radius: 13px;
-          background: ${isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)'};
+          width: 100%;
+          height: 42px;
+          padding: 0 72px 0 36px;
+          border-radius: 14px;
+          background: ${D ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.55)"};
+          backdrop-filter: blur(16px);
           color: var(--text-primary);
-          border: 1.5px solid ${isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)'};
+          border: 1.5px solid ${D ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.75)"};
+          box-shadow: ${
+            D
+              ? "0 1px 0 rgba(255,255,255,0.06) inset, 0 3px 14px rgba(0,0,0,0.25)"
+              : "0 1px 0 rgba(255,255,255,0.95) inset, 0 2px 8px rgba(140,90,30,0.07)"
+          };
           outline: none;
-          font-family: "DM Sans", sans-serif;
+          font-family: "Plus Jakarta Sans", system-ui, sans-serif;
           font-size: 14px;
+          font-weight: 400;
+          letter-spacing: 0.01em;
           transition: border-color 0.22s, box-shadow 0.22s, background 0.22s;
+          -webkit-appearance: none;
         }
-        .mp-search-input::placeholder { color: ${isDark ? 'rgba(255,200,100,0.2)' : 'rgba(92,51,23,0.25)'}; }
+        .mp-search-input::placeholder {
+          color: ${D ? "rgba(255,184,77,0.22)" : "rgba(140,95,45,0.35)"};
+        }
         .mp-search-input:focus {
-          border-color: rgba(255,159,28,0.4);
-          background: ${isDark ? 'rgba(255,159,28,0.05)' : 'rgba(255,159,28,0.03)'};
-          box-shadow: 0 0 0 3px rgba(255,159,28,0.08);
+          border-color: rgba(255,159,28,0.52);
+          background: ${D ? "rgba(255,159,28,0.06)" : "rgba(255,252,245,0.78)"};
+          box-shadow:
+            0 0 0 3.5px rgba(255,159,28,0.12),
+            ${D ? "0 1px 0 rgba(255,255,255,0.06) inset" : "0 1px 0 rgba(255,255,255,0.95) inset"};
         }
-      `}</style>
-    </div>
-  )
-}
 
-export default MenuPage
+        /* ── Clear button ── */
+        .mp-clear-btn {
+          border-radius: 8px;
+          border: 1.5px solid ${D ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.65)"};
+          background: ${D ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.5)"};
+          backdrop-filter: blur(8px);
+          color: ${iconMuted};
+          display: flex; align-items: center; justify-content: center;
+          cursor: pointer;
+          transition: background 0.15s, color 0.15s, border-color 0.15s;
+        }
+        .mp-clear-btn:hover {
+          background: ${D ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.78)"};
+          border-color: rgba(255,159,28,0.4);
+          color: var(--text-primary);
+        }
+
+        * { -webkit-tap-highlight-color: transparent; }
+
+      `}</style>
+      {showTour && <MenuTour onComplete={handleTourComplete} />}
+    </div>
+  );
+};
+
+export default MenuPage;
