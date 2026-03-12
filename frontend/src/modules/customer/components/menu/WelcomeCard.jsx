@@ -1,8 +1,15 @@
 // src/modules/customer/components/menu/WelcomeCard.jsx
-import { useRef, useEffect, useContext, useMemo } from "react";
+//
+// ARCHITECTURE NOTE:
+//   weather prop comes from useRecommendations().weather
+//   which calls api.get('/weather/current?lat=...&lng=...')
+//   api.interceptor returns response.data directly — no .data unwrap needed
+//   DO NOT use useWeather / weather.service.js (frontend) — those are wrong
+//
+import { useRef, useEffect, useContext, useMemo, useState } from "react";
 import { useSelector } from "react-redux";
 import gsap from "gsap";
-import { Clock, Wifi, Armchair, ShoppingBag } from "lucide-react";
+import { Clock, Wifi, ShoppingBag } from "lucide-react";
 import { ThemeContext } from "@shared/context/ThemeContext";
 import { selectUser, selectIsGuest } from "@store/slices/authSlice";
 import {
@@ -27,886 +34,338 @@ const injectFonts = () => {
   link.id = "wc-fonts";
   link.rel = "stylesheet";
   link.href =
-    "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&family=Bricolage+Grotesque:opsz,wght@12..96,800;12..96,900&display=swap";
+    "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&family=Bricolage+Grotesque:opsz,wght@12..96,800;12..96,900&family=Syne:wght@700;800;900&display=swap";
   document.head.appendChild(link);
 };
 
-// ─── Greeting ─────────────────────────────────────────────────
+// ─── Greeting ──────────────────────────────────────────────────
 const getGreeting = () => {
   const h = new Date().getHours();
-  if (h < 5) return { label: "Late Night", sub: "Something special awaits" };
-  if (h < 12)
-    return { label: "Good Morning", sub: "Start your day deliciously" };
-  if (h < 17)
-    return { label: "Good Afternoon", sub: "Time for a flavourful break" };
-  if (h < 21) return { label: "Good Evening", sub: "Dinner is served" };
-  return { label: "Good Night", sub: "Late night cravings sorted" };
+  if (h < 5)  return { label: "Late Night",     sub: "Something special awaits" };
+  if (h < 12) return { label: "Good Morning",   sub: "Start your day deliciously" };
+  if (h < 17) return { label: "Good Afternoon", sub: "Time for a flavourful break" };
+  if (h < 21) return { label: "Good Evening",   sub: "Dinner is served" };
+  return       { label: "Good Night",    sub: "Late night cravings sorted" };
 };
 
 // ─── Tier config ───────────────────────────────────────────────
 const TIER = {
-  none: { emoji: "☕", label: "New Member" },
-  bronze: { emoji: "🥉", label: "Bronze" },
-  silver: { emoji: "🥈", label: "Silver" },
-  gold: { emoji: "🥇", label: "Gold" },
+  none:   { emoji: "☕", label: "New Member" },
+  bronze: { emoji: "🥉", label: "Bronze"     },
+  silver: { emoji: "🥈", label: "Silver"     },
+  gold:   { emoji: "🥇", label: "Gold"       },
 };
 
-// ─── Weather themes (light / dark variants) ───────────────────
+// ─── Weather themes ────────────────────────────────────────────
 const WEATHER_THEME = {
   sunny: {
-    light: {
-      bg: ["#FF9A3C", "#FFCD3C", "#FFF0A0"],
-      text: "#7A3B00",
-      sub: "rgba(100,50,0,0.55)",
-      pill: "rgba(255,255,255,0.35)",
-      shadow: "rgba(255,160,30,0.45)",
-    },
-    dark: {
-      bg: ["#7C2D00", "#B45309", "#D97706"],
-      text: "#FFE4A0",
-      sub: "rgba(255,220,150,0.55)",
-      pill: "rgba(0,0,0,0.28)",
-      shadow: "rgba(200,100,0,0.55)",
-    },
+    light: { bg: ["#FF9A3C", "#FFCD3C", "#FFF0A0"], text: "#7A3B00", sub: "rgba(100,50,0,0.55)",   shadow: "rgba(255,160,30,0.45)"  },
+    dark:  { bg: ["#7C2D00", "#B45309", "#D97706"], text: "#FFE4A0", sub: "rgba(255,220,150,0.55)", shadow: "rgba(200,100,0,0.55)"   },
   },
   hot: {
-    light: {
-      bg: ["#FF6B6B", "#FF8E53", "#FFCB77"],
-      text: "#7A1515",
-      sub: "rgba(120,30,20,0.5)",
-      pill: "rgba(255,255,255,0.32)",
-      shadow: "rgba(255,80,50,0.45)",
-    },
-    dark: {
-      bg: ["#7F1D1D", "#9B2335", "#C0392B"],
-      text: "#FFCDD2",
-      sub: "rgba(255,180,180,0.5)",
-      pill: "rgba(0,0,0,0.28)",
-      shadow: "rgba(180,30,30,0.55)",
-    },
+    light: { bg: ["#FF6B6B", "#FF8E53", "#FFCB77"], text: "#7A1515", sub: "rgba(120,30,20,0.5)",   shadow: "rgba(255,80,50,0.45)"   },
+    dark:  { bg: ["#7F1D1D", "#9B2335", "#C0392B"], text: "#FFCDD2", sub: "rgba(255,180,180,0.5)", shadow: "rgba(180,30,30,0.55)"   },
   },
   rainy: {
-    light: {
-      bg: ["#A8CABA", "#5D9FBF", "#EBF4F5"],
-      text: "#1A3A5C",
-      sub: "rgba(20,60,100,0.5)",
-      pill: "rgba(255,255,255,0.38)",
-      shadow: "rgba(80,130,180,0.4)",
-    },
-    dark: {
-      bg: ["#0D1B2A", "#1B3A5C", "#2C5F8A"],
-      text: "#B0D4F1",
-      sub: "rgba(150,200,240,0.5)",
-      pill: "rgba(0,0,0,0.3)",
-      shadow: "rgba(30,80,150,0.55)",
-    },
+    light: { bg: ["#A8CABA", "#5D9FBF", "#EBF4F5"], text: "#1A3A5C", sub: "rgba(20,60,100,0.5)",   shadow: "rgba(80,130,180,0.4)"   },
+    dark:  { bg: ["#0D1B2A", "#1B3A5C", "#2C5F8A"], text: "#B0D4F1", sub: "rgba(150,200,240,0.5)", shadow: "rgba(30,80,150,0.55)"   },
   },
   cold: {
-    light: {
-      bg: ["#D4F1F9", "#89CFF0", "#BFEFFF"],
-      text: "#0C3547",
-      sub: "rgba(10,60,100,0.45)",
-      pill: "rgba(255,255,255,0.4)",
-      shadow: "rgba(80,180,230,0.4)",
-    },
-    dark: {
-      bg: ["#0A1628", "#0D2E5C", "#1A4F8C"],
-      text: "#C5E8FF",
-      sub: "rgba(150,210,255,0.5)",
-      pill: "rgba(0,0,0,0.3)",
-      shadow: "rgba(20,80,180,0.55)",
-    },
+    light: { bg: ["#D4F1F9", "#89CFF0", "#BFEFFF"], text: "#0C3547", sub: "rgba(10,60,100,0.45)",  shadow: "rgba(80,180,230,0.4)"   },
+    dark:  { bg: ["#0A1628", "#0D2E5C", "#1A4F8C"], text: "#C5E8FF", sub: "rgba(150,210,255,0.5)", shadow: "rgba(20,80,180,0.55)"   },
   },
   cloudy: {
-    light: {
-      bg: ["#D4D8E2", "#B8BFCC", "#E8ECF2"],
-      text: "#2D3142",
-      sub: "rgba(45,50,70,0.45)",
-      pill: "rgba(255,255,255,0.42)",
-      shadow: "rgba(100,110,140,0.3)",
-    },
-    dark: {
-      bg: ["#1A1D2E", "#252A3D", "#2E3450"],
-      text: "#C8CEDE",
-      sub: "rgba(180,190,210,0.5)",
-      pill: "rgba(0,0,0,0.3)",
-      shadow: "rgba(40,50,80,0.55)",
-    },
+    light: { bg: ["#D4D8E2", "#B8BFCC", "#E8ECF2"], text: "#2D3142", sub: "rgba(45,50,70,0.45)",   shadow: "rgba(100,110,140,0.3)"  },
+    dark:  { bg: ["#1A1D2E", "#252A3D", "#2E3450"], text: "#C8CEDE", sub: "rgba(180,190,210,0.5)", shadow: "rgba(40,50,80,0.55)"    },
   },
   windy: {
-    light: {
-      bg: ["#C8E6FF", "#A0C4FF", "#D4F0FF"],
-      text: "#1A3A6C",
-      sub: "rgba(20,50,120,0.45)",
-      pill: "rgba(255,255,255,0.38)",
-      shadow: "rgba(80,150,220,0.35)",
-    },
-    dark: {
-      bg: ["#0D1F3C", "#162D5A", "#1E3D7A"],
-      text: "#B8D4FF",
-      sub: "rgba(140,190,255,0.5)",
-      pill: "rgba(0,0,0,0.3)",
-      shadow: "rgba(20,60,160,0.5)",
-    },
+    light: { bg: ["#C8E6FF", "#A0C4FF", "#D4F0FF"], text: "#1A3A6C", sub: "rgba(20,50,120,0.45)",  shadow: "rgba(80,150,220,0.35)"  },
+    dark:  { bg: ["#0D1F3C", "#162D5A", "#1E3D7A"], text: "#B8D4FF", sub: "rgba(140,190,255,0.5)", shadow: "rgba(20,60,160,0.5)"    },
   },
   snowy: {
-    light: {
-      bg: ["#EEF2FF", "#DBEAFE", "#F0F9FF"],
-      text: "#1E3A5F",
-      sub: "rgba(20,50,100,0.4)",
-      pill: "rgba(255,255,255,0.45)",
-      shadow: "rgba(100,150,220,0.3)",
-    },
-    dark: {
-      bg: ["#0F172A", "#1E2D4A", "#1A3060"],
-      text: "#C0D8FF",
-      sub: "rgba(160,200,255,0.5)",
-      pill: "rgba(0,0,0,0.3)",
-      shadow: "rgba(30,70,160,0.5)",
-    },
+    light: { bg: ["#EEF2FF", "#DBEAFE", "#F0F9FF"], text: "#1E3A5F", sub: "rgba(20,50,100,0.4)",   shadow: "rgba(100,150,220,0.3)"  },
+    dark:  { bg: ["#0F172A", "#1E2D4A", "#1A3060"], text: "#C0D8FF", sub: "rgba(160,200,255,0.5)", shadow: "rgba(30,70,160,0.5)"    },
   },
 };
 
-// ─────────────────────────────────────────────────────────────
-//  WEATHER CANVAS ANIMATIONS
-// ─────────────────────────────────────────────────────────────
+const W_META = {
+  sunny: { icon: "☀️", label: "Sunny"  },
+  hot:   { icon: "🌡️", label: "Hot"    },
+  rainy: { icon: "🌧️", label: "Rainy"  },
+  cold:  { icon: "🌨️", label: "Cold"   },
+  cloudy:{ icon: "☁️",  label: "Cloudy" },
+  windy: { icon: "💨", label: "Windy"  },
+  snowy: { icon: "❄️",  label: "Snowy"  },
+};
 
-/* ── Sunny: floating light rays + lens flare ── */
+// ─── Weather canvas animations (unchanged) ─────────────────────
 const SunnyCanvas = ({ isDark }) => {
-  const canvasRef = useRef(null);
+  const ref = useRef(null);
   useEffect(() => {
-    const c = canvasRef.current;
-    if (!c) return;
+    const c = ref.current; if (!c) return;
     const ctx = c.getContext("2d");
-    c.width = c.offsetWidth;
-    c.height = c.offsetHeight;
-    let raf,
-      t = 0;
-    const rays = Array.from({ length: 8 }, (_, i) => ({
-      angle: (i / 8) * Math.PI * 2,
-      speed: 0.003 + i * 0.001,
-    }));
+    c.width = c.offsetWidth; c.height = c.offsetHeight;
+    let raf, t = 0;
+    const rays = Array.from({ length: 8 }, (_, i) => ({ angle: (i / 8) * Math.PI * 2, speed: 0.003 + i * 0.001 }));
     const draw = () => {
       ctx.clearRect(0, 0, c.width, c.height);
-      const cx = c.width * 0.78,
-        cy = c.height * 0.22;
-      // Sun glow
-      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, 70);
-      g.addColorStop(
-        0,
-        isDark ? "rgba(255,180,50,0.45)" : "rgba(255,220,80,0.6)",
-      );
+      const cx = c.width * 0.82, cy = c.height * 0.18;
+      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, 80);
+      g.addColorStop(0, isDark ? "rgba(255,180,50,0.45)" : "rgba(255,220,80,0.65)");
       g.addColorStop(1, "transparent");
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.arc(cx, cy, 70, 0, Math.PI * 2);
-      ctx.fill();
-      // Rays
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, 80, 0, Math.PI * 2); ctx.fill();
       rays.forEach((r) => {
-        const angle = r.angle + t * r.speed;
-        ctx.save();
-        ctx.translate(cx, cy);
-        ctx.rotate(angle);
-        const rg = ctx.createLinearGradient(0, 0, 100, 0);
-        rg.addColorStop(
-          0,
-          isDark ? "rgba(255,200,60,0.25)" : "rgba(255,240,100,0.3)",
-        );
+        const a = r.angle + t * r.speed;
+        ctx.save(); ctx.translate(cx, cy); ctx.rotate(a);
+        const rg = ctx.createLinearGradient(0, 0, 110, 0);
+        rg.addColorStop(0, isDark ? "rgba(255,200,60,0.22)" : "rgba(255,240,100,0.28)");
         rg.addColorStop(1, "transparent");
-        ctx.fillStyle = rg;
-        ctx.beginPath();
-        ctx.moveTo(10, -3);
-        ctx.lineTo(100, -8);
-        ctx.lineTo(100, 8);
-        ctx.lineTo(10, 3);
-        ctx.fill();
-        ctx.restore();
+        ctx.fillStyle = rg; ctx.beginPath();
+        ctx.moveTo(12, -3); ctx.lineTo(110, -9); ctx.lineTo(110, 9); ctx.lineTo(12, 3);
+        ctx.fill(); ctx.restore();
       });
-      // Lens flare dots
-      [0.3, 0.5, 0.65].forEach((s, i) => {
-        const fx = cx - (cx - c.width * 0.15) * s;
-        const fy = cy + (c.height * 0.6 - cy) * s;
-        const sz = [6, 10, 4][i];
-        const fg = ctx.createRadialGradient(fx, fy, 0, fx, fy, sz);
-        fg.addColorStop(
-          0,
-          isDark ? "rgba(255,230,100,0.22)" : "rgba(255,255,180,0.35)",
-        );
-        fg.addColorStop(1, "transparent");
-        ctx.fillStyle = fg;
-        ctx.beginPath();
-        ctx.arc(fx, fy, sz, 0, Math.PI * 2);
-        ctx.fill();
-      });
-      t++;
-      raf = requestAnimationFrame(draw);
+      t++; raf = requestAnimationFrame(draw);
     };
-    draw();
-    return () => cancelAnimationFrame(raf);
+    draw(); return () => cancelAnimationFrame(raf);
   }, [isDark]);
-  return (
-    <canvas
-      ref={canvasRef}
-      style={{
-        position: "absolute",
-        inset: 0,
-        width: "100%",
-        height: "100%",
-        pointerEvents: "none",
-      }}
-    />
-  );
+  return <canvas ref={ref} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }} />;
 };
 
-/* ── Cloudy: realistic drifting clouds ── */
 const CloudyCanvas = ({ isDark }) => {
-  const canvasRef = useRef(null);
+  const ref = useRef(null);
   useEffect(() => {
-    const c = canvasRef.current;
-    if (!c) return;
+    const c = ref.current; if (!c) return;
     const ctx = c.getContext("2d");
-    c.width = c.offsetWidth;
-    c.height = c.offsetHeight;
+    c.width = c.offsetWidth; c.height = c.offsetHeight;
     let raf;
-    const drawCloud = (x, y, scale, alpha) => {
-      ctx.save();
-      ctx.globalAlpha = alpha;
-      const circles = [
-        { dx: 0, dy: 0, r: 28 * scale },
-        { dx: 22, dy: -8, r: 22 * scale },
-        { dx: -22, dy: -5, r: 20 * scale },
-        { dx: 42, dy: 4, r: 16 * scale },
-        { dx: -40, dy: 4, r: 14 * scale },
-        { dx: 12, dy: -18, r: 16 * scale },
-      ];
-      const col = isDark ? "rgba(140,155,190,X)" : "rgba(255,255,255,X)";
-      circles.forEach(({ dx, dy, r }) => {
-        const g = ctx.createRadialGradient(
-          x + dx,
-          y + dy - r * 0.2,
-          0,
-          x + dx,
-          y + dy,
-          r,
-        );
-        g.addColorStop(0, col.replace("X", "0.9"));
-        g.addColorStop(0.6, col.replace("X", "0.6"));
-        g.addColorStop(1, "transparent");
-        ctx.fillStyle = g;
-        ctx.beginPath();
-        ctx.arc(x + dx, y + dy, r, 0, Math.PI * 2);
-        ctx.fill();
-      });
+    const drawCloud = (x, y, sc, al) => {
+      ctx.save(); ctx.globalAlpha = al;
+      [{ dx:0,dy:0,r:28 },{ dx:22,dy:-8,r:22 },{ dx:-22,dy:-5,r:20 },{ dx:42,dy:4,r:16 },{ dx:-40,dy:4,r:14 },{ dx:12,dy:-18,r:16 }]
+        .forEach(({ dx, dy, r }) => {
+          const gr = ctx.createRadialGradient(x+dx, y+dy-r*0.2*sc, 0, x+dx, y+dy, r*sc);
+          const col = isDark ? "rgba(140,155,190,X)" : "rgba(255,255,255,X)";
+          gr.addColorStop(0, col.replace("X","0.9")); gr.addColorStop(0.6, col.replace("X","0.6")); gr.addColorStop(1, "transparent");
+          ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(x+dx, y+dy, r*sc, 0, Math.PI*2); ctx.fill();
+        });
       ctx.restore();
     };
-    const clouds = [
-      { x: c.width * 0.6, y: 40, scale: 1.1, alpha: 0.85, speed: 0.18 },
-      { x: c.width * 0.15, y: 65, scale: 0.75, alpha: 0.55, speed: 0.12 },
-      { x: c.width * 0.88, y: 28, scale: 0.6, alpha: 0.45, speed: 0.22 },
-      { x: -40, y: 80, scale: 0.5, alpha: 0.3, speed: 0.08 },
-    ];
-    const animate = () => {
-      ctx.clearRect(0, 0, c.width, c.height);
-      clouds.forEach((cl) => {
-        drawCloud(cl.x, cl.y, cl.scale, cl.alpha);
-        cl.x += cl.speed;
-        if (cl.x - 80 > c.width) cl.x = -80;
-      });
-      raf = requestAnimationFrame(animate);
-    };
-    animate();
-    return () => cancelAnimationFrame(raf);
+    const clouds = [{ x:c.width*0.6,y:40,sc:1.1,al:0.85,sp:0.18 },{ x:c.width*0.15,y:65,sc:0.75,al:0.55,sp:0.12 },{ x:c.width*0.88,y:28,sc:0.6,al:0.45,sp:0.22 },{ x:-40,y:80,sc:0.5,al:0.3,sp:0.08 }];
+    const animate = () => { ctx.clearRect(0,0,c.width,c.height); clouds.forEach(cl => { drawCloud(cl.x,cl.y,cl.sc,cl.al); cl.x+=cl.sp; if(cl.x-80>c.width)cl.x=-80; }); raf=requestAnimationFrame(animate); };
+    animate(); return () => cancelAnimationFrame(raf);
   }, [isDark]);
-  return (
-    <canvas
-      ref={canvasRef}
-      style={{
-        position: "absolute",
-        inset: 0,
-        width: "100%",
-        height: "100%",
-        pointerEvents: "none",
-      }}
-    />
-  );
+  return <canvas ref={ref} style={{ position:"absolute",inset:0,width:"100%",height:"100%",pointerEvents:"none" }} />;
 };
 
-/* ── Rainy: realistic rain streaks + puddle ripples ── */
 const RainyCanvas = ({ isDark }) => {
-  const canvasRef = useRef(null);
+  const ref = useRef(null);
   useEffect(() => {
-    const c = canvasRef.current;
-    if (!c) return;
-    const ctx = c.getContext("2d");
-    c.width = c.offsetWidth;
-    c.height = c.offsetHeight;
+    const c = ref.current; if (!c) return;
+    const ctx = c.getContext("2d"); c.width=c.offsetWidth; c.height=c.offsetHeight;
     let raf;
-    // Rain drops
-    const drops = Array.from({ length: 55 }, () => ({
-      x: Math.random() * c.width,
-      y: Math.random() * c.height,
-      len: 8 + Math.random() * 14,
-      speed: 7 + Math.random() * 8,
-      alpha: 0.15 + Math.random() * 0.35,
-      thick: 0.8 + Math.random() * 0.8,
-    }));
-    // Ripples
-    const ripples = [];
-    const spawnRipple = () => {
-      ripples.push({
-        x: Math.random() * c.width,
-        y: c.height - 8 - Math.random() * 14,
-        r: 0,
-        maxR: 18 + Math.random() * 18,
-        alpha: 0.5,
-        speed: 0.6,
-      });
-    };
-    let rippleTimer = 0;
+    const drops = Array.from({length:55},()=>({ x:Math.random()*c.width, y:Math.random()*c.height, len:8+Math.random()*14, sp:7+Math.random()*8, al:0.15+Math.random()*0.35, th:0.8+Math.random()*0.8 }));
+    const ripples=[]; let rt=0;
     const animate = () => {
-      ctx.clearRect(0, 0, c.width, c.height);
-      // Draw rain
-      drops.forEach((d) => {
-        ctx.save();
-        ctx.globalAlpha = d.alpha;
-        ctx.strokeStyle = isDark
-          ? "rgba(180,210,255,1)"
-          : "rgba(100,160,220,1)";
-        ctx.lineWidth = d.thick;
-        ctx.beginPath();
-        ctx.moveTo(d.x, d.y);
-        ctx.lineTo(d.x - d.len * 0.15, d.y + d.len);
-        ctx.stroke();
-        ctx.restore();
-        d.y += d.speed;
-        d.x -= d.speed * 0.15;
-        if (d.y > c.height) {
-          d.y = -d.len;
-          d.x = Math.random() * c.width;
-        }
-      });
-      // Ripples
-      rippleTimer++;
-      if (rippleTimer % 14 === 0) spawnRipple();
-      for (let i = ripples.length - 1; i >= 0; i--) {
-        const rp = ripples[i];
-        ctx.save();
-        ctx.globalAlpha = rp.alpha;
-        ctx.strokeStyle = isDark ? "rgba(150,200,255,1)" : "rgba(80,140,200,1)";
-        ctx.lineWidth = 0.8;
-        ctx.beginPath();
-        ctx.ellipse(rp.x, rp.y, rp.r, rp.r * 0.35, 0, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.restore();
-        rp.r += rp.speed;
-        rp.alpha -= 0.018;
-        if (rp.alpha <= 0) ripples.splice(i, 1);
-      }
-      raf = requestAnimationFrame(animate);
+      ctx.clearRect(0,0,c.width,c.height);
+      drops.forEach(d=>{ ctx.save(); ctx.globalAlpha=d.al; ctx.strokeStyle=isDark?"rgba(180,210,255,1)":"rgba(100,160,220,1)"; ctx.lineWidth=d.th; ctx.beginPath(); ctx.moveTo(d.x,d.y); ctx.lineTo(d.x-d.len*0.15,d.y+d.len); ctx.stroke(); ctx.restore(); d.y+=d.sp; d.x-=d.sp*0.15; if(d.y>c.height){d.y=-d.len;d.x=Math.random()*c.width;} });
+      rt++; if(rt%14===0)ripples.push({x:Math.random()*c.width,y:c.height-8-Math.random()*14,r:0,al:0.5,sp:0.6});
+      for(let i=ripples.length-1;i>=0;i--){ const rp=ripples[i]; ctx.save(); ctx.globalAlpha=rp.al; ctx.strokeStyle=isDark?"rgba(150,200,255,1)":"rgba(80,140,200,1)"; ctx.lineWidth=0.8; ctx.beginPath(); ctx.ellipse(rp.x,rp.y,rp.r,rp.r*0.35,0,0,Math.PI*2); ctx.stroke(); ctx.restore(); rp.r+=rp.sp; rp.al-=0.018; if(rp.al<=0)ripples.splice(i,1); }
+      raf=requestAnimationFrame(animate);
     };
-    animate();
-    return () => cancelAnimationFrame(raf);
+    animate(); return ()=>cancelAnimationFrame(raf);
   }, [isDark]);
-  return (
-    <canvas
-      ref={canvasRef}
-      style={{
-        position: "absolute",
-        inset: 0,
-        width: "100%",
-        height: "100%",
-        pointerEvents: "none",
-      }}
-    />
-  );
+  return <canvas ref={ref} style={{position:"absolute",inset:0,width:"100%",height:"100%",pointerEvents:"none"}} />;
 };
 
-/* ── Snowy: falling snowflakes ── */
 const SnowyCanvas = ({ isDark }) => {
-  const canvasRef = useRef(null);
+  const ref = useRef(null);
   useEffect(() => {
-    const c = canvasRef.current;
-    if (!c) return;
-    const ctx = c.getContext("2d");
-    c.width = c.offsetWidth;
-    c.height = c.offsetHeight;
-    let raf;
-    const flakes = Array.from({ length: 45 }, () => ({
-      x: Math.random() * c.width,
-      y: Math.random() * c.height,
-      r: 1.5 + Math.random() * 3.5,
-      speed: 0.6 + Math.random() * 1.2,
-      drift: (Math.random() - 0.5) * 0.4,
-      alpha: 0.4 + Math.random() * 0.5,
-      wobble: Math.random() * Math.PI * 2,
-      wobbleSpeed: 0.02 + Math.random() * 0.02,
-    }));
-    const animate = () => {
-      ctx.clearRect(0, 0, c.width, c.height);
-      flakes.forEach((f) => {
-        f.wobble += f.wobbleSpeed;
-        ctx.save();
-        ctx.globalAlpha = f.alpha;
-        const g = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.r);
-        g.addColorStop(
-          0,
-          isDark ? "rgba(200,220,255,1)" : "rgba(255,255,255,1)",
-        );
-        g.addColorStop(1, "transparent");
-        ctx.fillStyle = g;
-        ctx.beginPath();
-        ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-        f.y += f.speed;
-        f.x += f.drift + Math.sin(f.wobble) * 0.5;
-        if (f.y > c.height + 5) {
-          f.y = -5;
-          f.x = Math.random() * c.width;
-        }
-        if (f.x < -5) f.x = c.width + 5;
-        if (f.x > c.width + 5) f.x = -5;
-      });
-      raf = requestAnimationFrame(animate);
-    };
-    animate();
-    return () => cancelAnimationFrame(raf);
+    const c=ref.current; if(!c) return;
+    const ctx=c.getContext("2d"); c.width=c.offsetWidth; c.height=c.offsetHeight; let raf;
+    const flakes=Array.from({length:45},()=>({ x:Math.random()*c.width, y:Math.random()*c.height, r:1.5+Math.random()*3.5, sp:0.6+Math.random()*1.2, dr:(Math.random()-0.5)*0.4, al:0.4+Math.random()*0.5, wb:Math.random()*Math.PI*2, ws:0.02+Math.random()*0.02 }));
+    const animate=()=>{ ctx.clearRect(0,0,c.width,c.height); flakes.forEach(f=>{ f.wb+=f.ws; const g=ctx.createRadialGradient(f.x,f.y,0,f.x,f.y,f.r); g.addColorStop(0,isDark?"rgba(200,220,255,1)":"rgba(255,255,255,1)"); g.addColorStop(1,"transparent"); ctx.save(); ctx.globalAlpha=f.al; ctx.fillStyle=g; ctx.beginPath(); ctx.arc(f.x,f.y,f.r,0,Math.PI*2); ctx.fill(); ctx.restore(); f.y+=f.sp; f.x+=f.dr+Math.sin(f.wb)*0.5; if(f.y>c.height+5){f.y=-5;f.x=Math.random()*c.width;} if(f.x<-5)f.x=c.width+5; if(f.x>c.width+5)f.x=-5; }); raf=requestAnimationFrame(animate); };
+    animate(); return ()=>cancelAnimationFrame(raf);
   }, [isDark]);
-  return (
-    <canvas
-      ref={canvasRef}
-      style={{
-        position: "absolute",
-        inset: 0,
-        width: "100%",
-        height: "100%",
-        pointerEvents: "none",
-      }}
-    />
-  );
+  return <canvas ref={ref} style={{position:"absolute",inset:0,width:"100%",height:"100%",pointerEvents:"none"}} />;
 };
 
-/* ── Windy: flowing wind lines ── */
 const WindyCanvas = ({ isDark }) => {
-  const canvasRef = useRef(null);
-  useEffect(() => {
-    const c = canvasRef.current;
-    if (!c) return;
-    const ctx = c.getContext("2d");
-    c.width = c.offsetWidth;
-    c.height = c.offsetHeight;
-    let raf;
-    const lines = Array.from({ length: 18 }, (_, i) => ({
-      y: 10 + (i / 18) * c.height * 0.85,
-      x: -Math.random() * c.width,
-      len: 40 + Math.random() * 80,
-      speed: 3 + Math.random() * 4,
-      alpha: 0.08 + Math.random() * 0.22,
-      thick: 0.6 + Math.random() * 1.2,
-      curve: (Math.random() - 0.5) * 12,
-    }));
-    const animate = () => {
-      ctx.clearRect(0, 0, c.width, c.height);
-      lines.forEach((l) => {
-        ctx.save();
-        ctx.globalAlpha = l.alpha;
-        ctx.strokeStyle = isDark ? "rgba(180,210,255,1)" : "rgba(80,130,200,1)";
-        ctx.lineWidth = l.thick;
-        ctx.lineCap = "round";
-        ctx.beginPath();
-        ctx.moveTo(l.x, l.y);
-        ctx.bezierCurveTo(
-          l.x + l.len * 0.33,
-          l.y + l.curve,
-          l.x + l.len * 0.66,
-          l.y - l.curve * 0.5,
-          l.x + l.len,
-          l.y,
-        );
-        ctx.stroke();
-        ctx.restore();
-        l.x += l.speed;
-        if (l.x > c.width + 20) {
-          l.x = -l.len - 20;
-          l.y = 10 + Math.random() * c.height * 0.85;
-        }
-      });
-      raf = requestAnimationFrame(animate);
-    };
-    animate();
-    return () => cancelAnimationFrame(raf);
-  }, [isDark]);
-  return (
-    <canvas
-      ref={canvasRef}
-      style={{
-        position: "absolute",
-        inset: 0,
-        width: "100%",
-        height: "100%",
-        pointerEvents: "none",
-      }}
-    />
-  );
+  const ref=useRef(null);
+  useEffect(()=>{ const c=ref.current; if(!c) return; const ctx=c.getContext("2d"); c.width=c.offsetWidth; c.height=c.offsetHeight; let raf; const lines=Array.from({length:18},(_,i)=>({ y:10+(i/18)*c.height*0.85, x:-Math.random()*c.width, len:40+Math.random()*80, sp:3+Math.random()*4, al:0.08+Math.random()*0.22, th:0.6+Math.random()*1.2, cv:(Math.random()-0.5)*12 })); const animate=()=>{ ctx.clearRect(0,0,c.width,c.height); lines.forEach(l=>{ ctx.save(); ctx.globalAlpha=l.al; ctx.strokeStyle=isDark?"rgba(180,210,255,1)":"rgba(80,130,200,1)"; ctx.lineWidth=l.th; ctx.lineCap="round"; ctx.beginPath(); ctx.moveTo(l.x,l.y); ctx.bezierCurveTo(l.x+l.len*0.33,l.y+l.cv,l.x+l.len*0.66,l.y-l.cv*0.5,l.x+l.len,l.y); ctx.stroke(); ctx.restore(); l.x+=l.sp; if(l.x>c.width+20){l.x=-l.len-20;l.y=10+Math.random()*c.height*0.85;} }); raf=requestAnimationFrame(animate); }; animate(); return ()=>cancelAnimationFrame(raf); },[isDark]);
+  return <canvas ref={ref} style={{position:"absolute",inset:0,width:"100%",height:"100%",pointerEvents:"none"}} />;
 };
 
-/* ── Hot: heat shimmer + floating embers ── */
 const HotCanvas = ({ isDark }) => {
-  const canvasRef = useRef(null);
-  useEffect(() => {
-    const c = canvasRef.current;
-    if (!c) return;
-    const ctx = c.getContext("2d");
-    c.width = c.offsetWidth;
-    c.height = c.offsetHeight;
-    let raf,
-      t = 0;
-    const embers = Array.from({ length: 20 }, () => ({
-      x: Math.random() * c.width,
-      y: c.height * 0.5 + Math.random() * c.height * 0.5,
-      r: 1 + Math.random() * 2.5,
-      speed: 0.5 + Math.random() * 1.2,
-      drift: (Math.random() - 0.5) * 0.8,
-      alpha: 0.4 + Math.random() * 0.5,
-    }));
-    const animate = () => {
-      ctx.clearRect(0, 0, c.width, c.height);
-      // Heat shimmer wave
-      for (let i = 0; i < 4; i++) {
-        const wy = c.height * (0.3 + i * 0.18) + Math.sin(t * 0.025 + i) * 10;
-        const wg = ctx.createLinearGradient(0, wy - 12, 0, wy + 12);
-        wg.addColorStop(0, "transparent");
-        wg.addColorStop(
-          0.5,
-          isDark ? "rgba(255,120,30,0.06)" : "rgba(255,140,30,0.08)",
-        );
-        wg.addColorStop(1, "transparent");
-        ctx.fillStyle = wg;
-        ctx.fillRect(0, wy - 12, c.width, 24);
-      }
-      // Embers
-      embers.forEach((e) => {
-        ctx.save();
-        ctx.globalAlpha = e.alpha;
-        const g = ctx.createRadialGradient(e.x, e.y, 0, e.x, e.y, e.r * 2);
-        g.addColorStop(0, isDark ? "rgba(255,200,50,1)" : "rgba(255,160,30,1)");
-        g.addColorStop(
-          0.5,
-          isDark ? "rgba(255,100,20,0.6)" : "rgba(255,80,0,0.5)",
-        );
-        g.addColorStop(1, "transparent");
-        ctx.fillStyle = g;
-        ctx.beginPath();
-        ctx.arc(e.x, e.y, e.r * 2, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-        e.y -= e.speed;
-        e.x += e.drift;
-        e.alpha -= 0.003;
-        if (e.y < 0 || e.alpha <= 0) {
-          e.x = Math.random() * c.width;
-          e.y = c.height * 0.7 + Math.random() * c.height * 0.3;
-          e.alpha = 0.4 + Math.random() * 0.5;
-        }
-      });
-      t++;
-      raf = requestAnimationFrame(animate);
-    };
-    animate();
-    return () => cancelAnimationFrame(raf);
-  }, [isDark]);
-  return (
-    <canvas
-      ref={canvasRef}
-      style={{
-        position: "absolute",
-        inset: 0,
-        width: "100%",
-        height: "100%",
-        pointerEvents: "none",
-      }}
-    />
-  );
+  const ref=useRef(null);
+  useEffect(()=>{ const c=ref.current; if(!c) return; const ctx=c.getContext("2d"); c.width=c.offsetWidth; c.height=c.offsetHeight; let raf,t=0; const embers=Array.from({length:20},()=>({ x:Math.random()*c.width, y:c.height*0.5+Math.random()*c.height*0.5, r:1+Math.random()*2.5, sp:0.5+Math.random()*1.2, dr:(Math.random()-0.5)*0.8, al:0.4+Math.random()*0.5 })); const animate=()=>{ ctx.clearRect(0,0,c.width,c.height); for(let i=0;i<4;i++){const wy=c.height*(0.3+i*0.18)+Math.sin(t*0.025+i)*10; const wg=ctx.createLinearGradient(0,wy-12,0,wy+12); wg.addColorStop(0,"transparent"); wg.addColorStop(0.5,isDark?"rgba(255,120,30,0.06)":"rgba(255,140,30,0.08)"); wg.addColorStop(1,"transparent"); ctx.fillStyle=wg; ctx.fillRect(0,wy-12,c.width,24);} embers.forEach(e=>{ctx.save();ctx.globalAlpha=e.al;const g=ctx.createRadialGradient(e.x,e.y,0,e.x,e.y,e.r*2);g.addColorStop(0,isDark?"rgba(255,200,50,1)":"rgba(255,160,30,1)");g.addColorStop(0.5,isDark?"rgba(255,100,20,0.6)":"rgba(255,80,0,0.5)");g.addColorStop(1,"transparent");ctx.fillStyle=g;ctx.beginPath();ctx.arc(e.x,e.y,e.r*2,0,Math.PI*2);ctx.fill();ctx.restore();e.y-=e.sp;e.x+=e.dr;e.al-=0.003;if(e.y<0||e.al<=0){e.x=Math.random()*c.width;e.y=c.height*0.7+Math.random()*c.height*0.3;e.al=0.4+Math.random()*0.5;}}); t++;raf=requestAnimationFrame(animate);}; animate(); return ()=>cancelAnimationFrame(raf); },[isDark]);
+  return <canvas ref={ref} style={{position:"absolute",inset:0,width:"100%",height:"100%",pointerEvents:"none"}} />;
 };
 
-/* ── Cold: frost crystals ── */
 const ColdCanvas = ({ isDark }) => {
-  const canvasRef = useRef(null);
-  useEffect(() => {
-    const c = canvasRef.current;
-    if (!c) return;
-    const ctx = c.getContext("2d");
-    c.width = c.offsetWidth;
-    c.height = c.offsetHeight;
-    let raf,
-      t = 0;
-    // Frost corner crystals
-    const drawFrostBranch = (x, y, angle, len, depth) => {
-      if (depth === 0 || len < 3) return;
-      const ex = x + Math.cos(angle) * len;
-      const ey = y + Math.sin(angle) * len;
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(ex, ey);
-      ctx.stroke();
-      if (depth > 1) {
-        [-Math.PI / 4, Math.PI / 4, -Math.PI / 3, Math.PI / 3].forEach((a) => {
-          drawFrostBranch(ex, ey, angle + a, len * 0.55, depth - 1);
-        });
-      }
-    };
-    // Floating ice particles
-    const particles = Array.from({ length: 25 }, () => ({
-      x: Math.random() * c.width,
-      y: Math.random() * c.height,
-      r: 1 + Math.random() * 2,
-      alpha: 0.2 + Math.random() * 0.4,
-      phase: Math.random() * Math.PI * 2,
-    }));
-    const animate = () => {
-      ctx.clearRect(0, 0, c.width, c.height);
-      // Frost corners
-      [
-        [0, 0],
-        [c.width, 0],
-      ].forEach(([fx, fy], qi) => {
-        ctx.save();
-        ctx.strokeStyle = isDark
-          ? "rgba(160,200,255,0.18)"
-          : "rgba(180,220,255,0.45)";
-        ctx.lineWidth = 0.7;
-        const baseAngles =
-          qi === 0
-            ? [0.2, 0.6, 1.0]
-            : [Math.PI - 0.2, Math.PI - 0.6, Math.PI - 1.0];
-        baseAngles.forEach((a) => drawFrostBranch(fx, fy, a, 35, 3));
-        ctx.restore();
-      });
-      // Floating ice particles
-      particles.forEach((p) => {
-        p.phase += 0.012;
-        const py = p.y + Math.sin(p.phase) * 4;
-        ctx.save();
-        ctx.globalAlpha = p.alpha;
-        ctx.fillStyle = isDark ? "rgba(180,220,255,1)" : "rgba(100,170,230,1)";
-        ctx.beginPath();
-        ctx.arc(p.x, py, p.r, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      });
-      t++;
-      raf = requestAnimationFrame(animate);
-    };
-    animate();
-    return () => cancelAnimationFrame(raf);
-  }, [isDark]);
-  return (
-    <canvas
-      ref={canvasRef}
-      style={{
-        position: "absolute",
-        inset: 0,
-        width: "100%",
-        height: "100%",
-        pointerEvents: "none",
-      }}
-    />
-  );
+  const ref=useRef(null);
+  useEffect(()=>{ const c=ref.current; if(!c) return; const ctx=c.getContext("2d"); c.width=c.offsetWidth; c.height=c.offsetHeight; let raf; const drawBranch=(x,y,a,len,d)=>{ if(d===0||len<3)return; const ex=x+Math.cos(a)*len,ey=y+Math.sin(a)*len; ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(ex,ey);ctx.stroke(); if(d>1)[-Math.PI/4,Math.PI/4,-Math.PI/3,Math.PI/3].forEach(da=>drawBranch(ex,ey,a+da,len*0.55,d-1)); }; const pts=Array.from({length:25},()=>({ x:Math.random()*c.width, y:Math.random()*c.height, r:1+Math.random()*2, al:0.2+Math.random()*0.4, ph:Math.random()*Math.PI*2 })); const animate=()=>{ ctx.clearRect(0,0,c.width,c.height); [[0,0],[c.width,0]].forEach(([fx,fy],qi)=>{ ctx.save(); ctx.strokeStyle=isDark?"rgba(160,200,255,0.18)":"rgba(180,220,255,0.45)"; ctx.lineWidth=0.7; const ba=qi===0?[0.2,0.6,1.0]:[Math.PI-0.2,Math.PI-0.6,Math.PI-1.0]; ba.forEach(a=>drawBranch(fx,fy,a,35,3)); ctx.restore(); }); pts.forEach(p=>{ p.ph+=0.012; ctx.save(); ctx.globalAlpha=p.al; ctx.fillStyle=isDark?"rgba(180,220,255,1)":"rgba(100,170,230,1)"; ctx.beginPath(); ctx.arc(p.x,p.y+Math.sin(p.ph)*4,p.r,0,Math.PI*2); ctx.fill(); ctx.restore(); }); raf=requestAnimationFrame(animate); }; animate(); return ()=>cancelAnimationFrame(raf); },[isDark]);
+  return <canvas ref={ref} style={{position:"absolute",inset:0,width:"100%",height:"100%",pointerEvents:"none"}} />;
 };
 
-// ─── Weather canvas selector ───────────────────────────────────
 const WeatherCanvas = ({ condition, isDark }) => {
   switch (condition) {
-    case "sunny":
-      return <SunnyCanvas isDark={isDark} />;
-    case "hot":
-      return <HotCanvas isDark={isDark} />;
-    case "rainy":
-      return <RainyCanvas isDark={isDark} />;
-    case "cloudy":
-      return <CloudyCanvas isDark={isDark} />;
-    case "cold":
-      return <ColdCanvas isDark={isDark} />;
-    case "windy":
-      return <WindyCanvas isDark={isDark} />;
-    case "snowy":
-      return <SnowyCanvas isDark={isDark} />;
-    default:
-      return <CloudyCanvas isDark={isDark} />;
+    case "sunny":  return <SunnyCanvas  isDark={isDark} />;
+    case "hot":    return <HotCanvas    isDark={isDark} />;
+    case "rainy":  return <RainyCanvas  isDark={isDark} />;
+    case "cold":   return <ColdCanvas   isDark={isDark} />;
+    case "windy":  return <WindyCanvas  isDark={isDark} />;
+    case "snowy":  return <SnowyCanvas  isDark={isDark} />;
+    default:       return <CloudyCanvas isDark={isDark} />;
   }
 };
 
-// ─── Weather label / icon map ──────────────────────────────────
-const W_META = {
-  sunny: { icon: "☀️", label: "Sunny" },
-  hot: { icon: "🌡️", label: "Hot" },
-  rainy: { icon: "🌧️", label: "Rainy" },
-  cold: { icon: "🌨️", label: "Cold" },
-  cloudy: { icon: "☁️", label: "Cloudy" },
-  windy: { icon: "💨", label: "Windy" },
-  snowy: { icon: "❄️", label: "Snowy" },
+// ─── Skeleton ──────────────────────────────────────────────────
+const WelcomeCardSkeleton = ({ isDark: D }) => {
+  const b = D ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)";
+  const m = D ? "rgba(255,255,255,0.09)" : "rgba(0,0,0,0.08)";
+  const s = { background:`linear-gradient(90deg,${b} 0%,${m} 50%,${b} 100%)`, backgroundSize:"200% 100%", animation:"wc-sk 1.6s ease-in-out infinite", borderRadius:8 };
+  return (
+    <>
+      <style>{`@keyframes wc-sk{0%{background-position:-200% center}100%{background-position:200% center}}`}</style>
+      <div style={{ margin:16, borderRadius:24, minHeight:196, overflow:"hidden", background:D?"#1A1D2E":"#D4D8E2", padding:"20px 20px 18px", display:"flex", flexDirection:"column", gap:10 }}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+          <div style={{display:"flex",flexDirection:"column",gap:8,flex:1}}>
+            <div style={{...s,height:9,width:"38%"}} />
+            <div style={{...s,height:9,width:"18%"}} />
+            <div style={{...s,height:40,width:"65%",marginTop:4,borderRadius:10}} />
+            <div style={{...s,height:9,width:"50%",marginTop:2}} />
+          </div>
+          <div style={{...s,height:82,width:72,borderRadius:18,flexShrink:0,marginLeft:12}} />
+        </div>
+        <div style={{display:"flex",gap:7,marginTop:8}}>
+          <div style={{...s,height:28,width:108,borderRadius:99}} />
+          <div style={{...s,height:28,width:90,borderRadius:99}} />
+        </div>
+        <div style={{display:"flex",gap:14,marginTop:4}}>
+          <div style={{...s,height:9,width:90,borderRadius:4}} />
+          <div style={{...s,height:9,width:80,borderRadius:4}} />
+        </div>
+      </div>
+    </>
+  );
 };
 
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 //  MAIN COMPONENT
-// ─────────────────────────────────────────────────────────────
-const WelcomeCard = ({ weather }) => {
-  useEffect(() => {
-    injectFonts();
-  }, []);
+//  Props:
+//    weather  — { condition, temp, city } from useRecommendations
+//    loading  — boolean, true while rec hook is fetching
+// ─────────────────────────────────────────────────────────────────────────────
+const WelcomeCard = ({ weather, loading = false }) => {
+  useEffect(() => { injectFonts(); }, []);
 
-  const { isDark } = useContext(ThemeContext);
-  const user = useSelector(selectUser);
-  const isGuest = useSelector(selectIsGuest);
-  const tableNumber = useSelector(selectTableNumber);
-  const session = useSelector(selectSession);
-  const cartItems = useSelector(selectCartItems);
+  const { isDark }    = useContext(ThemeContext);
+  const user          = useSelector(selectUser);
+  const isGuest       = useSelector(selectIsGuest);
+  const tableNumber   = useSelector(selectTableNumber);
+  const session       = useSelector(selectSession);
+  const cartItems     = useSelector(selectCartItems);
 
-  const cardRef = useRef(null);
-  const greetRef = useRef(null);
-  const prefixRef = useRef(null);
+  const [tableVisible, setTableVisible] = useState(false);
+
+  const cardRef    = useRef(null);
+  const greetRef   = useRef(null);
+  const prefixRef  = useRef(null);
   const nameRowRef = useRef(null);
-  const subRef = useRef(null);
-  const pillsRef = useRef(null);
-  const stripRef = useRef(null);
-  const badgeRef = useRef(null);
+  const subRef     = useRef(null);
+  const pillsRef   = useRef(null);
+  const stripRef   = useRef(null);
   const shimmerRef = useRef(null);
+  const tableRef   = useRef(null);
 
-  const condition = weather?.condition || "cloudy";
-  const theme = (WEATHER_THEME[condition] || WEATHER_THEME.cloudy)[
-    isDark ? "dark" : "light"
-  ];
-  const wMeta = W_META[condition] || W_META.cloudy;
-  const tc = TIER[user?.loyaltyTier || "none"];
-  const firstName = user?.name?.split(" ")[0] || "Friend";
-  const displayName = isGuest ? "Guest" : firstName;
-  const cartCount = cartItems?.reduce((a, i) => a + i.quantity, 0) ?? 0;
+  const condition = weather?.condition ?? "cloudy";
+  const theme     = (WEATHER_THEME[condition] || WEATHER_THEME.cloudy)[isDark ? "dark" : "light"];
+  const wMeta     = W_META[condition] || W_META.cloudy;
+  const tc        = TIER[user?.loyaltyTier || "none"];
+
+  const displayName = isGuest ? "Guest" : user?.name?.split(" ")[0] || "Friend";
+  const cartCount   = cartItems?.reduce((a, i) => a + i.quantity, 0) ?? 0;
   const { label: greetLabel, sub: greetSub } = getGreeting();
 
   const sessionStart = session?.createdAt
-    ? new Date(session.createdAt).toLocaleTimeString("en-IN", {
-        hour: "2-digit",
-        minute: "2-digit",
-      })
+    ? new Date(session.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })
     : null;
 
   const bgGradient = useMemo(
-    () =>
-      `linear-gradient(148deg, ${theme.bg[0]} 0%, ${theme.bg[1]} 55%, ${theme.bg[2]} 100%)`,
+    () => `linear-gradient(148deg, ${theme.bg[0]} 0%, ${theme.bg[1]} 55%, ${theme.bg[2]} 100%)`,
     [theme],
   );
 
-  // ── GSAP entrance ────────────────────────────────────────────
+  // ── Main entrance animation ───────────────────────────────
   useEffect(() => {
-    if (
-      !cardRef.current ||
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    )
-      return;
-    const tl = gsap.timeline({ delay: 0.1, defaults: { ease: "power3.out" } });
-    tl.fromTo(
-      cardRef.current,
-      { y: 30, opacity: 0, scale: 0.97 },
-      {
-        y: 0,
-        opacity: 1,
-        scale: 1,
-        duration: 0.65,
-        force3D: true,
-        clearProps: "transform",
-      },
+    if (!cardRef.current || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const tl = gsap.timeline({ delay: 0.05, defaults: { ease: "power3.out" } });
+    tl.fromTo(cardRef.current,
+      { y: 24, opacity: 0, scale: 0.97 },
+      { y: 0, opacity: 1, scale: 1, duration: 0.6, force3D: true, clearProps: "transform" },
     );
-    const staggerEls = [
-      greetRef,
-      prefixRef,
-      nameRowRef,
-      subRef,
-      pillsRef,
-      stripRef,
-    ]
-      .map((r) => r.current)
-      .filter(Boolean);
-    tl.fromTo(
-      staggerEls,
-      { y: 12, opacity: 0 },
-      { y: 0, opacity: 1, duration: 0.32, stagger: 0.07 },
-      "-=0.45",
-    );
-    if (badgeRef.current) {
-      tl.fromTo(
-        badgeRef.current,
-        { scale: 0.4, opacity: 0, rotation: -15 },
-        {
-          scale: 1,
-          opacity: 1,
-          rotation: 0,
-          duration: 0.55,
-          ease: "back.out(2.8)",
-          force3D: true,
-          clearProps: "transform",
-        },
-        0.25,
-      );
-    }
-    if (shimmerRef.current) {
-      tl.fromTo(
-        shimmerRef.current,
-        { x: "-115%" },
-        { x: "215%", duration: 1.6, ease: "power1.inOut" },
-        0.28,
-      );
-    }
+    const els = [greetRef, prefixRef, nameRowRef, subRef, pillsRef, stripRef].map(r => r.current).filter(Boolean);
+    if (els.length) tl.fromTo(els, { y: 10, opacity: 0 }, { y: 0, opacity: 1, duration: 0.28, stagger: 0.06 }, "-=0.4");
+    if (shimmerRef.current) tl.fromTo(shimmerRef.current, { x: "-115%" }, { x: "215%", duration: 1.6, ease: "power1.inOut" }, 0.22);
     return () => tl.kill();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [condition]);
+
+  // ── Table badge delayed reveal ────────────────────────────
+  useEffect(() => {
+    if (!tableNumber) return;
+    setTableVisible(false);
+    const timer = setTimeout(() => setTableVisible(true), 500);
+    return () => clearTimeout(timer);
+  }, [tableNumber]);
+
+  useEffect(() => {
+    if (!tableVisible || !tableRef.current) return;
+    gsap.fromTo(tableRef.current,
+      { scale: 0.5, opacity: 0, y: 10, rotateZ: -8 },
+      { scale: 1, opacity: 1, y: 0, rotateZ: 0, duration: 0.7, ease: "back.out(2.6)", force3D: true, clearProps: "transform" },
+    );
+  }, [tableVisible]);
+
+  // ── Early return — all hooks above ───────────────────────
+  if (loading && !weather) return <WelcomeCardSkeleton isDark={isDark} />;
+
+  const D = isDark;
 
   return (
     <>
       <style>{`
-        .wc-root {
-          font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
-          -webkit-tap-highlight-color: transparent;
-        }
-        /* Pill: frosted glass */
+        .wc-root { font-family:'Plus Jakarta Sans',system-ui,sans-serif; -webkit-tap-highlight-color:transparent; }
         .wc-pill {
-          display: inline-flex;
-          align-items: center;
-          gap: 5px;
-          padding: 5px 12px;
-          border-radius: 99px;
-          font-size: 11px;
-          font-weight: 600;
-          font-family: 'Plus Jakarta Sans', sans-serif;
-          letter-spacing: 0.01em;
-          white-space: nowrap;
-          backdrop-filter: blur(12px);
-          -webkit-backdrop-filter: blur(12px);
-          transition: background 0.3s, border-color 0.3s;
+          display:inline-flex; align-items:center; gap:5px;
+          padding:5px 13px; border-radius:99px;
+          font-size:11.5px; font-weight:600;
+          font-family:'Plus Jakarta Sans',sans-serif; letter-spacing:0.01em;
+          white-space:nowrap; backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+          transition:background 0.3s,border-color 0.3s; flex-shrink:0;
         }
         .wc-strip-item {
-          display: inline-flex;
-          align-items: center;
-          gap: 4px;
-          font-size: 9.5px;
-          font-weight: 500;
-          font-family: 'Plus Jakarta Sans', sans-serif;
-          letter-spacing: 0.02em;
-          opacity: 0.5;
+          display:inline-flex; align-items:center; gap:4px;
+          font-size:9.5px; font-weight:500;
+          font-family:'Plus Jakarta Sans',sans-serif; letter-spacing:0.02em;
+          opacity:0.52; white-space:nowrap;
         }
         /* Table badge pulse ring */
-        @keyframes wc-ring-pulse {
-          0%   { transform: scale(1);   opacity: 0.5; }
-          70%  { transform: scale(1.5); opacity: 0; }
-          100% { transform: scale(1.5); opacity: 0; }
+        @keyframes wc-ring {
+          0%   { transform:scale(1);    opacity:0.5  }
+          70%  { transform:scale(1.6);  opacity:0    }
+          100% { transform:scale(1.6);  opacity:0    }
         }
-        .wc-badge-ring {
-          animation: wc-ring-pulse 2.2s ease-out infinite;
+        .wc-badge-ring { animation: wc-ring 2.6s ease-out infinite; }
+        /* Greeting label subtle pulse */
+        @keyframes wc-glow { 0%,100%{opacity:0.45} 50%{opacity:0.75} }
+        .wc-greet-label { animation: wc-glow 3s ease-in-out infinite; }
+        /* Table number digit — tight tracking */
+        .wc-table-num {
+          font-family:'Bricolage Grotesque','Plus Jakarta Sans',system-ui,sans-serif;
+          font-weight:900;
+          letter-spacing:-0.03em;
+          line-height:1;
         }
-        /* Greeting label glow */
-        @keyframes wc-label-glow {
-          0%, 100% { opacity: 0.45; }
-          50%       { opacity: 0.75; }
-        }
-        .wc-greet-label { animation: wc-label-glow 3s ease-in-out infinite; }
       `}</style>
 
       <div
@@ -915,68 +374,41 @@ const WelcomeCard = ({ weather }) => {
         style={{
           position: "relative",
           overflow: "hidden",
-          margin: "16px",
+          margin: 16,
           borderRadius: 24,
           background: bgGradient,
           boxShadow: [
             `0 16px 48px ${theme.shadow}`,
-            `0 1px 0 rgba(255,255,255,${isDark ? "0.08" : "0.55"}) inset`,
-            `0 0 0 1px rgba(${isDark ? "255,255,255,0.06" : "0,0,0,0.04"})`,
+            `0 1px 0 rgba(255,255,255,${D ? "0.08" : "0.55"}) inset`,
+            `0 0 0 1px rgba(${D ? "255,255,255,0.06" : "0,0,0,0.04"})`,
           ].join(", "),
-          minHeight: 190,
-          transition: "background 0.5s ease, box-shadow 0.5s ease",
+          minHeight: 196,
+          transition: "background 0.55s ease, box-shadow 0.55s ease",
         }}
       >
-        {/* ── Realistic weather canvas ── */}
-        <WeatherCanvas condition={condition} isDark={isDark} />
+        <WeatherCanvas condition={condition} isDark={D} />
 
-        {/* ── Top edge highlight ── */}
-        <div
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            height: 1,
-            background: `linear-gradient(90deg, transparent 5%, rgba(255,255,255,${isDark ? "0.14" : "0.7"}) 50%, transparent 95%)`,
-            pointerEvents: "none",
-            zIndex: 2,
-          }}
-        />
+        {/* Top edge highlight */}
+        <div style={{ position:"absolute",top:0,left:0,right:0,height:1, background:`linear-gradient(90deg,transparent 5%,rgba(255,255,255,${D?"0.14":"0.7"}) 50%,transparent 95%)`, pointerEvents:"none", zIndex:2 }} />
+        {/* Bottom vignette */}
+        <div style={{ position:"absolute",bottom:0,left:0,right:0,height:"42%", background:`linear-gradient(to top,rgba(${D?"0,0,0,0.28":"0,0,0,0.05"}) 0%,transparent 100%)`, pointerEvents:"none", zIndex:1 }} />
+        {/* Shimmer sweep */}
+        <div ref={shimmerRef} style={{ position:"absolute",inset:0,width:"40%", background:`linear-gradient(108deg,transparent 20%,rgba(255,255,255,${D?"0.06":"0.14"}) 50%,transparent 80%)`, pointerEvents:"none", zIndex:2, transform:"translateX(-115%)" }} />
 
-        {/* ── Bottom depth vignette ── */}
-        <div
-          style={{
-            position: "absolute",
-            bottom: 0,
-            left: 0,
-            right: 0,
-            height: "45%",
-            background: `linear-gradient(to top, rgba(${isDark ? "0,0,0,0.3" : "0,0,0,0.06"}) 0%, transparent 100%)`,
-            pointerEvents: "none",
-            zIndex: 1,
-          }}
-        />
-
-        {/* ── Shimmer sweep ── */}
-        <div
-          ref={shimmerRef}
-          style={{
-            position: "absolute",
-            inset: 0,
-            width: "40%",
-            background: `linear-gradient(108deg, transparent 20%, rgba(255,255,255,${isDark ? "0.06" : "0.14"}) 50%, transparent 80%)`,
-            pointerEvents: "none",
-            zIndex: 2,
-            transform: "translateX(-115%)",
-          }}
-        />
-
-        {/* ── TABLE BADGE — top right ── */}
-        {tableNumber && (
+        {/* ════════════════════════════════════════════════════
+            TABLE BADGE — absolutely positioned top-right
+            Animated in after 500ms delay via GSAP
+        ════════════════════════════════════════════════════ */}
+        {tableNumber && tableVisible && (
           <div
-            ref={badgeRef}
-            style={{ position: "absolute", top: 14, right: 14, zIndex: 10 }}
+            ref={tableRef}
+            style={{
+              position: "absolute",
+              top: 14,
+              right: 14,
+              zIndex: 10,
+              opacity: 0, // GSAP animates this to 1
+            }}
           >
             {/* Pulse ring */}
             <div
@@ -985,55 +417,54 @@ const WelcomeCard = ({ weather }) => {
                 position: "absolute",
                 inset: -6,
                 borderRadius: 18,
-                border: `2px solid rgba(255,255,255,${isDark ? "0.2" : "0.5"})`,
+                border: `1.5px solid rgba(255,255,255,${D ? "0.24" : "0.6"})`,
                 pointerEvents: "none",
               }}
             />
+            {/* Badge body */}
             <div
               style={{
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
-                padding: "10px 14px",
+                justifyContent: "center",
+                padding: "10px 14px 10px",
                 borderRadius: 18,
-                background: isDark
-                  ? "rgba(0,0,0,0.35)"
-                  : "rgba(255,255,255,0.3)",
+                background: D ? "rgba(0,0,0,0.30)" : "rgba(255,255,255,0.32)",
                 backdropFilter: "blur(20px)",
                 WebkitBackdropFilter: "blur(20px)",
-                border: `1px solid rgba(255,255,255,${isDark ? "0.12" : "0.5"})`,
-                boxShadow: "0 4px 20px rgba(0,0,0,0.2)",
-                minWidth: 52,
+                border: `1px solid rgba(255,255,255,${D ? "0.14" : "0.52"})`,
+                boxShadow: [
+                  "0 6px 24px rgba(0,0,0,0.18)",
+                  `0 1px 0 rgba(255,255,255,${D ? "0.1" : "0.6"}) inset`,
+                ].join(", "),
+                minWidth: 76,
+                gap: 2,
               }}
             >
-              <Armchair
-                size={11}
-                color={isDark ? "rgba(255,255,255,0.55)" : theme.text}
-                strokeWidth={2.2}
-              />
+              {/* Chair icon */}
+              <span style={{ fontSize: 11, lineHeight: 1, opacity: 0.6, marginBottom: 2 }}>🪑</span>
+              {/* "TABLE" label */}
               <span
                 style={{
-                  fontFamily: "'Plus Jakarta Sans', sans-serif",
-                  fontSize: 7.5,
-                  fontWeight: 700,
-                  color: isDark ? "rgba(255,255,255,0.45)" : theme.text,
+                  fontFamily: "'Plus Jakarta Sans',sans-serif",
+                  fontSize: 7,
+                  fontWeight: 800,
+                  color: D ? "rgba(255,255,255,0.42)" : theme.text,
                   textTransform: "uppercase",
-                  letterSpacing: "0.16em",
-                  marginTop: 4,
+                  letterSpacing: "0.18em",
                   lineHeight: 1,
-                  opacity: 0.7,
+                  opacity: D ? 1 : 0.6,
                 }}
               >
                 Table
               </span>
+              {/* Table number — BIG */}
               <span
+                className="wc-table-num"
                 style={{
-                  fontFamily: "'Plus Jakarta Sans', sans-serif",
-                  fontSize: 26,
-                  fontWeight: 900,
-                  color: isDark ? "#fff" : theme.text,
-                  lineHeight: 1.05,
-                  letterSpacing: "-0.04em",
+                  fontSize: tableNumber.length > 3 ? 18 : 24,
+                  color: D ? "#ffffff" : theme.text,
                   marginTop: 1,
                 }}
               >
@@ -1043,123 +474,118 @@ const WelcomeCard = ({ weather }) => {
           </div>
         )}
 
-        {/* ── MAIN CONTENT ── */}
+        {/* ════════════════════════════════════════════════════
+            MAIN CONTENT
+            Right padding reserves space for badge when present
+        ════════════════════════════════════════════════════ */}
         <div
           style={{
             position: "relative",
             zIndex: 5,
-            padding: "22px 20px 20px",
-            paddingRight: tableNumber ? 90 : 20,
+            padding: "20px 20px 18px",
+            paddingRight: tableNumber ? 96 : 20,
             display: "flex",
             flexDirection: "column",
-            gap: 3,
+            gap: 0,
           }}
         >
-          {/* Greeting label */}
+          {/* ── Row 1: Greeting label ── */}
           <p
             ref={greetRef}
             className="wc-greet-label"
             style={{
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
+              fontFamily: "'Plus Jakarta Sans',sans-serif",
               fontSize: 9,
               fontWeight: 700,
               textTransform: "uppercase",
               letterSpacing: "0.22em",
               color: theme.sub,
               lineHeight: 1,
-              marginBottom: 4,
+              marginBottom: 6,
             }}
           >
             {greetLabel}
           </p>
 
-          {/* "Hey," prefix */}
+          {/* ── Row 2: "Hey," prefix ── */}
           <p
             ref={prefixRef}
             style={{
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
+              fontFamily: "'Plus Jakarta Sans',sans-serif",
               fontSize: 12,
               fontWeight: 300,
               color: theme.sub,
               letterSpacing: "0.04em",
               lineHeight: 1,
+              marginBottom: 2,
             }}
           >
             {isGuest ? "Welcome," : "Hey,"}
           </p>
 
-          {/* ── BIG NAME ── */}
+          {/* ── Row 3: Big name + wave ── */}
           <div
             ref={nameRowRef}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              marginTop: 2,
-            }}
+            style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}
           >
             <span
               style={{
-                fontFamily:
-                  "'Bricolage Grotesque', 'Plus Jakarta Sans', system-ui, sans-serif",
-                fontSize: "clamp(34px, 9.5vw, 46px)",
+                fontFamily: "'Syne','Bricolage Grotesque',system-ui,sans-serif",
+                fontSize: "clamp(34px,9.5vw,46px)",
                 fontWeight: 900,
                 color: theme.text,
-                letterSpacing: "-0.02em", // tighter than before
-                lineHeight: 1.0,
-                textShadow: isDark
-                  ? "0 2px 16px rgba(0,0,0,0.4)"
-                  : "0 2px 12px rgba(255,255,255,0.4)",
+                letterSpacing: "-0.03em",
+                lineHeight: 1,
+                textShadow: D ? "0 2px 16px rgba(0,0,0,0.4)" : "0 2px 12px rgba(255,255,255,0.5)",
               }}
             >
               {displayName}
             </span>
-            <span
-              style={{
-                fontSize: "clamp(22px, 6vw, 28px)",
-                lineHeight: 1,
-                filter: "drop-shadow(0 2px 6px rgba(0,0,0,0.18))",
-              }}
-            >
+            <span style={{ fontSize: "clamp(20px,5.5vw,26px)", lineHeight: 1, filter: "drop-shadow(0 2px 6px rgba(0,0,0,0.18))" }}>
               👋
             </span>
           </div>
 
-          {/* Sub line */}
+          {/* ── Row 4: Sub line ── */}
           <p
             ref={subRef}
             style={{
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
+              fontFamily: "'Plus Jakarta Sans',sans-serif",
               fontSize: 12,
               fontWeight: 400,
               color: theme.sub,
               letterSpacing: "0.01em",
-              marginTop: 4,
               lineHeight: 1.4,
+              marginBottom: 12,
             }}
           >
             {greetSub}
           </p>
 
-          {/* ── PILLS ── */}
+          {/* ── Row 5: Pills (wrap-safe, never clips) ── */}
           <div
             ref={pillsRef}
-            style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 10 }}
+            style={{
+              display: "flex",
+              flexDirection: "row",
+              flexWrap: "wrap",
+              gap: 7,
+              alignItems: "center",
+              marginBottom: 10,
+            }}
           >
             {/* Weather pill */}
             <span
               className="wc-pill"
               style={{
-                background: isDark
-                  ? "rgba(0,0,0,0.28)"
-                  : "rgba(255,255,255,0.38)",
+                background: D ? "rgba(0,0,0,0.26)" : "rgba(255,255,255,0.42)",
                 color: theme.text,
-                border: `1px solid rgba(255,255,255,${isDark ? "0.12" : "0.55"})`,
-                boxShadow: `0 1px 0 rgba(255,255,255,${isDark ? "0.06" : "0.6"}) inset`,
+                border: `1px solid rgba(255,255,255,${D ? "0.13" : "0.55"})`,
+                boxShadow: `0 1px 0 rgba(255,255,255,${D ? "0.06" : "0.6"}) inset`,
               }}
             >
               <span style={{ fontSize: 13, lineHeight: 1 }}>{wMeta.icon}</span>
-              {wMeta.label}
+              <span>{wMeta.label}</span>
               {weather?.temp != null && (
                 <span style={{ opacity: 0.6, fontWeight: 500 }}>
                   · {Math.round(weather.temp)}°C
@@ -1167,44 +593,50 @@ const WelcomeCard = ({ weather }) => {
               )}
             </span>
 
-            {/* Tier pill */}
+            {/* Tier pill — logged-in only */}
             {!isGuest && (
               <span
                 className="wc-pill"
                 style={{
-                  background: isDark
-                    ? "rgba(0,0,0,0.28)"
-                    : "rgba(255,255,255,0.38)",
+                  background: D ? "rgba(0,0,0,0.26)" : "rgba(255,255,255,0.42)",
                   color: theme.text,
-                  border: `1px solid rgba(255,255,255,${isDark ? "0.12" : "0.55"})`,
-                  boxShadow: `0 1px 0 rgba(255,255,255,${isDark ? "0.06" : "0.6"}) inset`,
+                  border: `1px solid rgba(255,255,255,${D ? "0.13" : "0.55"})`,
+                  boxShadow: `0 1px 0 rgba(255,255,255,${D ? "0.06" : "0.6"}) inset`,
                 }}
               >
                 <span style={{ fontSize: 12 }}>{tc.emoji}</span>
-                {tc.label}
+                <span>{tc.label}</span>
               </span>
             )}
           </div>
 
-          {/* ── STATUS STRIP ── */}
+          {/* ── Row 6: Status strip ── */}
           <div
             ref={stripRef}
-            style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 6 }}
+            style={{
+              display: "flex",
+              flexDirection: "row",
+              flexWrap: "wrap",
+              alignItems: "center",
+              gap: 10,
+            }}
           >
             {sessionStart && (
               <span className="wc-strip-item" style={{ color: theme.text }}>
-                <Clock size={9} strokeWidth={2.5} /> Since {sessionStart}
+                <Clock size={9} strokeWidth={2.5} />
+                <span>Since {sessionStart}</span>
               </span>
             )}
             {cartCount > 0 && (
               <span className="wc-strip-item" style={{ color: theme.text }}>
                 <ShoppingBag size={9} strokeWidth={2.5} />
-                {cartCount} item{cartCount !== 1 ? "s" : ""} in cart
+                <span>{cartCount} item{cartCount !== 1 ? "s" : ""} in cart</span>
               </span>
             )}
             {session?.status === "active" && (
               <span className="wc-strip-item" style={{ color: theme.text }}>
-                <Wifi size={9} strokeWidth={2.5} /> Active session
+                <Wifi size={9} strokeWidth={2.5} />
+                <span>Active session</span>
               </span>
             )}
           </div>

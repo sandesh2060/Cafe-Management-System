@@ -5,6 +5,11 @@ const tableSessionSchema = new mongoose.Schema({
   sessionId:        { type: String, unique: true, required: true },   // UUID v4
   tableId:          { type: mongoose.Schema.Types.ObjectId, ref: 'Table', required: true },
   cafeId:           { type: mongoose.Schema.Types.ObjectId, ref: 'Cafe',  required: true },
+
+  // ── Denormalised for fast reads — avoids a Table join on every session fetch ──
+  tableNumber:      { type: String, default: null },   // e.g. "T-7", "MY-1"
+  zone:             { type: String, default: null },   // e.g. "Indoor", "Outdoor"
+
   detectionMethod:  { type: String, enum: ['gps', 'qr', 'manual'], required: true },
   gpsAccuracy:      { type: Number, default: null },
   confidenceScore:  { type: Number, default: 0, min: 0, max: 100 },

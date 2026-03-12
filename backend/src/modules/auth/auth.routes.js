@@ -1,18 +1,26 @@
 // backend/src/modules/auth/auth.routes.js
 import { Router } from 'express'
 import jwt        from 'jsonwebtoken'
-import { checkUsername, register, login, logout, me } from './auth.controller.js'
+import {
+  checkUsername,
+  register,
+  login,
+  logout,
+  me,
+  updateProfile,
+}                  from './auth.controller.js'
 import { protect } from './auth.middleware.js'
 import User        from '../user/user.model.js'
 
 const router = Router()
 
 // ── Username-based auth ───────────────────────────────────────────────────────
-router.post('/check-username', checkUsername)   // { username } → { exists: bool }
-router.post('/register',       register)        // { username, name, cafeId? }
-router.post('/login',          login)           // { username }
-router.post('/logout',  protect, logout)
-router.get ('/me',      protect, me)
+router.post ('/check-username', checkUsername)   // { username } → { exists: bool }
+router.post ('/register',       register)        // { username, name, cafeId? }
+router.post ('/login',          login)           // { username }
+router.post ('/logout',  protect, logout)
+router.get  ('/me',      protect, me)
+router.patch('/me',      protect, updateProfile) // { username?, avatar? }
 
 // ── Guest login ───────────────────────────────────────────────────────────────
 router.post('/guest', async (req, res, next) => {

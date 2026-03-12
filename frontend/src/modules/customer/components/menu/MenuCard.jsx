@@ -1,439 +1,647 @@
 // src/modules/customer/components/menu/MenuCard.jsx
-import { useRef, useEffect, useCallback, useContext } from 'react'
-import { useDispatch, useSelector }                   from 'react-redux'
-import { addItem }                                    from '@store/slices/cartSlice'
-import { ThemeContext }                               from '@shared/context/ThemeContext'
-import gsap                                           from 'gsap'
-import { Plus, Flame, Clock, Leaf }                   from 'lucide-react'
-import toast                                          from 'react-hot-toast'
+// Tailwind CSS — iOS Safari safe (clip-path radius, no nested backdrop-filter bugs)
 
-const SPICE_COLOR = [null, '#F59E0B', '#EF4444', '#DC2626']
-const SPICE_LABEL = [null, 'Mild', 'Medium', 'Hot']
+import { useState, useContext, useRef, useCallback, useEffect } from "react";
+import { createPortal } from "react-dom";
+import { useDispatch } from "react-redux";
+import { useNavigate } from "react-router-dom";
+import gsap from "gsap";
+import { X, Plus, Check } from "lucide-react";
+import { ThemeContext } from "@shared/context/ThemeContext";
+import { addItem } from "@store/slices/cartSlice";
+import { lockScroll, unlockScroll } from "@shared/utils/lenisLock";
 
-const selectItemQty = (itemId) => (state) => {
-  const cartItems = state.cart?.items ?? []
-  return cartItems
-    .filter(i => i.menuItemId === itemId)
-    .reduce((sum, i) => sum + (i.quantity ?? 1), 0)
+// ─── Price Pills ──────────────────────────────────────────────────────────────
+
+function DualPricePill({ portions, isDark: D }) {
+  const p0 = portions[0];
+  const p1 = portions[1];
+  return (
+    <div
+      className={[
+        "relative flex items-stretch h-[42px] flex-1 min-w-0 max-w-[136px] rounded-[11px] overflow-hidden",
+        D
+          ? "bg-[rgba(60,32,4,0.92)] border border-[rgba(255,159,28,0.28)] shadow-[0_1px_0_rgba(255,255,255,0.07)_inset,0_2px_10px_rgba(0,0,0,0.35)]"
+          : "bg-[rgba(255,238,210,0.97)] border border-[rgba(200,104,10,0.28)] shadow-[0_1px_0_rgba(255,255,255,1)_inset,0_2px_8px_rgba(200,104,10,0.12)]",
+      ].join(" ")}
+      style={{ transform: "translate3d(0,0,0)" }}
+    >
+      <div
+        aria-hidden
+        className="absolute top-0 left-[6%] right-[6%] h-px pointer-events-none z-[2]"
+        style={{
+          background: D
+            ? "linear-gradient(90deg,transparent,rgba(255,255,255,0.08) 40%,rgba(255,255,255,0.14) 50%,rgba(255,255,255,0.08) 60%,transparent)"
+            : "linear-gradient(90deg,transparent,rgba(255,255,255,0.65) 40%,rgba(255,255,255,0.90) 50%,rgba(255,255,255,0.65) 60%,transparent)",
+        }}
+      />
+      <div className="flex-1 flex flex-col items-center justify-center gap-[3px] px-2 min-w-0">
+        <span
+          className={`text-[12px] font-black tracking-[-0.04em] leading-none whitespace-nowrap font-mono ${D ? "text-[#FFB84D]" : "text-[#C8680A]"}`}
+        >
+          Rs {p0.price}
+        </span>
+        <span
+          className={`text-[7px] font-bold tracking-[0.06em] uppercase leading-none whitespace-nowrap overflow-hidden text-ellipsis max-w-full ${D ? "text-[rgba(255,196,110,0.50)]" : "text-[rgba(140,70,10,0.55)]"}`}
+        >
+          {p0.label ?? "Half"}
+        </span>
+      </div>
+      <div
+        className={`w-px self-stretch my-2 flex-shrink-0 ${D ? "bg-[rgba(255,159,28,0.20)]" : "bg-[rgba(200,104,10,0.20)]"}`}
+      />
+      <div className="flex-1 flex flex-col items-center justify-center gap-[3px] px-2 min-w-0">
+        <span
+          className={`text-[12px] font-black tracking-[-0.04em] leading-none whitespace-nowrap font-mono ${D ? "text-[#FFB84D]" : "text-[#C8680A]"}`}
+        >
+          Rs {p1.price}
+        </span>
+        <span
+          className={`text-[7px] font-bold tracking-[0.06em] uppercase leading-none whitespace-nowrap overflow-hidden text-ellipsis max-w-full ${D ? "text-[rgba(255,196,110,0.50)]" : "text-[rgba(140,70,10,0.55)]"}`}
+        >
+          {p1.label ?? "Full"}
+        </span>
+      </div>
+    </div>
+  );
 }
 
-const MenuCard = ({ item }) => {
-  const dispatch  = useDispatch()
-  const qty       = useSelector(selectItemQty(item._id))
-  const { isDark: D } = useContext(ThemeContext)
-
-  const cardRef   = useRef(null)
-  const imgRef    = useRef(null)
-  const btnRef    = useRef(null)
-  const shineRef  = useRef(null)
-  const rippleRef = useRef(null)
-  const badgeRef  = useRef(null)
-  const prevQty   = useRef(qty)
-
-  /* ── Badge pop on qty increase ────────────────────────────────────── */
-  useEffect(() => {
-    if (!badgeRef.current || qty === 0) return
-    if (qty > prevQty.current) {
-      gsap.fromTo(badgeRef.current,
-        { scale: 1.7, opacity: 0.5 },
-        { scale: 1, opacity: 1, duration: 0.4, ease: 'elastic.out(1.2, 0.5)' }
-      )
-    }
-    prevQty.current = qty
-  }, [qty])
-
-  /* ── 3D tilt on hover (desktop) ───────────────────────────────────── */
-  useEffect(() => {
-    const el = cardRef.current
-    if (!el || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
-
-    const onMove = (e) => {
-      const r = el.getBoundingClientRect()
-      const x = ((e.clientX - r.left)  / r.width  - 0.5) * 11
-      const y = ((e.clientY - r.top)   / r.height - 0.5) * 11
-      gsap.to(el, {
-        rotateY: x, rotateX: -y,
-        duration: 0.38, ease: 'power2.out',
-        transformPerspective: 900, force3D: true,
-      })
-      if (shineRef.current) {
-        gsap.to(shineRef.current, {
-          opacity: 0.5, x: x * 3, y: y * 1.8,
-          duration: 0.38,
-        })
-      }
-    }
-
-    const onLeave = () => {
-      gsap.to(el, {
-        rotateY: 0, rotateX: 0, scale: 1,
-        duration: 0.65, ease: 'elastic.out(1, 0.45)',
-        force3D: true,
-      })
-      if (shineRef.current) {
-        gsap.to(shineRef.current, { opacity: 0, duration: 0.4 })
-      }
-    }
-
-    const onEnter = () => {
-      gsap.to(el, { scale: 1.022, duration: 0.28, ease: 'power2.out', force3D: true })
-    }
-
-    el.addEventListener('mousemove',  onMove)
-    el.addEventListener('mouseleave', onLeave)
-    el.addEventListener('mouseenter', onEnter)
-    return () => {
-      el.removeEventListener('mousemove',  onMove)
-      el.removeEventListener('mouseleave', onLeave)
-      el.removeEventListener('mouseenter', onEnter)
-    }
-  }, [])
-
-  /* ── Add to cart ──────────────────────────────────────────────────── */
-  const handleAdd = useCallback((e) => {
-    e.stopPropagation()
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-
-    if (!reduced) {
-      gsap.timeline()
-        .to(btnRef.current, { scale: 0.7,  duration: 0.08, ease: 'power3.in' })
-        .to(btnRef.current, { scale: 1.3,  duration: 0.19, ease: 'back.out(3.5)' })
-        .to(btnRef.current, { scale: 1,    duration: 0.28, ease: 'elastic.out(1, 0.4)' })
-
-      if (imgRef.current) {
-        gsap.to(imgRef.current, {
-          y: -8, duration: 0.15,
-          ease: 'power3.out', yoyo: true, repeat: 1,
-        })
-      }
-
-      if (rippleRef.current) {
-        gsap.fromTo(rippleRef.current,
-          { scale: 0, opacity: 0.4 },
-          { scale: 3.8, opacity: 0, duration: 0.55, ease: 'power2.out' }
-        )
-      }
-    }
-
-    dispatch(addItem({
-      menuItemId: item._id,
-      name:       item.name,
-      price:      item.price,
-      emoji:      item.emoji,
-      category:   item.category,
-      quantity:   1,
-    }))
-
-    toast.success(`${item.emoji || '✅'} Added!`, {
-      duration: 1400,
-      style: {
-        fontSize:     '13px',
-        padding:      '9px 14px',
-        borderRadius: '12px',
-        fontFamily:   '"Plus Jakarta Sans", system-ui, sans-serif',
-        fontWeight:   600,
-      },
-    })
-  }, [dispatch, item])
-
-  const isBest = item.tags?.includes('bestseller')
-  const isNew  = item.tags?.includes('new')
-
+function StaticPricePill({ price, label, isDark: D }) {
   return (
-    <article
-      ref={cardRef}
-      className="mc"
-      aria-label={item.name}
-      style={{
-        position:       'relative',
-        display:        'flex',
-        flexDirection:  'column',
-        overflow:       'hidden',
-        borderRadius:   18,
-        background:     'var(--bg-surface)',
-        border:         '1px solid var(--border-color)',
-        boxShadow:      D
-          ? '0 2px 16px rgba(0,0,0,0.38), 0 1px 0 rgba(255,255,255,0.04) inset'
-          : '0 2px 12px rgba(92,51,23,0.07), 0 1px 0 rgba(255,255,255,0.7) inset',
-        transformStyle: 'preserve-3d',
-        willChange:     'transform',
-        transition:     'box-shadow var(--transition-base), border-color var(--transition-theme)',
-      }}
+    <div
+      className={[
+        "relative flex flex-col items-center justify-center gap-[3px] h-[42px] flex-1 min-w-0 max-w-[110px] px-3 rounded-[11px] overflow-hidden",
+        D
+          ? "bg-[rgba(60,32,4,0.92)] border border-[rgba(255,159,28,0.28)] shadow-[0_1px_0_rgba(255,255,255,0.07)_inset,0_2px_10px_rgba(0,0,0,0.35)]"
+          : "bg-[rgba(255,238,210,0.97)] border border-[rgba(200,104,10,0.28)] shadow-[0_1px_0_rgba(255,255,255,1)_inset,0_2px_8px_rgba(200,104,10,0.12)]",
+      ].join(" ")}
+      style={{ transform: "translate3d(0,0,0)" }}
     >
+      <div
+        aria-hidden
+        className="absolute top-0 left-[6%] right-[6%] h-px pointer-events-none"
+        style={{
+          background: D
+            ? "linear-gradient(90deg,transparent,rgba(255,255,255,0.08) 40%,rgba(255,255,255,0.14) 50%,rgba(255,255,255,0.08) 60%,transparent)"
+            : "linear-gradient(90deg,transparent,rgba(255,255,255,0.65) 40%,rgba(255,255,255,0.90) 50%,rgba(255,255,255,0.65) 60%,transparent)",
+        }}
+      />
+      <span
+        className={`text-[13px] font-black tracking-[-0.04em] leading-none whitespace-nowrap font-mono ${D ? "text-[#FFB84D]" : "text-[#C8680A]"}`}
+      >
+        Rs {price}
+      </span>
+      {label && (
+        <span
+          className={`text-[7px] font-bold tracking-[0.06em] uppercase leading-none whitespace-nowrap ${D ? "text-[rgba(255,196,110,0.50)]" : "text-[rgba(140,70,10,0.55)]"}`}
+        >
+          {label}
+        </span>
+      )}
+    </div>
+  );
+}
 
-      {/* ── Image zone ──────────────────────────────────────────── */}
-      <div style={{ position: 'relative', overflow: 'hidden', height: 120 }}>
+function PriceDisplay({ item, isDark }) {
+  const hasPortions = Array.isArray(item.portions) && item.portions.length > 0;
+  if (!hasPortions)
+    return <StaticPricePill price={item.price} isDark={isDark} />;
+  if (item.portions.length === 2)
+    return <DualPricePill portions={item.portions} isDark={isDark} />;
+  const prices = item.portions.map((p) => p.price);
+  return (
+    <StaticPricePill
+      price={`${Math.min(...prices)}–${Math.max(...prices)}`}
+      label={`${item.portions.length} sizes`}
+      isDark={isDark}
+    />
+  );
+}
 
-        <div style={{
-          position: 'absolute', inset: 0,
-          background: 'var(--bg-surface-3)',
-          transition: 'background var(--transition-theme)',
-        }} />
+// ─── Portion Sheet ────────────────────────────────────────────────────────────
 
-        {item.image ? (
-          <img
-            ref={imgRef}
-            src={item.image}
-            alt={item.name}
-            loading="lazy"
-            style={{
-              position: 'absolute', inset: 0,
-              width: '100%', height: '100%',
-              objectFit: 'cover',
-              willChange: 'transform',
-            }}
-          />
-        ) : (
-          <div
-            ref={imgRef}
-            aria-hidden="true"
-            style={{
-              position: 'absolute', inset: 0,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 46, lineHeight: 1,
-              willChange: 'transform',
-            }}
-          >
-            {item.emoji}
-          </div>
-        )}
+function PortionSheet({ item, onClose }) {
+  const { isDark: D } = useContext(ThemeContext);
+  const dispatch = useDispatch();
 
+  // ── FIX: use portion.id (string field) not portion._id (ObjectId) ──────────
+  // Schema stores the discriminator as `id` (e.g. 'half', 'full').
+  // _id does not exist on sub-docs with _id:false, so both rows matched.
+  const defaultPortion =
+    item.portions?.find((p) => p.isDefault) ?? item.portions?.[0] ?? null;
+  const [selectedId, setSelectedId] = useState(defaultPortion?.id ?? null);
+
+  const closingRef = useRef(false);
+  const overlayRef = useRef(null);
+  const sheetRef = useRef(null);
+  const optsRef = useRef([]);
+  const btnRef = useRef(null);
+
+  useEffect(() => () => unlockScroll(), []);
+
+  useEffect(() => {
+    if (!overlayRef.current || !sheetRef.current) return;
+    const tl = gsap.timeline({ defaults: { ease: "expo.out" } });
+    tl.fromTo(
+      overlayRef.current,
+      { opacity: 0 },
+      { opacity: 1, duration: 0.24 },
+      0,
+    );
+    tl.fromTo(
+      sheetRef.current,
+      { y: "100%" },
+      { y: "0%", duration: 0.4 },
+      0.04,
+    );
+    const opts = optsRef.current.filter(Boolean);
+    if (opts.length)
+      tl.fromTo(
+        opts,
+        { y: 18, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.26, stagger: 0.06, ease: "power3.out" },
+        0.2,
+      );
+    if (btnRef.current)
+      tl.fromTo(
+        btnRef.current,
+        { y: 12, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.24 },
+        0.3,
+      );
+  }, []);
+
+  const animateClose = useCallback(() => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    gsap
+      .timeline({ onComplete: onClose })
+      .to(sheetRef.current, { y: "100%", duration: 0.26, ease: "power3.in" }, 0)
+      .to(
+        overlayRef.current,
+        { opacity: 0, duration: 0.2, ease: "power2.in" },
+        0,
+      );
+  }, [onClose]);
+
+  const selectedPortion =
+    item.portions?.find((p) => p.id === selectedId) ?? null;
+
+  const handleAdd = useCallback(() => {
+    if (!selectedPortion) return;
+    dispatch(
+      addItem({
+        menuItemId: item._id,
+        name: item.name,
+        price: selectedPortion.price,
+        quantity: 1,
+        emoji: item.emoji,
+        category: item.category,
+        portionId: selectedPortion.id,
+        portionLabel: selectedPortion.label,
+      }),
+    );
+    gsap
+      .timeline()
+      .to(btnRef.current, { scale: 0.94, duration: 0.09, ease: "power2.in" })
+      .to(btnRef.current, {
+        scale: 1,
+        duration: 0.26,
+        ease: "back.out(3)",
+        onComplete: animateClose,
+      });
+  }, [selectedPortion, item, dispatch, animateClose]);
+
+  return createPortal(
+    <>
+      {/* Overlay */}
+      <div
+        ref={overlayRef}
+        onClick={animateClose}
+        className="fixed inset-0 z-[99990] touch-none"
+        style={{
+          background: D ? "rgba(0,0,0,0.72)" : "rgba(8,3,0,0.42)",
+          backdropFilter: "blur(8px)",
+          WebkitBackdropFilter: "blur(8px)",
+          willChange: "opacity",
+        }}
+      />
+
+      {/* Sheet */}
+      <div
+        ref={sheetRef}
+        onClick={(e) => e.stopPropagation()}
+        className={`fixed bottom-0 left-0 right-0 z-[99991] rounded-t-[24px] ${D ? "bg-[rgba(14,7,2,0.96)]" : "bg-[rgba(255,252,246,0.96)]"}`}
+        style={{
+          backdropFilter: "blur(48px) saturate(200%)",
+          WebkitBackdropFilter: "blur(48px) saturate(200%)",
+          borderTop: D
+            ? "1px solid rgba(255,159,28,0.20)"
+            : "1px solid rgba(255,255,255,0.9)",
+          boxShadow: D
+            ? "0 -24px 64px rgba(0,0,0,0.8)"
+            : "0 -12px 48px rgba(92,51,23,0.15)",
+          paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 24px)",
+          transform: "translate3d(0,0,0)",
+          willChange: "transform",
+        }}
+      >
+        {/* Gold accent line */}
         <div
-          ref={shineRef}
-          aria-hidden="true"
+          aria-hidden
+          className="absolute top-0 left-[12%] right-[12%] h-0.5 rounded-full pointer-events-none"
           style={{
-            position: 'absolute', inset: 0,
-            pointerEvents: 'none', opacity: 0,
-            background: 'radial-gradient(circle at 50% 50%, rgba(255,255,255,0.2) 0%, transparent 60%)',
+            background:
+              "linear-gradient(90deg,transparent,#FF9F1C 30%,#FFD580 50%,#E05C2A 70%,transparent)",
+            opacity: D ? 0.65 : 0.45,
           }}
         />
 
-        <div style={{
-          position: 'absolute', bottom: 0, left: 0, right: 0, height: 40,
-          pointerEvents: 'none',
-          background: 'linear-gradient(to top, var(--bg-surface), transparent)',
-          transition: 'background var(--transition-theme)',
-        }} />
+        {/* Drag handle */}
+        <div
+          className={`w-9 h-1 rounded-full mx-auto mt-3.5 ${D ? "bg-white/15" : "bg-[rgba(92,51,23,0.14)]"}`}
+        />
 
-        {/* ── Badges — top left ── */}
-        <div style={{
-          position: 'absolute', top: 8, left: 8,
-          display: 'flex', flexDirection: 'column', gap: 4,
-        }}>
-          {isBest && (
-            <span
-              aria-label="Bestseller"
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 2,
-                padding: '2px 6px', borderRadius: 7,
-                fontSize: 9, fontWeight: 700,
-                textTransform: 'uppercase', letterSpacing: '0.06em',
-                color: '#fff',
-                background: 'linear-gradient(135deg, #FF9F1C, #E05C2A)',
-                boxShadow: '0 2px 8px rgba(255,130,0,0.4)',
-                fontFamily: '"Plus Jakarta Sans", system-ui, sans-serif',
-              }}
+        {/* Header */}
+        <div
+          className={`flex items-center gap-3 px-4 py-3.5 ${D ? "border-b border-white/[0.07]" : "border-b border-[rgba(92,51,23,0.09)]"}`}
+        >
+          <div
+            className={`w-12 h-12 rounded-[14px] flex-shrink-0 text-[28px] flex items-center justify-center ${D ? "bg-[rgba(255,159,28,0.10)] border border-[rgba(255,159,28,0.18)]" : "bg-[rgba(255,200,130,0.14)] border border-[rgba(255,200,130,0.30)]"}`}
+          >
+            {item.emoji ?? "🍽️"}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p
+              className={`m-0 text-[16px] font-extrabold tracking-[-0.03em] leading-tight truncate ${D ? "text-[#FFF8EE]" : "text-[#120D06]"}`}
             >
-              <Flame size={7} strokeWidth={3} aria-hidden="true" /> Best
-            </span>
-          )}
-          {isNew && (
-            <span
-              aria-label="New item"
-              style={{
-                padding: '2px 6px', borderRadius: 7,
-                fontSize: 9, fontWeight: 700,
-                textTransform: 'uppercase', letterSpacing: '0.06em',
-                color: '#fff',
-                background: 'linear-gradient(135deg, #2D9B5A, #38C26F)',
-                boxShadow: '0 2px 8px rgba(45,155,90,0.4)',
-                fontFamily: '"Plus Jakarta Sans", system-ui, sans-serif',
-              }}
+              {item.name}
+            </p>
+            <p
+              className={`m-0 mt-0.5 text-xs ${D ? "text-[rgba(255,196,110,0.5)]" : "text-[rgba(92,51,23,0.45)]"}`}
             >
-              New
-            </span>
-          )}
+              Choose your size
+            </p>
+          </div>
+          <button
+            onClick={animateClose}
+            aria-label="Close"
+            className={`w-[34px] h-[34px] rounded-[10px] border-none flex items-center justify-center flex-shrink-0 cursor-pointer [-webkit-tap-highlight-color:transparent] ${D ? "bg-white/[0.08] text-[rgba(255,196,110,0.5)]" : "bg-[rgba(92,51,23,0.06)] text-[rgba(92,51,23,0.45)]"}`}
+          >
+            <X size={15} strokeWidth={2.5} />
+          </button>
         </div>
 
-        {/* ── Veg/non-veg indicator — top right ── */}
-        <div
-          aria-label={item.isVeg ? 'Vegetarian' : 'Non-vegetarian'}
-          style={{
-            position: 'absolute', top: 8, right: 8,
-            width: 16, height: 16, borderRadius: 4,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            border: `1.5px solid ${item.isVeg ? '#2D9B5A' : '#DC2626'}`,
-            background: 'rgba(255,255,255,0.94)',
-          }}
-        >
-          <div style={{
-            width: 8, height: 8, borderRadius: '50%',
-            background: item.isVeg ? '#2D9B5A' : '#DC2626',
-          }} />
+        {/* Options */}
+        <div className="px-4 pt-3.5 pb-3 flex flex-col gap-2.5">
+          {(item.portions ?? []).map((portion, i) => {
+            // ── KEY FIX: compare portion.id (string) not portion._id ──────────
+            const sel = selectedId === portion.id;
+            return (
+              <button
+                key={portion.id}
+                ref={(el) => {
+                  optsRef.current[i] = el;
+                }}
+                onClick={() => setSelectedId(portion.id)}
+                className={[
+                  "flex items-center justify-between px-4 py-3.5 rounded-2xl cursor-pointer border-[1.5px] transition-all duration-150 [-webkit-tap-highlight-color:transparent] touch-manipulation font-sans w-full",
+                  sel
+                    ? "border-[rgba(255,159,28,0.60)] shadow-[0_0_0_3px_rgba(255,159,28,0.10),0_4px_14px_rgba(255,130,0,0.16)]"
+                    : D
+                      ? "border-white/[0.09]"
+                      : "border-[rgba(92,51,23,0.10)]",
+                  sel
+                    ? D
+                      ? "bg-[rgba(255,159,28,0.11)]"
+                      : "bg-[rgba(255,159,28,0.07)]"
+                    : D
+                      ? "bg-white/[0.03]"
+                      : "bg-white/85",
+                ].join(" ")}
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-[22px] h-[22px] rounded-full flex-shrink-0 flex items-center justify-center transition-all duration-150"
+                    style={{
+                      border: `2px solid ${sel ? "#FF9F1C" : D ? "rgba(255,255,255,0.18)" : "rgba(92,51,23,0.18)"}`,
+                      background: sel
+                        ? "linear-gradient(135deg,#FF9F1C,#E05C2A)"
+                        : "transparent",
+                    }}
+                  >
+                    {sel && <Check size={11} color="#fff" strokeWidth={3.5} />}
+                  </div>
+                  <span
+                    className={`text-[15px] font-bold transition-colors duration-150 ${sel ? (D ? "text-[#FFB84D]" : "text-[#C8680A]") : D ? "text-[#FFF8EE]" : "text-[#120D06]"}`}
+                  >
+                    {portion.label}
+                  </span>
+                </div>
+                <span
+                  className={`text-[16px] font-black tracking-[-0.04em] font-mono transition-colors duration-150 ${sel ? (D ? "text-[#FFB84D]" : "text-[#C8680A]") : D ? "text-[rgba(255,196,110,0.5)]" : "text-[rgba(92,51,23,0.45)]"}`}
+                >
+                  Rs {portion.price}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* CTA */}
+        <div className="px-4">
+          <button
+            ref={btnRef}
+            onClick={handleAdd}
+            disabled={!selectedPortion}
+            className="w-full h-14 rounded-[17px] border-none text-[15px] font-extrabold tracking-[-0.02em] flex items-center justify-center gap-2 [-webkit-tap-highlight-color:transparent] transition-all duration-200"
+            style={{
+              background: selectedPortion
+                ? "linear-gradient(135deg,#FF9F1C 0%,#E05C2A 100%)"
+                : D
+                  ? "rgba(255,255,255,0.06)"
+                  : "rgba(92,51,23,0.06)",
+              boxShadow: selectedPortion
+                ? "0 8px 28px rgba(255,130,0,0.44), 0 1px 0 rgba(255,255,255,0.22) inset"
+                : "none",
+              color: selectedPortion
+                ? "#fff"
+                : D
+                  ? "rgba(255,196,110,0.5)"
+                  : "rgba(92,51,23,0.45)",
+              cursor: selectedPortion ? "pointer" : "not-allowed",
+              transform: "translate3d(0,0,0)",
+              willChange: "transform",
+            }}
+          >
+            <Plus size={17} strokeWidth={3} />
+            <span>
+              {selectedPortion
+                ? `Add to Cart · Rs ${selectedPortion.price}`
+                : "Select a size"}
+            </span>
+          </button>
         </div>
       </div>
+    </>,
+    document.body,
+  );
+}
 
-      {/* ── Info zone ─────────────────────────────────────────── */}
-      <div style={{
-        display: 'flex', flexDirection: 'column', gap: 5,
-        padding: '10px 10px 11px', flex: 1,
-      }}>
+// ─── MenuCard ─────────────────────────────────────────────────────────────────
 
-        {/* Item name — Plus Jakarta Sans */}
-        <h3 style={{
-          margin: 0,
-          fontFamily: '"Plus Jakarta Sans", system-ui, sans-serif',
-          fontSize: 'clamp(13px, 3.2vw, 15px)',
-          fontWeight: 700,
-          lineHeight: 1.25,
-          letterSpacing: '-0.02em',
-          color: 'var(--text-primary)',
-          display: '-webkit-box',
-          WebkitLineClamp: 2,
-          WebkitBoxOrient: 'vertical',
-          overflow: 'hidden',
-          transition: 'color var(--transition-theme)',
-        }}>
-          {item.name}
-        </h3>
+export default function MenuCard({ item }) {
+  const { isDark: D } = useContext(ThemeContext);
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const imgRef = useRef(null);
+  const plusBtnRef = useRef(null);
+  const cardRef = useRef(null);
 
-        {/* Meta row — Plus Jakarta Sans */}
-        <div style={{
-          display: 'flex', alignItems: 'center',
-          gap: 6, flexWrap: 'wrap',
-        }}>
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 2,
-            fontSize: 9, fontWeight: 500,
-            color: 'var(--text-muted)',
-            fontFamily: '"Plus Jakarta Sans", system-ui, sans-serif',
-            transition: 'color var(--transition-theme)',
-          }}>
-            <Clock size={8} strokeWidth={2} aria-hidden="true" />
-            {item.preparationTimeMinutes}m
-          </span>
+  const hasPortions = Array.isArray(item.portions) && item.portions.length > 0;
 
-          {item.spiceLevel > 0 && (
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', gap: 2,
-              fontSize: 9, fontWeight: 600,
-              color: SPICE_COLOR[item.spiceLevel],
-              fontFamily: '"Plus Jakarta Sans", system-ui, sans-serif',
-            }}>
-              <Flame size={8} strokeWidth={2.5} aria-hidden="true" />
-              {SPICE_LABEL[item.spiceLevel]}
-            </span>
-          )}
+  const handleCardClick = useCallback(
+    () => navigate(`/menu/item/${item._id}`),
+    [navigate, item._id],
+  );
 
-          {item.isVeg && (
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', gap: 2,
-              fontSize: 9, fontWeight: 600,
-              color: '#2D9B5A',
-              fontFamily: '"Plus Jakarta Sans", system-ui, sans-serif',
-            }}>
-              <Leaf size={8} strokeWidth={2.5} aria-hidden="true" />
-              Veg
-            </span>
-          )}
-        </div>
+  const handlePlusClick = useCallback(
+    (e) => {
+      e.stopPropagation();
+      if (hasPortions) {
+        lockScroll();
+        setSheetOpen(true);
+      } else {
+        dispatch(
+          addItem({
+            menuItemId: item._id,
+            name: item.name,
+            price: item.price,
+            quantity: 1,
+            emoji: item.emoji,
+            category: item.category,
+            portionId: null,
+            portionLabel: null,
+          }),
+        );
+        if (plusBtnRef.current) {
+          gsap
+            .timeline()
+            .to(plusBtnRef.current, {
+              scale: 0.8,
+              duration: 0.09,
+              ease: "power2.in",
+              force3D: true,
+            })
+            .to(plusBtnRef.current, {
+              scale: 1.2,
+              duration: 0.2,
+              ease: "back.out(3)",
+              force3D: true,
+            })
+            .to(plusBtnRef.current, {
+              scale: 1,
+              duration: 0.18,
+              ease: "power2.out",
+              force3D: true,
+            });
+        }
+      }
+    },
+    [hasPortions, item, dispatch],
+  );
 
-        {/* Price + Add button */}
-        <div style={{
-          display: 'flex', alignItems: 'center',
-          justifyContent: 'space-between',
-          marginTop: 'auto', paddingTop: 2,
-        }}>
+  const onEnter = useCallback(() => {
+    if (imgRef.current)
+      gsap.to(imgRef.current, {
+        scale: 1.06,
+        duration: 0.5,
+        ease: "power2.out",
+        force3D: true,
+      });
+  }, []);
+  const onLeave = useCallback(() => {
+    if (imgRef.current)
+      gsap.to(imgRef.current, {
+        scale: 1,
+        duration: 0.55,
+        ease: "power2.out",
+        force3D: true,
+      });
+  }, []);
 
-          {/* Price — Plus Jakarta Sans */}
-          <span style={{
-            fontFamily: '"Plus Jakarta Sans", system-ui, sans-serif',
-            fontSize: 'clamp(15px, 3.6vw, 17px)',
-            fontWeight: 800,
-            letterSpacing: '0em',
-            color: 'var(--text-primary)',
-            transition: 'color var(--transition-theme)',
-          }}>
-            Rs {item.price}
-          </span>
+  const accent = D ? "#FFB84D" : "#C8680A";
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-
-            {/* Qty badge */}
-            {qty > 0 && (
-              <div
-                ref={badgeRef}
-                aria-label={`${qty} in cart`}
+  return (
+    <>
+      <div
+        className="relative rounded-[18px]"
+        style={{
+          clipPath: "inset(0 round 18px)",
+          WebkitClipPath: "inset(0 round 18px)",
+          isolation: "isolate",
+        }}
+      >
+        <div
+          ref={cardRef}
+          onClick={handleCardClick}
+          onMouseEnter={onEnter}
+          onMouseLeave={onLeave}
+          onTouchStart={() =>
+            gsap.to(cardRef.current, {
+              scale: 0.968,
+              duration: 0.1,
+              ease: "power2.out",
+              force3D: true,
+              overwrite: true,
+            })
+          }
+          onTouchEnd={() =>
+            gsap.to(cardRef.current, {
+              scale: 1,
+              duration: 0.42,
+              ease: "back.out(2.4)",
+              force3D: true,
+              overwrite: true,
+            })
+          }
+          onTouchCancel={() =>
+            gsap.to(cardRef.current, {
+              scale: 1,
+              duration: 0.35,
+              ease: "power3.out",
+              force3D: true,
+              overwrite: true,
+            })
+          }
+          className={`rounded-[18px] cursor-pointer select-none relative [-webkit-tap-highlight-color:transparent] touch-manipulation ${D ? "bg-[#1A0E04] border border-white/[0.08]" : "bg-white border border-[rgba(92,51,23,0.09)]"}`}
+          style={{
+            boxShadow: D
+              ? "0 2px 16px rgba(0,0,0,0.42), 0 0 0 0.5px rgba(255,255,255,0.05) inset"
+              : "0 2px 10px rgba(92,51,23,0.10), 0 1px 0 rgba(255,255,255,0.9) inset",
+            transform: "translate3d(0,0,0)",
+            willChange: "transform",
+            WebkitMaskImage: "radial-gradient(white,white)",
+          }}
+        >
+          {/* Image */}
+          <div
+            className={`relative overflow-hidden ${D ? "bg-[#251408]" : "bg-[#F5EEE0]"}`}
+            style={{ aspectRatio: "4/3" }}
+          >
+            {item.image ? (
+              <img
+                ref={imgRef}
+                src={item.image}
+                alt={item.name}
+                loading="lazy"
+                className="w-full h-full object-cover block"
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 3,
-                  padding: '3px 7px', borderRadius: 99,
-                  background: D
-                    ? 'rgba(255,159,28,0.12)'
-                    : 'rgba(255,159,28,0.08)',
-                  border: '1px solid rgba(255,159,28,0.28)',
-                  backdropFilter: 'blur(4px)',
-                }}
-              >
-                <svg width="9" height="9" viewBox="0 0 10 10" fill="none" aria-hidden="true">
-                  <path
-                    d="M1 1h1.5l1 4.5h4L9 3H3.5"
-                    stroke="#FF9F1C" strokeWidth="1.4"
-                    strokeLinecap="round" strokeLinejoin="round"
-                  />
-                  <circle cx="5.5" cy="8.5" r="0.8" fill="#FF9F1C" />
-                  <circle cx="7.5" cy="8.5" r="0.8" fill="#FF9F1C" />
-                </svg>
-                <span style={{
-                  fontSize: 10, fontWeight: 700, lineHeight: 1,
-                  color: 'var(--color-saffron)',
-                  fontFamily: '"DM Mono", monospace',
-                  minWidth: 7, textAlign: 'center',
-                }}>
-                  {qty}
-                </span>
-              </div>
-            )}
-
-            {/* Add button */}
-            <div style={{ position: 'relative' }}>
-              <div
-                ref={rippleRef}
-                aria-hidden="true"
-                style={{
-                  position: 'absolute', inset: 0,
-                  borderRadius: 11,
-                  pointerEvents: 'none', opacity: 0,
-                  background: 'rgba(255,159,28,0.32)',
-                  transformOrigin: 'center',
+                  transform: "translate3d(0,0,0)",
+                  willChange: "transform",
                 }}
               />
-              <button
-                ref={btnRef}
-                onClick={handleAdd}
-                className="btn-compact"
-                aria-label={`Add ${item.name} to cart`}
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-[46px]">
+                {item.emoji ?? "🍽️"}
+              </div>
+            )}
+            {item.isVeg !== undefined && (
+              <div
+                className="absolute top-2 left-2 w-[22px] h-[22px] rounded-[6px] flex items-center justify-center"
                 style={{
-                  width: 32, height: 32,
-                  borderRadius: 11, border: 'none',
-                  cursor: 'pointer',
-                  background: 'linear-gradient(135deg, #FF9F1C 0%, #E05C2A 100%)',
-                  boxShadow: qty > 0
-                    ? '0 3px 14px rgba(255,130,0,0.55)'
-                    : '0 3px 12px rgba(255,130,0,0.38)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: '#fff',
-                  willChange: 'transform',
-                  transition: 'box-shadow 0.2s ease',
+                  border: `2px solid ${item.isVeg ? "#22c55e" : "#ef4444"}`,
+                  background: D
+                    ? "rgba(10,5,1,0.85)"
+                    : "rgba(255,252,247,0.92)",
+                  backdropFilter: "blur(6px)",
+                  WebkitBackdropFilter: "blur(6px)",
                 }}
               >
-                <Plus size={15} strokeWidth={3} aria-hidden="true" />
-              </button>
+                <div
+                  className="w-[9px] h-[9px] rounded-full"
+                  style={{ background: item.isVeg ? "#22c55e" : "#ef4444" }}
+                />
+              </div>
+            )}
+            {hasPortions && (
+              <div
+                className="absolute top-2 right-2 px-[9px] py-[3px] rounded-[8px] text-[9px] font-bold tracking-[0.04em]"
+                style={{
+                  background: D
+                    ? "rgba(10,5,1,0.82)"
+                    : "rgba(255,252,247,0.90)",
+                  backdropFilter: "blur(10px)",
+                  WebkitBackdropFilter: "blur(10px)",
+                  color: accent,
+                  border: `1px solid ${D ? "rgba(255,159,28,0.22)" : "rgba(255,159,28,0.28)"}`,
+                }}
+              >
+                {item.portions.length} sizes
+              </div>
+            )}
+            <div
+              className="absolute bottom-0 left-0 right-0 h-8 pointer-events-none"
+              style={{
+                background: `linear-gradient(to top,${D ? "#1A0E04" : "#FFFFFF"},transparent)`,
+              }}
+            />
+          </div>
+
+          {/* Text info */}
+          <div className="px-3 pt-2.5 pb-3.5">
+            <p
+              className={`m-0 text-[13px] font-bold tracking-[-0.015em] leading-[1.3] truncate ${D ? "text-[#FFF8EE]" : "text-[#120D06]"}`}
+            >
+              {item.name}
+            </p>
+            {item.description && (
+              <p
+                className={`m-0 mt-[3px] text-[11px] leading-[1.45] overflow-hidden ${D ? "text-[rgba(255,196,110,0.5)]" : "text-[rgba(92,51,23,0.45)]"}`}
+                style={{
+                  display: "-webkit-box",
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: "vertical",
+                }}
+              >
+                {item.description}
+              </p>
+            )}
+            <div className="flex items-center justify-between mt-2.5 gap-2 min-w-0">
+              <PriceDisplay item={item} isDark={D} />
+              <div
+                ref={plusBtnRef}
+                onClick={handlePlusClick}
+                onTouchStart={(e) => e.stopPropagation()}
+                onTouchEnd={(e) => e.stopPropagation()}
+                role="button"
+                tabIndex={0}
+                aria-label={`Add ${item.name} to cart`}
+                className="w-[38px] h-[38px] rounded-[12px] flex-shrink-0 flex items-center justify-center cursor-pointer [-webkit-tap-highlight-color:transparent] touch-manipulation"
+                style={{
+                  background: "linear-gradient(135deg,#FF9F1C 0%,#E05C2A 100%)",
+                  boxShadow: "0 4px 14px rgba(255,130,0,0.40)",
+                  transform: "translate3d(0,0,0)",
+                  willChange: "transform",
+                }}
+              >
+                <Plus size={18} color="#fff" strokeWidth={3} />
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </article>
-  )
-}
 
-export default MenuCard
+      {sheetOpen && (
+        <PortionSheet
+          item={item}
+          onClose={() => {
+            setSheetOpen(false);
+            unlockScroll();
+          }}
+        />
+      )}
+    </>
+  );
+}

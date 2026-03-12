@@ -10,6 +10,7 @@ import notificationReducer  from './slices/notificationSlice'
 import tableSessionReducer  from './slices/tableSessionSlice'
 import callWaiterReducer    from './slices/callWaiterSlice'
 import messagingReducer     from './slices/messagingSlice'
+import reviewReducer        from './slices/reviewSlice'   // ← ADD
 
 const store = configureStore({
   reducer: {
@@ -23,6 +24,7 @@ const store = configureStore({
     tableSession:  tableSessionReducer,
     callWaiter:    callWaiterReducer,
     messaging:     messagingReducer,
+    review:        reviewReducer,               // ← ADD
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({ serializableCheck: false }),

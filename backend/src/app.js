@@ -27,21 +27,21 @@ import inventoryRoutes          from './modules/inventory/inventory.routes.js'
 import staffRoutes              from './modules/staff/staff.routes.js'
 import reportRoutes             from './modules/reports/reports.routes.js'
 import adminRoutes              from './modules/admin/admin.routes.js'
+import reviewRoutes             from './modules/review/review.routes.js'
+import notificationRoutes       from './modules/notification/notification.routes.js'  // ← NEW
 
 const app = express()
 
-// ── Trust proxy (required for rate limiting behind ngrok/reverse proxy) ────────
 app.set('trust proxy', 1)
 
-// ── Security ──────────────────────────────────────────────────────────────────
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }))
 
-// ── CORS ──────────────────────────────────────────────────────────────────────
 const allowedOrigins = [
   'http://localhost:5173',
   'http://127.0.0.1:5173',
-  'http://192.168.101.8:5173',
+  'http://192.168.100.241:5173',  // ← your current LAN IP
   'http://192.168.1.112:5173',
+  'http://192.168.101.8:5173',
   process.env.FRONTEND_URL,
   process.env.CLIENT_URL,
   process.env.NGROK_FRONTEND_URL,
@@ -49,55 +49,40 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (Postman, curl, native mobile)
     if (!origin) return callback(null, true)
     if (
       allowedOrigins.includes(origin) ||
       origin.endsWith('.ngrok-free.dev') ||
       origin.endsWith('.ngrok.io')
-    ) {
-      return callback(null, true)
-    }
+    ) return callback(null, true)
     console.warn(`[CORS] Blocked origin: ${origin}`)
     callback(new Error(`CORS blocked: ${origin}`))
   },
   credentials: true,
-  methods:     ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 }))
 
-// ── Rate limiting ─────────────────────────────────────────────────────────────
 app.use('/api/auth', rateLimit({
   windowMs: 15 * 60 * 1000,
   max:      20,
   message:  { success: false, message: 'Too many auth attempts. Try again in 15 minutes.' },
 }))
+app.use('/api', rateLimit({ windowMs: 60 * 1000, max: 200 }))
 
-app.use('/api', rateLimit({
-  windowMs: 60 * 1000,
-  max:      200,
-}))
-
-// ── Body parsing ──────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '2mb' }))
 app.use(express.urlencoded({ extended: true }))
 
-// ── Logging ───────────────────────────────────────────────────────────────────
 if (process.env.NODE_ENV !== 'test') {
   app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'))
 }
 
-// ── Passport ──────────────────────────────────────────────────────────────────
 configurePassport()
 app.use(passport.initialize())
 
-// ── Health check ──────────────────────────────────────────────────────────────
 app.get('/health', (_, res) => res.json({
-  status:    'ok',
-  service:   'कौसी चिया API',
-  timestamp: new Date(),
+  status: 'ok', service: 'कौसी चिया API', timestamp: new Date(),
 }))
 
-// ── API Routes ────────────────────────────────────────────────────────────────
 const api = '/api'
 app.use(`${api}/auth`,            authRoutes)
 app.use(`${api}/tables`,          tableRoutes)
@@ -116,13 +101,12 @@ app.use(`${api}/inventory`,       inventoryRoutes)
 app.use(`${api}/staff`,           staffRoutes)
 app.use(`${api}/reports`,         reportRoutes)
 app.use(`${api}/admin`,           adminRoutes)
+app.use(`${api}/reviews`,         reviewRoutes)
+app.use(`${api}/notifications`,   notificationRoutes)   // ← NEW
 
-// ── 404 ───────────────────────────────────────────────────────────────────────
 app.use((req, res) => {
   res.status(404).json({ success: false, message: `Route ${req.originalUrl} not found` })
 })
-
-// ── Error handler ─────────────────────────────────────────────────────────────
 app.use(errorHandler)
 
 export default app

@@ -3,11 +3,6 @@ import MenuItem from './menu.model.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/menu/:cafeId
-// Returns all available menu items for a cafe, grouped by category.
-// Query params:
-//   ?category=hot_drinks   → filter by single category
-//   ?search=momo           → fuzzy name/description search
-//   ?available=true|false  → default: true (only available items)
 // ─────────────────────────────────────────────────────────────────────────────
 export const getMenuByCafe = async (req, res) => {
   try {
@@ -39,25 +34,16 @@ export const getMenuByCafe = async (req, res) => {
       })
     }
 
-    // Group by category for easy frontend consumption
-    const grouped = items.reduce((acc, item) => {
+    const grouped    = items.reduce((acc, item) => {
       if (!acc[item.category]) acc[item.category] = []
       acc[item.category].push(item)
       return acc
     }, {})
-
-    // Derive unique category list in sort order
     const categories = [...new Set(items.map(i => i.category))]
 
     return res.json({
       success: true,
-      data: {
-        cafeId,
-        categories,   // ['hot_drinks', 'cold_drinks', ...]
-        grouped,      // { hot_drinks: [...], cold_drinks: [...] }
-        items,        // flat array — useful for search + recommendations
-        total: items.length,
-      },
+      data: { cafeId, categories, grouped, items, total: items.length },
     })
   } catch (err) {
     console.error('[Menu] getMenuByCafe error:', err)
@@ -71,12 +57,8 @@ export const getMenuByCafe = async (req, res) => {
 export const getMenuItemById = async (req, res) => {
   try {
     const { cafeId, id } = req.params
-
     const item = await MenuItem.findOne({ _id: id, cafeId }).lean()
-    if (!item) {
-      return res.status(404).json({ success: false, message: 'Menu item not found.' })
-    }
-
+    if (!item) return res.status(404).json({ success: false, message: 'Menu item not found.' })
     return res.json({ success: true, data: item })
   } catch (err) {
     console.error('[Menu] getMenuItemById error:', err)
@@ -86,18 +68,17 @@ export const getMenuItemById = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/menu/:cafeId  (manager/admin only)
+// Body may include: portions: [{ id, label, price, isDefault?, sortOrder? }]
 // ─────────────────────────────────────────────────────────────────────────────
 export const createMenuItem = async (req, res) => {
   try {
     const { cafeId } = req.params
-
     const item = await MenuItem.create({ ...req.body, cafeId })
     return res.status(201).json({ success: true, data: item })
   } catch (err) {
     console.error('[Menu] createMenuItem error:', err)
-    if (err.name === 'ValidationError') {
+    if (err.name === 'ValidationError')
       return res.status(400).json({ success: false, message: err.message })
-    }
     return res.status(500).json({ success: false, message: 'Failed to create item.' })
   }
 }
@@ -108,16 +89,12 @@ export const createMenuItem = async (req, res) => {
 export const updateMenuItem = async (req, res) => {
   try {
     const { cafeId, id } = req.params
-
     const item = await MenuItem.findOneAndUpdate(
       { _id: id, cafeId },
       req.body,
       { new: true, runValidators: true }
     )
-    if (!item) {
-      return res.status(404).json({ success: false, message: 'Menu item not found.' })
-    }
-
+    if (!item) return res.status(404).json({ success: false, message: 'Menu item not found.' })
     return res.json({ success: true, data: item })
   } catch (err) {
     console.error('[Menu] updateMenuItem error:', err)
@@ -131,12 +108,8 @@ export const updateMenuItem = async (req, res) => {
 export const deleteMenuItem = async (req, res) => {
   try {
     const { cafeId, id } = req.params
-
     const item = await MenuItem.findOneAndDelete({ _id: id, cafeId })
-    if (!item) {
-      return res.status(404).json({ success: false, message: 'Menu item not found.' })
-    }
-
+    if (!item) return res.status(404).json({ success: false, message: 'Menu item not found.' })
     return res.json({ success: true, message: 'Item deleted.' })
   } catch (err) {
     console.error('[Menu] deleteMenuItem error:', err)
@@ -150,15 +123,10 @@ export const deleteMenuItem = async (req, res) => {
 export const toggleAvailability = async (req, res) => {
   try {
     const { cafeId, id } = req.params
-
     const item = await MenuItem.findOne({ _id: id, cafeId })
-    if (!item) {
-      return res.status(404).json({ success: false, message: 'Menu item not found.' })
-    }
-
+    if (!item) return res.status(404).json({ success: false, message: 'Menu item not found.' })
     item.isAvailable = !item.isAvailable
     await item.save()
-
     return res.json({
       success: true,
       data:    { _id: item._id, isAvailable: item.isAvailable },

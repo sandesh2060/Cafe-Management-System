@@ -3,8 +3,6 @@ import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import api from '@api/axios'
 import { ENDPOINTS } from '@api/endpoints'
 
-// ── Async thunks ─────────────────────────────────────────────────────────────
-
 export const fetchActiveSession = createAsyncThunk(
   'tableSession/fetchActive',
   async (_, { rejectWithValue }) => {
@@ -21,40 +19,34 @@ export const closeSession = createAsyncThunk(
   }
 )
 
-// ── Slice ─────────────────────────────────────────────────────────────────────
-
 const initialState = {
-  session:     null,       // { sessionId, tableId, tableNumber, zone, cafeId, status, ... }
-  tableInfo:   null,       // { tableId, sessionId }
-  detecting:   false,      // true while GPS/QR detection is running
-  loading:     false,
-  error:       null,
+  session:   null,
+  tableInfo: null,
+  detecting: false,
+  loading:   false,
+  error:     null,
 }
 
 const tableSessionSlice = createSlice({
   name: 'tableSession',
   initialState,
   reducers: {
-    // Called by useTableDetection when detection starts
     setDetecting: (state) => {
       state.detecting = true
       state.error     = null
     },
-
-    // Called by useTableDetection when session is successfully created
     setSession: (state, { payload }) => {
       state.session   = payload
       state.detecting = false
       state.error     = null
     },
-
-    // Called by useTableDetection on API failure
     setSessionError: (state, { payload }) => {
       state.error     = payload
       state.detecting = false
     },
-
     clearSession: (state) => {
+      // Also wipe localStorage so App.jsx doesn't try to rehydrate a dead session
+      localStorage.removeItem('kc_session_id')
       state.session   = null
       state.tableInfo = null
       state.detecting = false
@@ -70,6 +62,7 @@ const tableSessionSlice = createSlice({
         state.session = payload.session ?? null
       })
       .addCase(closeSession.fulfilled, (state) => {
+        localStorage.removeItem('kc_session_id')
         Object.assign(state, initialState)
       })
   },
@@ -77,16 +70,11 @@ const tableSessionSlice = createSlice({
 
 export const { setDetecting, setSession, setSessionError, clearSession } = tableSessionSlice.actions
 
-// ── Selectors ─────────────────────────────────────────────────────────────────
-
 export const selectSession      = (s) => s.tableSession.session
 export const selectIsDetecting  = (s) => s.tableSession.detecting
 export const selectSessionError = (s) => s.tableSession.error
 export const selectTableId      = (s) => s.tableSession.session?.tableId
 export const selectSessionId    = (s) => s.tableSession.session?.sessionId
-
-// ✅ FIXED — tableNumber is flat on the session object (not nested under table.tableNumber)
-// Backend createSession stores: { sessionId, tableId, cafeId, tableNumber, zone, ... }
 export const selectTableNumber  = (s) => s.tableSession.session?.tableNumber ?? null
 
 export default tableSessionSlice.reducer

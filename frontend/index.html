@@ -24,43 +24,54 @@
        * Strategy: wrap the entire app in #zoom-wrap and apply an inverse
        * CSS `zoom` value equal to 1/devicePixelRatio-delta.
        *
-       * Why `zoom` not `transform: scale()`?
-       *   • `zoom` keeps the element in normal flow — no clipping or offset issues
-       *   • Supported in Chrome, Edge, Safari (since forever), Firefox 126+
-       *   • Works perfectly with percentage-based layouts
-       *
-       * Why `#zoom-wrap` not `<html>` / `<body>`?
-       *   • Avoids touching root elements that browsers treat specially
-       *   • Transition on the wrapper gives smooth animated resize
+       * SCROLL ARCHITECTURE:
+       *   • html + body must be able to scroll — Lenis attaches to window.
+       *   • #zoom-wrap must NOT create its own scroll container (no overflow:auto).
+       *   • overflow:hidden on html/body would trap scroll inside zoom-wrap
+       *     and make Lenis blind to all touch events on mobile.
        * ─────────────────────────────────────────────────────────────────────
        */
       *, *::before, *::after { box-sizing: border-box; }
 
-      html, body {
+      html {
         margin: 0;
         padding: 0;
         width: 100%;
+        /* Let html scroll — Lenis needs window to be the scroll host */
         height: 100%;
-        overflow: hidden; /* outer container never scrolls — #zoom-wrap handles it */
+        overflow-x: hidden;
+      }
+
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        min-height: 100%;
+        overflow-x: hidden;
       }
 
       #zoom-wrap {
         width: 100%;
-        height: 100%;
+        min-height: 100%;
         /* Smooth zoom animation — fires when JS sets the zoom property */
         transition: zoom 0.2s cubic-bezier(0.22, 1, 0.36, 1);
         transform-origin: top left;
-        overflow: auto;
+        /*
+         * ⚠️  NO overflow:auto here.
+         * overflow:auto would make #zoom-wrap the scroll container,
+         * which breaks Lenis (it listens on window, not this div).
+         * Lenis + globals.css handle scroll via html.lenis rules.
+         */
       }
 
       #root {
         width: 100%;
-        height: 100%;
+        min-height: 100dvh;
       }
     </style>
   </head>
 
-  <body class="h-full">
+  <body>
     <!--
       #zoom-wrap sits between <body> and <div id="root">.
       The zoom lock script sets zoom: 0.8 (for example) here,
@@ -81,39 +92,27 @@
         var lastZoom = -1          // force first apply
         var baseDPR  = window.devicePixelRatio || 1  // DPR at page load (= zoom 100%)
 
-        /**
-         * Returns the current browser zoom level as a decimal.
-         * 100% zoom → 1.0 | 150% zoom → 1.5 | 75% zoom → 0.75
-         *
-         * Method: devicePixelRatio divided by the base DPR captured at load.
-         * This is the most reliable cross-browser approach:
-         *   • Chrome/Edge: DPR changes 1:1 with zoom level
-         *   • Firefox:     same
-         *   • Safari:      same (but fractional HiDPI base — handled by baseDPR)
-         */
         function getZoomLevel() {
           var dpr = window.devicePixelRatio || 1
           var zoom = dpr / baseDPR
-          // Round to nearest 5% step to avoid fighting subpixel jitter
-          return Math.round(zoom * 20) / 20  // e.g. 1.0, 1.05, 1.1, 1.25 ...
+          return Math.round(zoom * 20) / 20
         }
 
         function applyZoom() {
           var zoomLevel   = getZoomLevel()
-          var counterZoom = 1 / zoomLevel  // inverse: cancel out the browser zoom
+          var counterZoom = 1 / zoomLevel
 
-          // Skip if nothing changed (avoids unnecessary style mutations)
           if (Math.abs(counterZoom - lastZoom) < 0.005) return
           lastZoom = counterZoom
 
-          // CSS `zoom` property — scales content uniformly, stays in flow
           wrap.style.zoom = counterZoom
 
-          // Compensate dimensions: at zoom 0.8 the wrap needs to be 125% wide/tall
+          // At counter-zoom 0.8 the wrap needs to be 125% wide/tall
           // so it fills the full viewport after scaling
           var pct = (zoomLevel * 100).toFixed(1) + '%'
           wrap.style.width  = pct
-          wrap.style.height = pct
+          // ⚠️  height → minHeight so content can grow beyond viewport
+          wrap.style.minHeight = pct
         }
 
         function onResize() {
@@ -121,15 +120,10 @@
           rafId = requestAnimationFrame(applyZoom)
         }
 
-        // ── Initial apply (sync, before React) ───────────────────────────
         applyZoom()
 
-        // ── Listen for window resize (catches Ctrl+/- zoom in most browsers)
         window.addEventListener('resize', onResize, { passive: true })
 
-        // ── Firefox + Chrome: watch devicePixelRatio changes via matchMedia ─
-        // When the user zooms, DPR changes. We re-register after each change
-        // because matchMedia only fires once per threshold crossing.
         if (window.matchMedia) {
           var dprMql = null
 
@@ -142,8 +136,8 @@
           }
 
           function onDPRChange() {
-            onResize()   // recalculate zoom
-            watchDPR()   // re-register for the next DPR change
+            onResize()
+            watchDPR()
           }
 
           watchDPR()

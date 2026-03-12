@@ -11,8 +11,10 @@ import ProtectedRoute               from './ProtectedRoute'
 const TableDetectionPage = lazy(() => import('@modules/customer/pages/TableDetectionPage'))
 const LoginPage          = lazy(() => import('@modules/customer/pages/LoginPage'))
 const MenuPage           = lazy(() => import('@modules/customer/pages/MenuPage'))
+const ItemDetailPage     = lazy(() => import('@modules/customer/pages/ItemDetailPage'))
 const CartPage           = lazy(() => import('@modules/customer/pages/CartPage'))
 const TrackingPage       = lazy(() => import('@modules/customer/pages/TrackingPage'))
+const OrderStatusPage    = lazy(() => import('@modules/customer/pages/OrderStatusPage'))  // ← NEW
 const CallWaiterPage     = lazy(() => import('@modules/customer/pages/CallWaiterPage'))
 const LoyaltyPage        = lazy(() => import('@modules/customer/pages/LoyaltyPage'))
 const ProfilePage        = lazy(() => import('@modules/customer/pages/ProfilePage'))
@@ -57,7 +59,7 @@ const GuestRoute = ({ children }) => {
 
 // ── Full-screen spinner ───────────────────────────────────────────────────────
 const FullSpin = () => (
-  <div className="min-h-screen flex items-center justify-center bg-cream">
+  <div className="min-h-screen flex items-center justify-center bg-[var(--bg-app)]">
     <LoadingSpinner size="lg" />
   </div>
 )
@@ -76,59 +78,68 @@ const AppRoutes = () => {
         <Route path="/detect" element={<TableDetectionPage />} />
         <Route path="/login"  element={<GuestRoute><LoginPage /></GuestRoute>} />
 
-        {/* Staff login — separate from customer auth, no GuestRoute guard needed */}
+        {/* Staff login — separate from customer auth */}
         <Route path="/staff/login" element={<StaffLoginPage />} />
 
         {/* ── Customer ── */}
-        <Route path="/menu" element={
-          <ProtectedRoute allowedRoles={['customer']}><MenuPage /></ProtectedRoute>
-        } />
-        <Route path="/cart" element={
-          <ProtectedRoute allowedRoles={['customer']}><CartPage /></ProtectedRoute>
-        } />
-        <Route path="/track" element={
-          <ProtectedRoute allowedRoles={['customer']}><TrackingPage /></ProtectedRoute>
-        } />
-        <Route path="/call-waiter" element={
-          <ProtectedRoute allowedRoles={['customer']}><CallWaiterPage /></ProtectedRoute>
-        } />
-        <Route path="/loyalty" element={
-          <ProtectedRoute allowedRoles={['customer']}><LoyaltyPage /></ProtectedRoute>
-        } />
-        <Route path="/profile" element={
-          <ProtectedRoute allowedRoles={['customer']}><ProfilePage /></ProtectedRoute>
-        } />
-        <Route path="/payment" element={
-          <ProtectedRoute allowedRoles={['customer']}><PaymentPage /></ProtectedRoute>
-        } />
-        <Route path="/payment-success" element={
-          <ProtectedRoute allowedRoles={['customer']}><PaymentSuccessPage /></ProtectedRoute>
-        } />
+        <Route path="/menu"
+          element={<ProtectedRoute allowedRoles={['customer']}><MenuPage /></ProtectedRoute>}
+        />
+        <Route path="/menu/item/:id"
+          element={<ProtectedRoute allowedRoles={['customer']}><ItemDetailPage /></ProtectedRoute>}
+        />
+        <Route path="/cart"
+          element={<ProtectedRoute allowedRoles={['customer']}><CartPage /></ProtectedRoute>}
+        />
+        <Route path="/track"
+          element={<ProtectedRoute allowedRoles={['customer']}><TrackingPage /></ProtectedRoute>}
+        />
+
+        {/* ── Order status (live tracking after placing) ── */}
+        <Route path="/order/status"
+          element={<ProtectedRoute allowedRoles={['customer']}><OrderStatusPage /></ProtectedRoute>}
+        />
+
+        <Route path="/call-waiter"
+          element={<ProtectedRoute allowedRoles={['customer']}><CallWaiterPage /></ProtectedRoute>}
+        />
+        <Route path="/loyalty"
+          element={<ProtectedRoute allowedRoles={['customer']}><LoyaltyPage /></ProtectedRoute>}
+        />
+        <Route path="/profile"
+          element={<ProtectedRoute allowedRoles={['customer']}><ProfilePage /></ProtectedRoute>}
+        />
+        <Route path="/payment"
+          element={<ProtectedRoute allowedRoles={['customer']}><PaymentPage /></ProtectedRoute>}
+        />
+        <Route path="/payment-success"
+          element={<ProtectedRoute allowedRoles={['customer']}><PaymentSuccessPage /></ProtectedRoute>}
+        />
 
         {/* ── Waiter ── */}
-        <Route path="/waiter/*" element={
-          <ProtectedRoute allowedRoles={['waiter']}><WaiterDashboard /></ProtectedRoute>
-        } />
+        <Route path="/waiter/*"
+          element={<ProtectedRoute allowedRoles={['waiter']}><WaiterDashboard /></ProtectedRoute>}
+        />
 
         {/* ── Kitchen ── */}
-        <Route path="/kitchen/*" element={
-          <ProtectedRoute allowedRoles={['kitchen']}><KitchenDisplayPage /></ProtectedRoute>
-        } />
+        <Route path="/kitchen/*"
+          element={<ProtectedRoute allowedRoles={['kitchen']}><KitchenDisplayPage /></ProtectedRoute>}
+        />
 
         {/* ── Cashier ── */}
-        <Route path="/cashier/*" element={
-          <ProtectedRoute allowedRoles={['cashier']}><BillingPage /></ProtectedRoute>
-        } />
+        <Route path="/cashier/*"
+          element={<ProtectedRoute allowedRoles={['cashier']}><BillingPage /></ProtectedRoute>}
+        />
 
         {/* ── Manager ── */}
-        <Route path="/manager/*" element={
-          <ProtectedRoute allowedRoles={['manager']}><ManagerDashboard /></ProtectedRoute>
-        } />
+        <Route path="/manager/*"
+          element={<ProtectedRoute allowedRoles={['manager']}><ManagerDashboard /></ProtectedRoute>}
+        />
 
         {/* ── Admin ── */}
-        <Route path="/admin/*" element={
-          <ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>
-        } />
+        <Route path="/admin/*"
+          element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>}
+        />
 
         {/* Catch-all */}
         <Route path="*" element={<Navigate to="/" replace />} />

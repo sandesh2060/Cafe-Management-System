@@ -46,8 +46,6 @@ export const logoutUser = createAsyncThunk(
 )
 
 // ── Staff thunk ───────────────────────────────────────────────────────────────
-// Hydrates the SAME auth slice so ProtectedRoute's selectIsLoggedIn /
-// selectRole / selectToken all work without any changes to ProtectedRoute.
 
 export const loginStaff = createAsyncThunk(
   'auth/loginStaff',
@@ -94,12 +92,19 @@ const authSlice = createSlice({
       state.role       = payload.user?.role
       state.error      = null
     },
+
+    // Patch user fields in-place — used by updateProfile (username, avatar, etc.)
+    updateUser: (state, { payload }) => {
+      if (!state.user) return
+      state.user = { ...state.user, ...payload }
+    },
+
     clearAuth:  (state) => { Object.assign(state, initialState) },
     setError:   (state, { payload }) => { state.error = payload },
     clearError: (state) => { state.error = null },
   },
   extraReducers: (builder) => {
-    const pending  = (state) => { state.loading = true;  state.error = null }
+    const pending  = (state)           => { state.loading = true;  state.error = null }
     const rejected = (state, { payload }) => { state.loading = false; state.error = payload }
 
     builder
@@ -126,7 +131,6 @@ const authSlice = createSlice({
         state.role       = 'customer'
       })
 
-      // Staff login — same fulfilled shape, role drives ProtectedRoute redirect
       .addCase(loginStaff.pending,   pending)
       .addCase(loginStaff.rejected,  rejected)
       .addCase(loginStaff.fulfilled, fulfilled)
@@ -135,7 +139,8 @@ const authSlice = createSlice({
   },
 })
 
-export const { setCredentials, clearAuth, setError, clearError } = authSlice.actions
+export const { setCredentials, updateUser, clearAuth, setError, clearError } =
+  authSlice.actions
 
 export const selectUser        = (s) => s.auth.user
 export const selectToken       = (s) => s.auth.token
