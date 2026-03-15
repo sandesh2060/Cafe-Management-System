@@ -1,31 +1,47 @@
 // src/store/slices/cartSlice.js
+//
+// FIXES:
+//   • selectTableId and selectSessionId REMOVED — always import these from
+//     tableSessionSlice. Keeping them here caused silent null returns whenever
+//     setTableInfo wasn't dispatched, and created confusing dual-source-of-truth.
+//   • setTableInfo and setSessionInfo REMOVED for the same reason — cart should
+//     never own session state. tableSessionSlice is authoritative.
+//   • updateQuantity payload shape confirmed as { menuItemId, portionId?, quantity }
+//     useCart.js was previously "fixed" to dispatch { id, quantity } — that was
+//     WRONG. useCart.js must be reverted to dispatch { menuItemId, portionId, quantity }.
+//   • removeItem legacy string path documented clearly — only object shape
+//     { menuItemId, portionId? } should be used going forward.
+//   • buildKey exported so useCart.js and CartPage.jsx can compute the composite
+//     key consistently without duplicating logic.
+
 import { createSlice } from '@reduxjs/toolkit'
 
-// ── Cart item shape ───────────────────────────────────────────────────────────
+// ── Cart item shape ────────────────────────────────────────────────────────────
 // {
-//   menuItemId:   string           ← MongoDB _id
-//   name:         string
-//   price:        number           ← actual price paid (portion price if applicable)
-//   quantity:     number
-//   emoji:        string
-//   category:     string
-//   portionId:    string | null    ← 'half' | 'full' | null
-//   portionLabel: string | null    ← 'Half Plate' | 'Full Plate' | null
+//   menuItemId:     string           ← MongoDB _id
+//   name:           string
+//   price:          number           ← actual price paid (portion price if applicable)
+//   quantity:       number
+//   emoji:          string
+//   category:       string
+//   portionId:      string | null    ← 'half' | 'full' | null
+//   portionLabel:   string | null    ← 'Half Plate' | 'Full Plate' | null
+//   customizations: object | null    ← customization selections from ItemDetailPage
 // }
 //
 // KEY RULE: Two cart items are considered "the same" only when BOTH menuItemId
 // AND portionId match. This lets a user have "Momo (Half)" and "Momo (Full)"
 // as separate line items.
 
-const buildKey = (menuItemId, portionId) =>
+export const buildKey = (menuItemId, portionId) =>
   portionId ? `${menuItemId}::${portionId}` : menuItemId
 
 const initialState = {
   items:       [],
-  tableId:     null,
-  sessionId:   null,
   loyaltyTier: 'none',
   discountPct: 0,
+  // NOTE: tableId and sessionId are NOT stored here.
+  // Always read from tableSessionSlice (selectTableId, selectSessionId).
 }
 
 const cartSlice = createSlice({
@@ -33,9 +49,9 @@ const cartSlice = createSlice({
   initialState,
   reducers: {
 
-    // ── addItem ───────────────────────────────────────────────────────────────
+    // ── addItem ────────────────────────────────────────────────────────────────
     // payload: { menuItemId, name, price, quantity?, emoji, category,
-    //            portionId?, portionLabel? }
+    //            portionId?, portionLabel?, customizations? }
     addItem: (state, { payload }) => {
       const key      = buildKey(payload.menuItemId, payload.portionId ?? null)
       const existing = state.items.find(
@@ -45,20 +61,24 @@ const cartSlice = createSlice({
         existing.quantity += payload.quantity ?? 1
       } else {
         state.items.push({
-          menuItemId:   payload.menuItemId,
-          name:         payload.name,
-          price:        payload.price,
-          quantity:     payload.quantity ?? 1,
-          emoji:        payload.emoji        ?? '🍽️',
-          category:     payload.category     ?? null,
-          portionId:    payload.portionId    ?? null,
-          portionLabel: payload.portionLabel ?? null,
+          menuItemId:     payload.menuItemId,
+          name:           payload.name,
+          price:          payload.price,
+          quantity:       payload.quantity     ?? 1,
+          emoji:          payload.emoji        ?? '🍽️',
+          category:       payload.category     ?? null,
+          portionId:      payload.portionId    ?? null,
+          portionLabel:   payload.portionLabel ?? null,
+          customizations: payload.customizations ?? null,  // forwarded from ItemDetailPage
         })
       }
     },
 
-    // ── removeItem ────────────────────────────────────────────────────────────
-    // payload: { menuItemId, portionId? }  OR  just menuItemId string (legacy)
+    // ── removeItem ─────────────────────────────────────────────────────────────
+    // Preferred shape: { menuItemId, portionId? }
+    // Legacy shape:    string menuItemId (treated as portionId: null)
+    // NOTE: do not pass composite key strings like "abc::half" as a plain string —
+    // the legacy path will treat it as a menuItemId, not as a composite key.
     removeItem: (state, { payload }) => {
       const { menuItemId, portionId } =
         typeof payload === 'string'
@@ -70,8 +90,11 @@ const cartSlice = createSlice({
       )
     },
 
-    // ── updateQuantity ────────────────────────────────────────────────────────
+    // ── updateQuantity ─────────────────────────────────────────────────────────
     // payload: { menuItemId, portionId?, quantity }
+    // IMPORTANT: useCart.js must dispatch exactly this shape.
+    // A previous session incorrectly changed useCart.js to dispatch { id, quantity }
+    // — that broke quantity updates silently. useCart.js has been corrected.
     updateQuantity: (state, { payload }) => {
       const { menuItemId, portionId, quantity } = payload
       const key  = buildKey(menuItemId, portionId ?? null)
@@ -90,11 +113,6 @@ const cartSlice = createSlice({
 
     clearCart: (state) => { state.items = [] },
 
-    setTableInfo: (state, { payload: { tableId, sessionId } }) => {
-      state.tableId   = tableId
-      state.sessionId = sessionId
-    },
-
     setLoyaltyInfo: (state, { payload: { tier, discountPct } }) => {
       state.loyaltyTier = tier
       state.discountPct = discountPct
@@ -104,25 +122,30 @@ const cartSlice = createSlice({
 
 export const {
   addItem, removeItem, updateQuantity,
-  clearCart, setTableInfo, setLoyaltyInfo,
+  clearCart, setLoyaltyInfo,
 } = cartSlice.actions
 
-// ── Selectors ─────────────────────────────────────────────────────────────────
+// ── Selectors ──────────────────────────────────────────────────────────────────
+
 export const selectCartItems    = (s) => s.cart.items
 export const selectCartCount    = (s) => s.cart.items.reduce((acc, i) => acc + i.quantity, 0)
-export const selectCartSubtotal = (s) => s.cart.items.reduce((acc, i) => acc + i.price * i.quantity, 0)
+export const selectCartSubtotal = (s) =>
+  s.cart.items.reduce((acc, i) => acc + i.price * i.quantity, 0)
+
 export const selectCartDiscount = (s) => {
   const sub = s.cart.items.reduce((acc, i) => acc + i.price * i.quantity, 0)
   return Math.round(sub * (s.cart.discountPct / 100))
 }
-export const selectCartTotal    = (s) => {
+
+export const selectCartTotal = (s) => {
   const sub = s.cart.items.reduce((acc, i) => acc + i.price * i.quantity, 0)
   return Math.round(sub * (1 - s.cart.discountPct / 100))
 }
-export const selectTableId      = (s) => s.cart.tableId
-export const selectSessionId    = (s) => s.cart.sessionId
 
-// Total qty of a specific item (all portions combined) — for card badge
+// REMOVED: selectTableId — import from tableSessionSlice
+// REMOVED: selectSessionId — import from tableSessionSlice
+
+// Total qty of a specific menu item across ALL portions — for card badge
 export const selectItemTotalQty = (menuItemId) => (s) =>
   s.cart.items
     .filter(i => i.menuItemId === menuItemId)

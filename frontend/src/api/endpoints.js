@@ -1,4 +1,10 @@
 // src/api/endpoints.js
+//
+// FIXES:
+// • TABLE.GEOFENCE_EXIT added — useGpsWatcher.js calls api.post(ENDPOINTS.TABLE.GEOFENCE_EXIT)
+// • LOYALTY.ME added as alias for MY_LOYALTY — useLoyalty.js imports ENDPOINTS.LOYALTY.ME
+//   (both kept so existing code using either name works)
+
 export const ENDPOINTS = {
   AUTH: {
     GOOGLE_LOGIN:     '/auth/google',
@@ -11,6 +17,7 @@ export const ENDPOINTS = {
     REGISTER:         '/auth/register',
     LOGIN:            '/auth/login',
   },
+
   TABLE: {
     SESSION_CREATE:  '/table-session/create',
     SESSION_ACTIVE:  '/table-session/active',
@@ -18,10 +25,12 @@ export const ENDPOINTS = {
     DETECT_GPS:      '/table-session/detect/gps',
     DETECT_QR:       '/table-session/detect/qr',
     HEARTBEAT:       '/table-session/heartbeat',
+    GEOFENCE_EXIT:   '/table-session/geofence-exit',   // FIX: was missing — useGpsWatcher needs this
     LIST:            '/tables',
     CREATE:          '/tables',
     UPDATE:          (id) => `/tables/${id}`,
   },
+
   MENU: {
     LIST:            '/menu',
     BY_CAFE:         (cafeId) => `/menu/${cafeId}`,
@@ -29,6 +38,7 @@ export const ENDPOINTS = {
     CREATE:          '/menu/item',
     UPDATE:          (id) => `/menu/item/${id}`,
   },
+
   ORDER: {
     PLACE:           '/orders',
     ACTIVE:          '/orders/active',
@@ -39,14 +49,17 @@ export const ENDPOINTS = {
     KDS:             '/orders/kds',
     WAITER_QUEUE:    '/orders/waiter',
   },
+
   REVIEW: {
-    LIST:   (menuItemId) => `/reviews/${menuItemId}`,
-    MY:     (menuItemId) => `/reviews/${menuItemId}/my`,
-    CREATE: (menuItemId) => `/reviews/${menuItemId}`,
-    UPDATE: (reviewId)   => `/reviews/review/${reviewId}`,
-    DELETE: (reviewId)   => `/reviews/review/${reviewId}`,
-    LIKE:   (reviewId)   => `/reviews/review/${reviewId}/like`,
+    LIST:    (menuItemId) => `/reviews/${menuItemId}`,
+    MY:      (menuItemId) => `/reviews/${menuItemId}/my`,
+    SUMMARY: (menuItemId) => `/reviews/${menuItemId}/summary`,
+    CREATE:  (menuItemId) => `/reviews/${menuItemId}`,
+    UPDATE:  (reviewId)   => `/reviews/review/${reviewId}`,
+    DELETE:  (reviewId)   => `/reviews/review/${reviewId}`,
+    LIKE:    (reviewId)   => `/reviews/review/${reviewId}/like`,
   },
+
   WAITER_CALL: {
     CREATE:      '/waiter-call',
     LIST:        '/waiter-call',
@@ -55,19 +68,24 @@ export const ENDPOINTS = {
     DONE:        (id) => `/waiter-call/${id}/done`,
     HISTORY:     '/waiter-call/history',
   },
+
   RECOMMENDATIONS: {
     PERSONAL: '/recommendations/personal',
     GUEST:    '/recommendations/guest',
   },
+
   WEATHER: {
     CURRENT: '/weather/current',
   },
+
   LOYALTY: {
     MY_LOYALTY:    '/loyalty/me',
+    ME:            '/loyalty/me',     // FIX: alias — useLoyalty.js uses ENDPOINTS.LOYALTY.ME
     HISTORY:       '/loyalty/history',
     CONFIG:        '/loyalty/config',
     UPDATE_CONFIG: '/loyalty/config',
   },
+
   MESSAGING: {
     THREADS:      '/messages/threads',
     HISTORY:      (threadId) => `/messages/${threadId}`,
@@ -75,29 +93,34 @@ export const ENDPOINTS = {
     READ:         (threadId) => `/messages/${threadId}/read`,
     UNREAD_COUNT: '/messages/unread-count',
   },
+
   BILLING: {
     PENDING:      '/billing/pending',
     CONFIRM:      (orderId) => `/billing/${orderId}/confirm`,
     SPLIT:        '/billing/split',
     TRANSACTIONS: '/billing/transactions',
   },
+
   INVENTORY: {
     LIST:         '/inventory',
     UPDATE:       (id) => `/inventory/${id}`,
     ALERT_CONFIG: '/inventory/alert-config',
   },
+
   REPORTS: {
     SALES:   '/reports/sales',
     DAILY:   '/reports/daily',
     STAFF:   '/reports/staff',
     LOYALTY: '/reports/loyalty',
   },
+
   ADMIN: {
     CAFES:         '/admin/cafes',
     CAFE:          (id) => `/admin/cafes/${id}`,
     SUBSCRIPTIONS: '/admin/subscriptions',
     USAGE:         '/admin/usage',
   },
+
   STAFF: {
     LIST:           '/staff',
     CREATE:         '/staff',
@@ -105,10 +128,11 @@ export const ENDPOINTS = {
     DELETE:         (id) => `/staff/${id}`,
     RESET_PASSWORD: (id) => `/staff/${id}/reset-password`,
   },
+
   NOTIFICATIONS: {
-  LIST:     '/notifications',
-  READ_ALL: '/notifications/read-all',
-  READ_ONE: (id) => `/notifications/${id}/read`,
-  CLEAR:    '/notifications',
-},
+    LIST:     '/notifications',
+    READ_ALL: '/notifications/read-all',
+    READ_ONE: (id) => `/notifications/${id}/read`,
+    CLEAR:    '/notifications',
+  },
 }

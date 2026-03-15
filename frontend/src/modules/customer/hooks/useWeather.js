@@ -1,51 +1,43 @@
 // src/modules/customer/hooks/useWeather.js
-// ─────────────────────────────────────────────────────────────────────────────
-// Drop-in replacement for whatever was providing fake weather data before.
-// Returns { weather, loading, error } — pass `weather` directly to WelcomeCard
-// and useRecommendations.
 //
-// Usage:
-//   const { weather, loading } = useWeather();
-//   <WelcomeCard weather={weather} />
-// ─────────────────────────────────────────────────────────────────────────────
+// FIX: load wrapped in useCallback with [] deps for a stable reference.
+// This prevents setInterval from capturing a stale closure on re-renders
+// and makes the exposed `refresh` function safe to call from event handlers.
 
-import { useState, useEffect, useRef } from "react";
-import { fetchWeather } from "@shared/services/weather.service";
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { fetchWeather } from '@shared/services/weather.service'
 
-const REFRESH_INTERVAL_MS = 10 * 60 * 1000; // Re-fetch every 10 min (matches cache TTL)
+const REFRESH_INTERVAL_MS = 10 * 60 * 1000  // 10 minutes — matches backend cache TTL
 
 export const useWeather = () => {
-  const [weather, setWeather]   = useState(null);
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState(null);
-  const intervalRef             = useRef(null);
+  const [weather, setWeather] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error,   setError]   = useState(null)
+  const intervalRef           = useRef(null)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
-      setError(null);
-      const data = await fetchWeather();
+      setError(null)
+      const data = await fetchWeather()
       if (data) {
-        setWeather(data);
+        setWeather(data)
       } else {
-        setError("Could not load weather");
+        setError('Could not load weather')
       }
     } catch (err) {
-      setError(err.message);
+      setError(err.message)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }, [])  // stable — fetchWeather has no deps
 
   useEffect(() => {
-    load();
-
-    // Refresh every 10 minutes so temp stays current
-    intervalRef.current = setInterval(load, REFRESH_INTERVAL_MS);
-
+    load()
+    intervalRef.current = setInterval(load, REFRESH_INTERVAL_MS)
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, []);
+      if (intervalRef.current) clearInterval(intervalRef.current)
+    }
+  }, [load])
 
-  return { weather, loading, error, refresh: load };
-};
+  return { weather, loading, error, refresh: load }
+}

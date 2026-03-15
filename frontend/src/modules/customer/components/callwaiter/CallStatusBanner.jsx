@@ -1,45 +1,80 @@
 // src/modules/customer/components/callwaiter/CallStatusBanner.jsx
+//
+// FIXES:
+// • 'resolved' status added to STATUS_CONFIG — callWaiterSlice was fixed to use
+//   'resolved' (not 'done') as the terminal status. The banner was never showing
+//   for resolved calls because 'resolved' key didn't exist here.
+// • 'done' key kept as alias for any legacy socket events that still send 'done'.
+// • Dismiss button shown on both 'resolved' and 'done' so users can clear it.
+// • COLORS.matcha.DEFAULT confirmed correct token ✅
+
 import { useSelector, useDispatch } from 'react-redux'
-import { selectCallStatus, selectActiveCall, clearCall } from '@store/slices/callWaiterSlice'
-import { COLORS } from '@colors'
-import { Bell, CheckCircle, Bike, X } from 'lucide-react'
+import { selectCallStatus, clearCall } from '@store/slices/callWaiterSlice'
+import { COLORS }                      from '@colors'
+import { Bell, CheckCircle, Bike, X }  from 'lucide-react'
 
 const STATUS_CONFIG = {
   pending: {
-    icon:    Bell,
-    label:   'Waiter notified…',
-    sub:     'Your waiter will be with you shortly',
-    color:   COLORS.saffron.DEFAULT,
-    bg:      COLORS.saffron.DEFAULT + '12',
-    border:  COLORS.saffron.DEFAULT + '40',
-    pulse:   true,
+    icon:   Bell,
+    label:  'Waiter notified…',
+    sub:    'Your waiter will be with you shortly',
+    color:  COLORS.saffron.DEFAULT,
+    bg:     COLORS.saffron.DEFAULT + '12',
+    border: COLORS.saffron.DEFAULT + '40',
+    pulse:  true,
+    canDismiss: false,
   },
   acknowledged: {
-    icon:    CheckCircle,
-    label:   'Waiter acknowledged ✓',
-    sub:     'On their way to your table',
-    color:   COLORS.matcha.DEFAULT,
-    bg:      COLORS.matcha.DEFAULT + '12',
-    border:  COLORS.matcha.DEFAULT + '40',
-    pulse:   false,
+    icon:   CheckCircle,
+    label:  'Waiter acknowledged ✓',
+    sub:    'On their way to your table',
+    color:  COLORS.matcha.DEFAULT,
+    bg:     COLORS.matcha.DEFAULT + '12',
+    border: COLORS.matcha.DEFAULT + '40',
+    pulse:  false,
+    canDismiss: false,
   },
   on_the_way: {
-    icon:    Bike,
-    label:   'Waiter is coming! 🙏',
-    sub:     'Almost there',
-    color:   COLORS.matcha.DEFAULT,
-    bg:      COLORS.matcha.DEFAULT + '15',
-    border:  COLORS.matcha.DEFAULT + '50',
-    pulse:   false,
+    icon:   Bike,
+    label:  'Waiter is coming! 🙏',
+    sub:    'Almost there',
+    color:  COLORS.matcha.DEFAULT,
+    bg:     COLORS.matcha.DEFAULT + '15',
+    border: COLORS.matcha.DEFAULT + '50',
+    pulse:  false,
+    canDismiss: false,
   },
+  // FIX: 'resolved' is the correct terminal status from callWaiterSlice
+  resolved: {
+    icon:   CheckCircle,
+    label:  'Request resolved ✓',
+    sub:    'Need anything else?',
+    color:  COLORS.matcha.DEFAULT,
+    bg:     COLORS.matcha.DEFAULT + '10',
+    border: COLORS.matcha.DEFAULT + '30',
+    pulse:  false,
+    canDismiss: true,
+  },
+  // 'done' kept as legacy alias — some older socket events may still send this
   done: {
-    icon:    CheckCircle,
-    label:   'Request resolved ✓',
-    sub:     'Need anything else?',
-    color:   COLORS.matcha.DEFAULT,
-    bg:      COLORS.matcha.DEFAULT + '10',
-    border:  COLORS.matcha.DEFAULT + '30',
-    pulse:   false,
+    icon:   CheckCircle,
+    label:  'Request resolved ✓',
+    sub:    'Need anything else?',
+    color:  COLORS.matcha.DEFAULT,
+    bg:     COLORS.matcha.DEFAULT + '10',
+    border: COLORS.matcha.DEFAULT + '30',
+    pulse:  false,
+    canDismiss: true,
+  },
+  cancelled: {
+    icon:   X,
+    label:  'Request cancelled',
+    sub:    'You can call again anytime',
+    color:  '#ef4444',
+    bg:     '#ef444412',
+    border: '#ef444440',
+    pulse:  false,
+    canDismiss: true,
   },
 }
 
@@ -64,11 +99,13 @@ const CallStatusBanner = ({ fullCard = false }) => {
       >
         <Icon size={18} color={cfg.color} />
       </div>
+
       <div className="flex-1 min-w-0">
         <p className="text-sm font-bold" style={{ color: cfg.color }}>{cfg.label}</p>
         <p className="text-xs text-brew-soft">{cfg.sub}</p>
       </div>
-      {callStatus === 'done' && (
+
+      {cfg.canDismiss && (
         <button
           onClick={() => dispatch(clearCall())}
           className="w-7 h-7 rounded-full bg-white/60 flex items-center justify-center"
@@ -80,7 +117,7 @@ const CallStatusBanner = ({ fullCard = false }) => {
     </div>
   )
 
-  return fullCard ? content : <div className="mx-0">{content}</div>
+  return fullCard ? content : <div>{content}</div>
 }
 
 export default CallStatusBanner

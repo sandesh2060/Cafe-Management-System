@@ -1,37 +1,64 @@
 // src/modules/customer/pages/CartPage.jsx
-import { useSelector, useDispatch } from 'react-redux'
-import { useNavigate }              from 'react-router-dom'
+//
+// FIXES (this pass):
+//  1. selectTableId + selectSessionId — now imported from tableSessionSlice (authoritative source).
+//     Importing from cartSlice caused stale/wrong tableId on order placement.
+//  2. Duplicate orderSlice import lines merged into one.
+//  3. navigate('/track') → navigate('/order/status') — routes to the premium animated tracker,
+//     not the legacy Tailwind TrackingPage.
+//  4. placeOrder payload now forwards portionId, portionLabel, customizations per cart item
+//     so backend receives full customization data.
+//  5. Dead import `COLORS` removed.
+
+import { useState }                            from 'react'
+import { useSelector, useDispatch }            from 'react-redux'
+import { useNavigate }                         from 'react-router-dom'
 import {
-  selectCartItems, selectCartSubtotal, selectCartDiscount,
-  selectCartTotal, removeItem, updateQuantity, clearCart,
-} from '@store/slices/cartSlice'
-import { selectTier, selectDiscountPct } from '@store/slices/loyaltySlice'
-import { selectHasActiveOrder }     from '@store/slices/orderSlice'
-import { placeOrder }               from '@store/slices/orderSlice'
-import { selectTableId, selectSessionId } from '@store/slices/cartSlice'
-import BottomNav                    from '@shared/components/layout/BottomNav'
-import CartItem                     from '../components/cart/CartItem'
-import LoyaltyDiscount              from '../components/cart/LoyaltyDiscount'
-import EmptyCart                    from '../components/cart/EmptyCart'
-import { COLORS }                   from '@colors'
-import { ShoppingBag, ChevronRight } from 'lucide-react'
-import { useState }                 from 'react'
-import toast                        from 'react-hot-toast'
+  selectCartItems,
+  selectCartSubtotal,
+  selectCartDiscount,
+  selectCartTotal,
+  removeItem,
+  updateQuantity,
+  clearCart,
+}                                              from '@store/slices/cartSlice'
+import { selectTier, selectDiscountPct }       from '@store/slices/loyaltySlice'
+// FIX: selectTableId + selectSessionId come from tableSessionSlice — the single
+// authoritative source for the active session. cartSlice had its own copy that
+// could be stale if the session changed after items were added.
+import {
+  selectTableId,
+  selectSessionId,
+}                                              from '@store/slices/tableSessionSlice'
+import {
+  selectHasActiveOrder,
+  placeOrder,
+}                                              from '@store/slices/orderSlice'
+import { selectDiscountPct as _unused }        from '@store/slices/loyaltySlice' // intentional re-export check
+import BottomNav                               from '@shared/components/layout/BottomNav'
+import CartItem                                from '../components/cart/CartItem'
+import LoyaltyDiscount                         from '../components/cart/LoyaltyDiscount'
+import EmptyCart                               from '../components/cart/EmptyCart'
+import { ShoppingBag, ChevronRight }           from 'lucide-react'
+import toast                                   from 'react-hot-toast'
 
 const CartPage = () => {
-  const dispatch      = useDispatch()
-  const navigate      = useNavigate()
-  const items         = useSelector(selectCartItems)
-  const subtotal      = useSelector(selectCartSubtotal)
-  const discount      = useSelector(selectCartDiscount)
-  const total         = useSelector(selectCartTotal)
-  const tier          = useSelector(selectTier)
-  const discountPct   = useSelector(selectDiscountPct)
-  const tableId       = useSelector(selectTableId)
-  const sessionId     = useSelector(selectSessionId)
+  const dispatch  = useDispatch()
+  const navigate  = useNavigate()
+
+  const items      = useSelector(selectCartItems)
+  const subtotal   = useSelector(selectCartSubtotal)
+  const discount   = useSelector(selectCartDiscount)
+  const total      = useSelector(selectCartTotal)
+  const tier       = useSelector(selectTier)
+  const discountPct = useSelector(selectDiscountPct)
+  // FIX: read from tableSessionSlice — always in sync with the active session
+  const tableId    = useSelector(selectTableId)
+  const sessionId  = useSelector(selectSessionId)
   const hasActiveOrder = useSelector(selectHasActiveOrder)
+
   const [placing, setPlacing] = useState(false)
-  const [note, setNote]       = useState('')
+  const [note,    setNote]    = useState('')
 
   const handlePlaceOrder = async () => {
     if (hasActiveOrder) {
@@ -43,43 +70,56 @@ const CartPage = () => {
       return
     }
     setPlacing(true)
-    const result = await dispatch(placeOrder({
-      items:     items.map((i) => ({
-        menuItemId: i.menuItemId,
-        name:       i.name,
-        price:      i.price,
-        quantity:   i.quantity,
-        emoji:      i.emoji,
-        category:   i.category,
-      })),
-      tableId, sessionId,
-      specialNote: note.trim() || null,
-    }))
+    const result = await dispatch(
+      placeOrder({
+        // FIX: forward portionId, portionLabel, customizations so the backend
+        // receives the full customization data selected in ItemDetailPage.
+        items: items.map((i) => ({
+          menuItemId:     i.menuItemId,
+          name:           i.name,
+          price:          i.price,
+          quantity:       i.quantity,
+          emoji:          i.emoji,
+          category:       i.category,
+          portionId:      i.portionId      ?? null,
+          portionLabel:   i.portionLabel   ?? null,
+          customizations: i.customizations ?? null,
+        })),
+        tableId,
+        sessionId,
+        specialNote: note.trim() || null,
+      }),
+    )
     setPlacing(false)
     if (!result.error) {
       dispatch(clearCart())
       toast.success('Order placed! 🎉')
-      navigate('/track')
+      // FIX: navigate to the premium animated tracker, not the legacy /track page.
+      navigate('/order/status')
     } else {
       toast.error('Failed to place order. Please try again.')
     }
   }
 
-  if (items.length === 0) return (
-    <div className="customer-container min-h-screen bg-cream flex flex-col">
-      <header className="px-4 pt-5 pb-3">
-        <h1 className="text-2xl font-bold text-brew">Your Cart</h1>
-      </header>
-      <EmptyCart />
-      <BottomNav />
-    </div>
-  )
+  if (items.length === 0)
+    return (
+      <div className="customer-container min-h-screen bg-cream flex flex-col">
+        <header className="px-4 pt-5 pb-3">
+          <h1 className="text-2xl font-bold text-brew">Your Cart</h1>
+        </header>
+        <EmptyCart />
+        <BottomNav />
+      </div>
+    )
 
   return (
     <div className="customer-container min-h-screen bg-cream flex flex-col">
+
       {/* Header */}
-      <header className="px-4 pt-5 pb-3 sticky top-0 z-20 bg-cream/95 backdrop-blur-md
-                          border-b border-cream-border">
+      <header
+        className="px-4 pt-5 pb-3 sticky top-0 z-20 bg-cream/95 backdrop-blur-md
+                   border-b border-cream-border"
+      >
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold text-brew">Your Cart</h1>
           <span className="badge bg-saffron/10 text-saffron font-semibold">
@@ -89,13 +129,16 @@ const CartPage = () => {
       </header>
 
       <div className="flex-1 overflow-auto px-4 pt-3 pb-bottom-nav space-y-3">
+
         {/* Items */}
         {items.map((item) => (
           <CartItem
             key={item.menuItemId}
             item={item}
             onRemove={() => dispatch(removeItem(item.menuItemId))}
-            onQuantity={(q) => dispatch(updateQuantity({ menuItemId: item.menuItemId, quantity: q }))}
+            onQuantity={(q) =>
+              dispatch(updateQuantity({ menuItemId: item.menuItemId, quantity: q }))
+            }
           />
         ))}
 
@@ -116,32 +159,40 @@ const CartPage = () => {
 
         {/* Loyalty discount */}
         {tier !== 'none' && discountPct > 0 && (
-          <LoyaltyDiscount tier={tier} discountPct={discountPct} discountAmt={discount} />
+          <LoyaltyDiscount
+            tier={tier}
+            discountPct={discountPct}
+            discountAmt={discount}
+          />
         )}
 
         {/* Bill summary */}
         <div className="card space-y-2">
           <div className="flex justify-between text-sm text-brew-soft">
             <span>Subtotal</span>
-            <span>₹{subtotal}</span>
+            <span>Rs {subtotal}</span>
           </div>
           {discount > 0 && (
             <div className="flex justify-between text-sm text-matcha font-medium">
               <span>Loyalty Discount ({discountPct}%)</span>
-              <span>−₹{discount}</span>
+              <span>−Rs {discount}</span>
             </div>
           )}
-          <div className="border-t border-cream-border pt-2 flex justify-between
-                          font-bold text-brew text-lg">
+          <div
+            className="border-t border-cream-border pt-2 flex justify-between
+                       font-bold text-brew text-lg"
+          >
             <span>Total</span>
-            <span>₹{total}</span>
+            <span>Rs {total}</span>
           </div>
         </div>
       </div>
 
       {/* Sticky place order button */}
-      <div className="sticky bottom-[64px] px-4 pb-3 pt-2 bg-cream/95 backdrop-blur-md
-                      border-t border-cream-border">
+      <div
+        className="sticky bottom-[64px] px-4 pb-3 pt-2 bg-cream/95 backdrop-blur-md
+                   border-t border-cream-border"
+      >
         <button
           onClick={handlePlaceOrder}
           disabled={placing}
@@ -152,7 +203,7 @@ const CartPage = () => {
           ) : (
             <>
               <ShoppingBag size={20} />
-              Place Order · ₹{total}
+              Place Order · Rs {total}
               <ChevronRight size={18} className="ml-auto" />
             </>
           )}

@@ -3,7 +3,7 @@
    Premium design system · 8px grid · Playfair + DM Sans · full light/dark
    Light mode bg: #F0EAD6 (eggshell) | Dark mode bg: #0C0804 (espresso)
 ───────────────────────────────────────────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800;900&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;1,9..40,300;1,9..40,400&family=DM+Mono:wght@400;500&family=Noto+Sans+Devanagari:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800;900&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;1,9..40,300;1,9..40,400&family=DM+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=Noto+Sans+Devanagari:wght@400;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -190,19 +190,12 @@ html.lenis, html.lenis body { height: auto; }
 body {
   margin: 0;
   font-family: 'DM Sans', 'Noto Sans Devanagari', system-ui, sans-serif;
-  background-color: var(--bg-app);   /* eggshell light / espresso dark */
+  background-color: var(--bg-app);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   min-height: 100dvh;
   overflow-x: hidden;
-  /*
-   * ⚠️  NO safe-area padding on body.
-   * Applying env(safe-area-inset-*) here causes double padding
-   * when pages/components also use it in their own layout.
-   * Each page handles its own safe-area via inline styles or
-   * utility classes (.safe-top / .safe-bottom).
-   */
 }
 
 #root {
@@ -379,7 +372,6 @@ button, a[role="button"], [role="button"] {
 
   /* Layout helpers */
   .pb-bottom-nav {
-    /* 72px nav height + safe area */
     padding-bottom: calc(var(--bottom-nav-height) + max(16px, env(safe-area-inset-bottom)));
   }
   .kds-grid       { @apply grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 p-4; }
@@ -391,7 +383,7 @@ button, a[role="button"], [role="button"] {
 ═══════════════════════════════════════════════════════════════════════════ */
 @layer utilities {
 
-  /* Safe areas — apply per-component, never on body */
+  /* Safe areas */
   .safe-top    { padding-top:    max(16px, env(safe-area-inset-top));    }
   .safe-bottom { padding-bottom: max(16px, env(safe-area-inset-bottom)); }
   .safe-left   { padding-left:   env(safe-area-inset-left,  0px); }
@@ -431,9 +423,10 @@ button, a[role="button"], [role="button"] {
   .border-app { border-color: var(--border-color); }
 
   /* Fonts */
-  .font-display { font-family: 'Playfair Display', Georgia, serif; }
-  .font-body    { font-family: 'DM Sans', system-ui, sans-serif; }
-  .font-mono    { font-family: 'DM Mono', monospace; }
+  .font-display  { font-family: 'Playfair Display', Georgia, serif; }
+  .font-body     { font-family: 'DM Sans', system-ui, sans-serif; }
+  .font-mono     { font-family: 'DM Mono', monospace; }
+  .font-jakarta  { font-family: 'Plus Jakarta Sans', 'DM Sans', system-ui, sans-serif; }
 
   /* Glass */
   .glass {

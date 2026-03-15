@@ -1,5 +1,12 @@
 // src/modules/customer/components/notifications/NotificationBell.jsx
-import { useEffect, useContext, useRef, useState } from 'react'
+//
+// FIXES vs previous version:
+// 1. window.__sheetOpen = true when panel is open — NotificationToast
+//    checks this flag and suppresses itself while any sheet is open.
+// 2. Badge forwardRef — AnimatePresence mode="popLayout" requires it.
+// 3. BellSVG pulse uses scale not r (Framer Motion can't animate SVG attrs).
+
+import { useEffect, useContext, useState, forwardRef } from 'react'
 import { createPortal }                from 'react-dom'
 import { useSelector, useDispatch }    from 'react-redux'
 import { motion, AnimatePresence }     from 'motion/react'
@@ -18,9 +25,9 @@ import NotificationList                from './NotificationList'
 
 // ── Animated SVG Bell ────────────────────────────────────────────────────────
 const BellSVG = ({ hasUnread, isDark }) => {
-  const color = isDark ? 'rgba(255,184,77,0.55)' : 'rgba(92,51,23,0.42)'
+  const color       = isDark ? 'rgba(255,184,77,0.55)' : 'rgba(92,51,23,0.42)'
   const activeColor = isDark ? '#FFB84D' : '#C8680A'
-  const c = hasUnread ? activeColor : color
+  const c           = hasUnread ? activeColor : color
 
   return (
     <motion.svg
@@ -32,72 +39,60 @@ const BellSVG = ({ hasUnread, isDark }) => {
         : {}}
       style={{ originX: '50%', originY: '10%', display: 'block' }}
     >
-      {/* Bell body */}
       <motion.path
         d="M6 10 C6 6.686 8.686 4 12 4 C15.314 4 18 6.686 18 10 L18 15 L20 17 L4 17 L6 15 Z"
-        stroke={c}
-        strokeWidth="1.7"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+        stroke={c} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"
         fill={hasUnread ? (isDark ? 'rgba(255,184,77,0.08)' : 'rgba(200,104,10,0.07)') : 'none'}
-        animate={{ stroke: c }}
-        transition={{ duration: 0.25 }}
+        animate={{ stroke: c }} transition={{ duration: 0.25 }}
       />
-      {/* Clapper */}
       <motion.path
         d="M10 17 C10 18.105 10.895 19 12 19 C13.105 19 14 18.105 14 17"
-        stroke={c}
-        strokeWidth="1.7"
-        strokeLinecap="round"
-        fill="none"
-        animate={{ stroke: c }}
-        transition={{ duration: 0.25 }}
+        stroke={c} strokeWidth="1.7" strokeLinecap="round" fill="none"
+        animate={{ stroke: c }} transition={{ duration: 0.25 }}
       />
-      {/* Top stem */}
       <motion.line
         x1="12" y1="2" x2="12" y2="4"
         stroke={c} strokeWidth="1.7" strokeLinecap="round"
-        animate={{ stroke: c }}
-        transition={{ duration: 0.25 }}
+        animate={{ stroke: c }} transition={{ duration: 0.25 }}
       />
-      {/* Active glow ring */}
       {hasUnread && (
         <motion.circle
           cx="12" cy="10" r="9"
-          stroke={activeColor}
-          strokeWidth="0.6"
-          fill="none"
-          opacity="0"
-          animate={{ opacity: [0, 0.35, 0], r: [7, 11, 13] }}
+          stroke={activeColor} strokeWidth="0.6" fill="none"
+          initial={{ opacity: 0, scale: 0.78 }}
+          animate={{ opacity: [0, 0.35, 0], scale: [0.78, 1.2, 1.5] }}
           transition={{ duration: 1.8, repeat: Infinity, repeatDelay: 2 }}
+          style={{ transformOrigin: '12px 10px' }}
         />
       )}
     </motion.svg>
   )
 }
 
-// ── Badge count ───────────────────────────────────────────────────────────────
-const Badge = ({ count }) => (
+// ── Badge — needs forwardRef for AnimatePresence popLayout ────────────────────
+const Badge = forwardRef(({ count }, ref) => (
   <motion.span
+    ref={ref}
     key={count}
     initial={{ scale: 0, opacity: 0, y: -4 }}
     animate={{ scale: 1, opacity: 1, y: 0 }}
     exit={{   scale: 0, opacity: 0, y: -4 }}
     transition={{ type: 'spring', stiffness: 600, damping: 22 }}
-    className="absolute -top-1.5 -right-1.5 min-w-[17px] h-[17px] rounded-full
+    className="absolute -top-1 -right-1 min-w-[17px] h-[17px] rounded-full
                flex items-center justify-center px-1
                text-[9px] font-black text-white font-mono
-               pointer-events-none"
+               pointer-events-none z-10"
     style={{
-      background:  'linear-gradient(135deg, #FF9F1C, #E05C2A)',
-      boxShadow:   '0 2px 8px rgba(255,130,0,0.5), 0 0 0 1.5px rgba(255,255,255,0.25)',
-      lineHeight:  1,
+      background:    'linear-gradient(135deg, #FF9F1C, #E05C2A)',
+      boxShadow:     '0 2px 8px rgba(255,130,0,0.5), 0 0 0 1.5px rgba(255,255,255,0.25)',
+      lineHeight:    1,
       letterSpacing: '-0.02em',
     }}
   >
     {count > 9 ? '9+' : count}
   </motion.span>
-)
+))
+Badge.displayName = 'Badge'
 
 // ════════════════════════════════════════════════════════════════════════════
 const NotificationBell = () => {
@@ -107,6 +102,12 @@ const NotificationBell = () => {
   const { isDark } = useContext(ThemeContext)
   const [open, setOpen] = useState(false)
   const hasUnread  = unread > 0
+
+  // ── Tell NotificationToast to suppress while panel is open ───────────────
+  useEffect(() => {
+    window.__sheetOpen = open
+    return () => { window.__sheetOpen = false }
+  }, [open])
 
   useEffect(() => {
     if (open) dispatch(fetchNotifications())
@@ -122,7 +123,6 @@ const NotificationBell = () => {
     dispatch(clearAllRemote())
   }
 
-  // ── Theme tokens ────────────────────────────────────────────────────────
   const surface2  = isDark ? '#241810' : '#FFF0D6'
   const border    = isDark ? 'rgba(255,159,28,0.12)' : '#F0D9B5'
   const textMain  = isDark ? '#FFF8EE' : '#5C3317'
@@ -131,7 +131,6 @@ const NotificationBell = () => {
 
   return (
     <>
-      {/* ── Bell trigger ──────────────────────────────────────────────── */}
       <motion.button
         onClick={() => setOpen(true)}
         whileTap={{ scale: 0.88 }}
@@ -139,7 +138,7 @@ const NotificationBell = () => {
         className="relative flex items-center justify-center
                    w-9 h-9 rounded-[10px] transition-colors duration-150"
         style={{
-          background:  hasUnread
+          background: hasUnread
             ? (isDark ? 'rgba(255,159,28,0.1)' : 'rgba(255,159,28,0.07)')
             : 'transparent',
           border: `1px solid ${hasUnread
@@ -154,7 +153,6 @@ const NotificationBell = () => {
           {hasUnread && <Badge count={unread} />}
         </AnimatePresence>
 
-        {/* Ripple on new notification */}
         <AnimatePresence>
           {hasUnread && (
             <motion.span
@@ -169,23 +167,18 @@ const NotificationBell = () => {
         </AnimatePresence>
       </motion.button>
 
-      {/* ── Panel portal ──────────────────────────────────────────────── */}
       {createPortal(
         <AnimatePresence>
           {open && (
             <>
-              {/* Backdrop */}
               <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{   opacity: 0 }}
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                 transition={{ duration: 0.18 }}
                 onClick={() => setOpen(false)}
                 className="fixed inset-0 z-[90]"
                 style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(5px)' }}
               />
 
-              {/* Panel */}
               <motion.div
                 initial={{ y: '-100%', opacity: 0.6 }}
                 animate={{ y: 0,       opacity: 1   }}
@@ -208,7 +201,6 @@ const NotificationBell = () => {
                   style={{ borderBottom: `1px solid ${border}` }}
                 >
                   <div className="flex items-center gap-2.5">
-                    {/* Animated bell in header */}
                     <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
                       style={{ background: isDark ? 'rgba(255,159,28,0.1)' : 'rgba(255,159,28,0.08)' }}>
                       <BellSVG hasUnread={hasUnread} isDark={isDark} />
@@ -261,10 +253,8 @@ const NotificationBell = () => {
                       className="w-8 h-8 rounded-[10px] flex items-center justify-center
                                  transition-all active:scale-90"
                       style={{
-                        background: surface2,
-                        border:     `1px solid ${border}`,
-                        color:      textMuted,
-                        WebkitTapHighlightColor: 'transparent',
+                        background: surface2, border: `1px solid ${border}`,
+                        color: textMuted, WebkitTapHighlightColor: 'transparent',
                       }}
                     >
                       <Trash2 size={13} />
@@ -275,10 +265,8 @@ const NotificationBell = () => {
                       className="w-8 h-8 rounded-[10px] flex items-center justify-center
                                  transition-all active:scale-90"
                       style={{
-                        background: surface2,
-                        border:     `1px solid ${border}`,
-                        color:      textMuted,
-                        WebkitTapHighlightColor: 'transparent',
+                        background: surface2, border: `1px solid ${border}`,
+                        color: textMuted, WebkitTapHighlightColor: 'transparent',
                       }}
                     >
                       <X size={14} />
@@ -286,7 +274,6 @@ const NotificationBell = () => {
                   </div>
                 </div>
 
-                {/* List */}
                 <NotificationList
                   isDark={isDark}
                   surface2={surface2}

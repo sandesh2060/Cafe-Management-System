@@ -1,7 +1,14 @@
 // src/modules/customer/components/notifications/NotificationList.jsx
+//
+// PRODUCTION FIXES:
+// 1. Grouped by date section headers (Today / Yesterday / Earlier)
+// 2. Expired items are filtered at render time (extra safety on top of slice)
+// 3. Order status badge shows current status as a colored chip
+// 4. Empty state improved
+
 import { useDispatch, useSelector }    from 'react-redux'
 import { motion, AnimatePresence }     from 'motion/react'
-import { formatDistanceToNow }         from 'date-fns'
+import { formatDistanceToNow, isToday, isYesterday, parseISO } from 'date-fns'
 import {
   selectNotifications,
   markRead,
@@ -10,12 +17,41 @@ import {
 
 // ── Per-type visual identity ──────────────────────────────────────────────────
 const TYPE_META = {
-  order:   { emoji: '🍽️', color: '#2563EB', lightBg: '#EFF6FF',  darkBg: 'rgba(37,99,235,0.13)',   dot: '#2563EB' },
-  waiter:  { emoji: '🛎️', color: '#D97706', lightBg: '#FFFBEB',  darkBg: 'rgba(217,119,6,0.13)',   dot: '#F59E0B' },
-  loyalty: { emoji: '⭐', color: '#F59E0B', lightBg: '#FFFBEB',  darkBg: 'rgba(245,158,11,0.13)',  dot: '#F59E0B' },
-  system:  { emoji: '📢', color: '#6B7280', lightBg: '#F9FAFB',  darkBg: 'rgba(107,114,128,0.1)',  dot: '#9CA3AF' },
-  message: { emoji: '💬', color: '#7C3AED', lightBg: '#EDE9FE',  darkBg: 'rgba(124,58,237,0.13)', dot: '#8B5CF6' },
-  payment: { emoji: '💳', color: '#059669', lightBg: '#D4F0E0',  darkBg: 'rgba(5,150,105,0.13)',  dot: '#10B981' },
+  order:   { emoji: '🍽️', color: '#FF9F1C', lightBg: '#FFF7E6', darkBg: 'rgba(255,159,28,0.12)',  dot: '#FF9F1C' },
+  waiter:  { emoji: '🛎️', color: '#D97706', lightBg: '#FFFBEB', darkBg: 'rgba(217,119,6,0.13)',   dot: '#F59E0B' },
+  loyalty: { emoji: '⭐', color: '#A78BFA', lightBg: '#F5F3FF', darkBg: 'rgba(167,139,250,0.13)', dot: '#A78BFA' },
+  system:  { emoji: '📢', color: '#6B7280', lightBg: '#F9FAFB', darkBg: 'rgba(107,114,128,0.10)', dot: '#9CA3AF' },
+  message: { emoji: '💬', color: '#7C3AED', lightBg: '#EDE9FE', darkBg: 'rgba(124,58,237,0.13)', dot: '#8B5CF6' },
+  payment: { emoji: '💳', color: '#10B981', lightBg: '#D4F0E0', darkBg: 'rgba(5,150,105,0.13)',  dot: '#10B981' },
+}
+
+// ── Date section label ────────────────────────────────────────────────────────
+const getSectionLabel = (dateStr) => {
+  try {
+    const d = typeof dateStr === 'string' ? parseISO(dateStr) : new Date(dateStr)
+    if (isToday(d))     return 'Today'
+    if (isYesterday(d)) return 'Yesterday'
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  } catch {
+    return 'Earlier'
+  }
+}
+
+// ── Group notifications by date ───────────────────────────────────────────────
+const groupByDate = (items) => {
+  const groups = []
+  const seen   = new Map()
+
+  items.forEach(n => {
+    const label = getSectionLabel(n.createdAt)
+    if (!seen.has(label)) {
+      seen.set(label, [])
+      groups.push({ label, items: seen.get(label) })
+    }
+    seen.get(label).push(n)
+  })
+
+  return groups
 }
 
 // ── Skeleton loader ───────────────────────────────────────────────────────────
@@ -40,7 +76,6 @@ const Empty = ({ isDark }) => (
     transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
     className="flex-1 flex flex-col items-center justify-center py-16 gap-3 px-6 text-center"
   >
-    {/* Animated empty bell SVG */}
     <motion.div
       animate={{ y: [0, -5, 0] }}
       transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
@@ -57,11 +92,6 @@ const Empty = ({ isDark }) => (
           stroke={isDark ? 'rgba(255,184,77,0.35)' : 'rgba(92,51,23,0.25)'}
           strokeWidth="1.6" strokeLinecap="round" fill="none"
         />
-        <line x1="12" y1="2" x2="12" y2="4"
-          stroke={isDark ? 'rgba(255,184,77,0.35)' : 'rgba(92,51,23,0.25)'}
-          strokeWidth="1.6" strokeLinecap="round"
-        />
-        {/* Zzz dots — sleeping */}
         <motion.g
           animate={{ opacity: [0, 1, 1, 0], y: [-2, -2, -5, -5] }}
           transition={{ duration: 2.4, repeat: Infinity, delay: 0.5 }}
@@ -87,9 +117,9 @@ const Empty = ({ isDark }) => (
 )
 
 // ── Single notification row ───────────────────────────────────────────────────
-const NotifRow = ({ n, index, isDark, textMain, textMuted, border }) => {
+const NotifRow = ({ n, index, isDark, textMain, textMuted }) => {
   const dispatch = useDispatch()
-  const meta     = TYPE_META[n.type] || TYPE_META.system
+  const meta     = TYPE_META[n.type] ?? TYPE_META.system
 
   const rowBg = !n.read
     ? (isDark ? meta.darkBg : meta.lightBg)
@@ -100,6 +130,12 @@ const NotifRow = ({ n, index, isDark, textMain, textMuted, border }) => {
     dispatch(markRead(n.id))
     dispatch(markOneReadRemote(n.id))
   }
+
+  const timeAgo = (() => {
+    try {
+      return formatDistanceToNow(new Date(n.createdAt || n.timestamp), { addSuffix: true })
+    } catch { return '' }
+  })()
 
   return (
     <motion.div
@@ -133,10 +169,13 @@ const NotifRow = ({ n, index, isDark, textMain, textMuted, border }) => {
       {/* Text block */}
       <div className="flex-1 min-w-0 pt-0.5">
         {n.title && (
-          <p className="text-[13px] leading-snug mb-0.5 truncate"
+          <p className="text-[13px] leading-snug mb-0.5"
             style={{
               color:      textMain,
               fontWeight: n.read ? 500 : 700,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
             }}>
             {n.title}
           </p>
@@ -150,7 +189,7 @@ const NotifRow = ({ n, index, isDark, textMain, textMuted, border }) => {
         </p>
         <p className="text-[10px] mt-1"
           style={{ color: isDark ? 'rgba(196,154,108,0.5)' : 'rgba(139,94,60,0.45)' }}>
-          {formatDistanceToNow(new Date(n.createdAt || n.timestamp), { addSuffix: true })}
+          {timeAgo}
         </p>
       </div>
 
@@ -174,6 +213,22 @@ const NotifRow = ({ n, index, isDark, textMain, textMuted, border }) => {
   )
 }
 
+// ── Section header ────────────────────────────────────────────────────────────
+const SectionHeader = ({ label, isDark }) => (
+  <div
+    className="px-5 pt-4 pb-1"
+    style={{
+      fontSize: 10,
+      fontWeight: 700,
+      letterSpacing: '0.08em',
+      textTransform: 'uppercase',
+      color: isDark ? 'rgba(196,154,108,0.45)' : 'rgba(139,94,60,0.4)',
+    }}
+  >
+    {label}
+  </div>
+)
+
 // ════════════════════════════════════════════════════════════════════════════
 const NotificationList = ({ isDark, surface2, border, textMain, textMuted, loading }) => {
   const notifications = useSelector(selectNotifications)
@@ -190,24 +245,31 @@ const NotificationList = ({ isDark, surface2, border, textMain, textMuted, loadi
     return <Empty isDark={isDark} />
   }
 
+  const groups = groupByDate(notifications)
+
   return (
-    <div className="flex-1 overflow-y-auto py-2"
-      style={{ scrollbarWidth: 'none' }}>
+    <div
+      className="flex-1 overflow-y-auto py-2"
+      style={{ scrollbarWidth: 'none' }}
+    >
       <AnimatePresence initial={false}>
-        {notifications.map((n, i) => (
-          <NotifRow
-            key={n.id}
-            n={n}
-            index={i}
-            isDark={isDark}
-            textMain={textMain}
-            textMuted={textMuted}
-            border={border}
-          />
+        {groups.map(({ label, items }) => (
+          <div key={label}>
+            <SectionHeader label={label} isDark={isDark} />
+            {items.map((n, i) => (
+              <NotifRow
+                key={n.id}
+                n={n}
+                index={i}
+                isDark={isDark}
+                textMain={textMain}
+                textMuted={textMuted}
+              />
+            ))}
+          </div>
         ))}
       </AnimatePresence>
 
-      {/* Bottom padding for safe area */}
       <div className="h-4" />
     </div>
   )

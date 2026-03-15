@@ -1,176 +1,161 @@
 // src/app/App.jsx
-import { Provider }            from 'react-redux'
-import { BrowserRouter }       from 'react-router-dom'
-import { Toaster }             from 'react-hot-toast'
-import { useEffect, useState } from 'react'
-import { useDispatch }         from 'react-redux'
-import { ReactLenis, useLenis } from 'lenis/react'
-import store                   from '@store'
-import AppRoutes               from './routes/AppRoutes'
-import { ThemeProvider }       from '@shared/context/ThemeContext'
-import { setCredentials, clearAuth } from '@store/slices/authSlice'
-import { setSession, clearSession }  from '@store/slices/tableSessionSlice'
-import { setTableInfo }              from '@store/slices/cartSlice'
-import ScrollToTop             from '@shared/components/utils/ScrollToTop'
-import PageTransition          from '@shared/components/utils/PageTransition'
-import { setLenisInstance }    from '@shared/utils/lenisLock'
-import '@styles/globals.css'
+import { Provider }                    from 'react-redux'
+import { BrowserRouter, useNavigate }  from 'react-router-dom'
+import { Toaster }                     from 'react-hot-toast'
+import { useEffect, useState, useRef } from 'react'
+import { useDispatch }                 from 'react-redux'
+import { ReactLenis }                  from 'lenis/react'
+import { ThemeProvider }               from '@shared/context/ThemeContext'
+import store                           from '@store'
+import AppRoutes                       from './routes/AppRoutes'
+import {
+  setCredentials,
+  clearAuth,
+  setBootstrapReady,
+}                                      from '@store/slices/authSlice'
+import { setSession, clearSession }    from '@store/slices/tableSessionSlice'
+import { rehydratePersistedSession }   from '@modules/table/hooks/tableSession.utils'
+import { clearCart }                   from '@store/slices/cartSlice'
+import api                             from '@api/axios'
+import { ENDPOINTS }                   from '@api/endpoints'
+import PageTransition                  from '@shared/components/utils/PageTransition'
+import useSocket                       from '@shared/hooks/useSocket'
+import ToastRenderer                   from '@shared/components/notifications/ToastRenderer'
 
-;(() => { localStorage.removeItem('token') })()
+// ── Bootstrap promise — module-level so StrictMode double-invoke shares it ───
+// FIX: HMR guard resets the promise when Vite hot-reloads this module,
+// preventing the second mount from skipping /auth/me and leaving isLoggedIn=false.
+let bootstrapPromise = null
 
-const LENIS_OPTIONS = {
-  lerp:            0.1,
-  duration:        1.2,
-  smoothWheel:     true,
-  wheelMultiplier: 0.9,
-  touchMultiplier: 1.8,
-  infinite:        false,
-  easing:          (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    bootstrapPromise = null
+  })
 }
 
-const toastStyle = {
-  background:   'var(--bg-surface)',
-  color:        'var(--text-primary)',
-  borderRadius: '14px',
-  boxShadow:    'var(--shadow-lg)',
-  fontFamily:   '"DM Sans", sans-serif',
-  fontWeight:   600,
-  fontSize:     '13px',
-  border:       '1px solid var(--border-color)',
-  padding:      '10px 14px',
-}
-
-const rehydrateSessionFromStorage = (dispatch) => {
-  try {
-    const raw = localStorage.getItem('kc_session_data')
-    if (!raw) return false
-    const session = JSON.parse(raw)
-    if (!session?.sessionId || !session?.tableNumber) {
-      localStorage.removeItem('kc_session_data')
-      return false
-    }
-    dispatch(setSession(session))
-    dispatch(setTableInfo({ tableId: session.tableId, sessionId: session.sessionId }))
-    return true
-  } catch (e) {
-    localStorage.removeItem('kc_session_data')
-    return false
-  }
-}
-
-// ── LenisRegistrar ────────────────────────────────────────────────────────────
-// Dual-path registration: callback form (lenis/react v1.1+) + plain hook (all versions).
-// Both set the same module-level singleton. Whichever fires first wins.
-// ─────────────────────────────────────────────────────────────────────────────
-function LenisRegistrar() {
-  // Path 1: callback form fires synchronously when Lenis is ready
-  useLenis((lenis) => { if (lenis) setLenisInstance(lenis) })
-
-  // Path 2: plain hook — works in ALL lenis/react versions
-  const lenis = useLenis()
-  useEffect(() => { if (lenis) setLenisInstance(lenis) }, [lenis])
-
-  return null
-}
-
-/* ── AppInner ────────────────────────────────────────────────────────────── */
+// ── Inner component (needs dispatch + navigate inside Router) ─────────────────
 const AppInner = () => {
   const dispatch = useDispatch()
+  const navigate = useNavigate()
+  // FIX: ready starts true if bootstrapPromise already resolved (StrictMode
+  // second mount) — avoids double full-screen spinner flash.
   const [ready, setReady] = useState(false)
 
+  useSocket()
+
+  // ── Global auth event listeners ──────────────────────────────────────────
   useEffect(() => {
-    const bootstrap = async () => {
-      const token     = localStorage.getItem('kc_token')
-      const sessionId = localStorage.getItem('kc_session_id')
-      const baseUrl   = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
-      const devHeaders = import.meta.env.DEV ? { 'ngrok-skip-browser-warning': 'true' } : {}
+    const handleExpired = () => {
+      dispatch(clearAuth())
+      dispatch(clearCart())
+      dispatch(clearSession())
+      navigate('/login', { replace: true })
+    }
+    const handleLogout = () => {
+      navigate('/detect', { replace: true })
+    }
+    window.addEventListener('auth:session-expired', handleExpired)
+    window.addEventListener('auth:logout-redirect', handleLogout)
+    return () => {
+      window.removeEventListener('auth:session-expired', handleExpired)
+      window.removeEventListener('auth:logout-redirect', handleLogout)
+    }
+  }, [dispatch, navigate])
 
-      const hadCachedSession = rehydrateSessionFromStorage(dispatch)
-
-      if (token) {
-        try {
-          const res  = await fetch(`${baseUrl}/auth/me`, { headers: { Authorization: `Bearer ${token}`, ...devHeaders } })
-          if (!res.ok) throw new Error('invalid')
-          const json = await res.json()
-          const user = json.data?.user ?? json.data ?? json.user
-          if (!user) throw new Error('no user')
-          dispatch(setCredentials({ user, token }))
-        } catch {
-          localStorage.removeItem('kc_token')
-          dispatch(clearAuth())
-        }
+  // ── Bootstrap: restore session from localStorage ─────────────────────────
+  useEffect(() => {
+    const runBootstrap = async () => {
+      // StrictMode second invoke: promise already in flight — await it then mark ready
+      if (bootstrapPromise) {
+        await bootstrapPromise
+        dispatch(setBootstrapReady(true))
+        setReady(true)
+        return
       }
 
-      if (sessionId) {
+      bootstrapPromise = (async () => {
+        // Rehydrate table session from localStorage first (sync)
+        dispatch(rehydratePersistedSession())
+
+        const token = localStorage.getItem('kc_token')
+        if (!token) return  // no token — not logged in, bootstrap done
+
         try {
-          const res = await fetch(`${baseUrl}/table-session/active?sessionId=${sessionId}`, {
-            headers: { 'x-session-id': sessionId, ...(token ? { Authorization: `Bearer ${token}` } : {}), ...devHeaders },
-          })
-          if (res.ok) {
-            const json    = await res.json()
-            const session = json.session ?? json.data?.session ?? null
-            if (session) {
-              const cachedRaw = localStorage.getItem('kc_session_data')
-              const cached    = cachedRaw ? JSON.parse(cachedRaw) : {}
-              const freshSession = {
-                ...cached, ...session,
-                tableNumber: session.tableNumber ?? json.table?.tableNumber ?? cached.tableNumber ?? null,
-                status:    session.status    ?? cached.status    ?? 'active',
-                createdAt: session.createdAt ?? cached.createdAt ?? new Date().toISOString(),
-                openedAt:  session.openedAt  ?? cached.openedAt  ?? new Date().toISOString(),
-              }
-              localStorage.setItem('kc_session_data', JSON.stringify(freshSession))
-              localStorage.setItem('kc_table_number', freshSession.tableNumber ?? '')
-              dispatch(setSession(freshSession))
-              dispatch(setTableInfo({ tableId: freshSession.tableId, sessionId: freshSession.sessionId }))
-            } else {
-              _clearAllSessionStorage(); dispatch(clearSession())
-            }
-          } else if (res.status === 404) {
-            _clearAllSessionStorage(); dispatch(clearSession())
+          const data = await api.get(ENDPOINTS.AUTH.ME)
+          // FIX: me controller returns { success, data: user } (not sendSuccess wrapper)
+          // axios interceptor strips the outer envelope so data = { success, data: user }
+          // Handle both shapes for safety.
+          const user = data?.data ?? data?.user ?? (data?._id ? data : null)
+          if (user?._id) {
+            dispatch(setCredentials({ user, token }))
+          } else {
+            // Token exists but /auth/me returned no valid user — stale token
+            localStorage.removeItem('kc_token')
+            localStorage.removeItem('kc_user')
+            dispatch(clearAuth())
           }
         } catch (err) {
-          console.warn('[App] Session verify network error — keeping cached session:', err.message)
+          // 401 = token expired/invalid. Any other error = server down.
+          // Either way clear the stale token and start fresh.
+          const status = err?.response?.status
+          if (status === 401 || status === 403) {
+            console.warn('[App] Token invalid — clearing auth')
+          } else {
+            console.warn('[App] Bootstrap /auth/me failed:', status ?? 'network error')
+          }
+          localStorage.removeItem('kc_token')
+          localStorage.removeItem('kc_user')
+          dispatch(clearAuth())
         }
-      } else if (!hadCachedSession) {
-        dispatch(clearSession())
-      }
+      })()
 
+      await bootstrapPromise
+      dispatch(setBootstrapReady(true))
       setReady(true)
     }
-    bootstrap()
-  }, [dispatch])
 
-  if (!ready) return null
+    runBootstrap()
+  }, [dispatch]) // dispatch is stable — correct dep
+
+  if (!ready) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[var(--bg-app)]">
+        <div
+          className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin"
+          style={{ borderColor: 'var(--color-saffron)', borderTopColor: 'transparent' }}
+        />
+      </div>
+    )
+  }
 
   return (
     <>
-      <ScrollToTop />
-      <PageTransition><AppRoutes /></PageTransition>
-      <Toaster
-        position="top-center"
-        containerStyle={{ top: 'max(16px, env(safe-area-inset-top))' }}
-        toastOptions={{
-          duration: 2800, style: toastStyle,
-          success: { iconTheme: { primary: '#2D9B5A', secondary: '#fff' } },
-          error:   { iconTheme: { primary: '#DC2626', secondary: '#fff' } },
-        }}
-      />
+      <PageTransition>
+        <AppRoutes />
+      </PageTransition>
+      <ToastRenderer />
     </>
   )
 }
 
-const _clearAllSessionStorage = () =>
-  ['kc_session_data', 'kc_session_id', 'kc_table_number', 'kc_table_id'].forEach(k => localStorage.removeItem(k))
-
-/* ── App root ────────────────────────────────────────────────────────────── */
+// ── Root ──────────────────────────────────────────────────────────────────────
 const App = () => (
   <Provider store={store}>
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <ThemeProvider>
-        <ReactLenis root options={LENIS_OPTIONS}>
-          <LenisRegistrar />
+        <ReactLenis root options={{ lerp: 0.1, smoothWheel: true, syncTouch: false }}>
           <AppInner />
+          <Toaster
+            position="top-center"
+            toastOptions={{
+              duration: 3000,
+              style: {
+                fontFamily: 'Baloo 2, sans-serif',
+                fontSize:   '14px',
+                fontWeight: '600',
+              },
+            }}
+          />
         </ReactLenis>
       </ThemeProvider>
     </BrowserRouter>

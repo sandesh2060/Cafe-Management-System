@@ -9,15 +9,14 @@ export const createAndEmit = async ({ userId, cafeId, type, title, message, data
   const notif = await Notification.create({ userId, cafeId, type, title, message, data })
   // Push to client in real-time
   emitToUser(userId.toString(), 'notification:new', {
-    notification: {
-      id:        notif._id.toString(),
-      type:      notif.type,
-      title:     notif.title,
-      message:   notif.message,
-      data:      notif.data,
-      read:      false,
-      createdAt: notif.createdAt,
-    },
+    _id:       notif._id.toString(),
+    id:        notif._id.toString(),
+    type:      notif.type,
+    title:     notif.title,
+    message:   notif.message,
+    data:      notif.data,
+    read:      false,
+    createdAt: notif.createdAt,
   })
   return notif
 }

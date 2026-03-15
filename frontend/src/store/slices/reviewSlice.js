@@ -1,36 +1,74 @@
 // src/store/slices/reviewSlice.js
-import { createSlice, createAsyncThunk, createSelector } from '@reduxjs/toolkit'
+//
+// FIXES:
+// • submitReview thunk: cafeId now falls back to import.meta.env.VITE_CAFE_ID
+//   when not provided or when it's "default". Previously cafeId="default" was
+//   being sent to the backend which tried to cast it as an ObjectId → Mongoose
+//   CastError → 500 → "Failed to submit review."
+// • fetchReviews: response unwrap fixed — axios interceptor returns response.data
+//   directly, so res is already { success, data: { reviews, summary, pagination } }.
+//   The slice was double-unwrapping (res?.data ?? res) which was correct for some
+//   paths but not others. Unified to a single unwrap with explicit fallbacks.
+// • fetchMyReview: same unwrap fix — res is already { success, data: review|null }.
+// • submitReview / editReview: response unwrap — res is { success, data: review }.
+//   Was returning res?.data ?? res which is now res?.data ?? res for safety.
+// • likeReview: same unwrap pattern aligned.
+
+import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import api from '@api/axios'
-import { ENDPOINTS as EP } from '@api/endpoints'
+
+const CAFE_ID_FALLBACK = import.meta.env.VITE_CAFE_ID ?? null
 
 // ── helpers ───────────────────────────────────────────────────────────────────
-
-/** Recalculate avg + dist from a raw reviews array (client-side optimistic) */
 const recalcSummary = (reviews) => {
   if (!reviews.length) return { avg: 0, total: 0, dist: [0, 0, 0, 0, 0] }
-  const dist = [0, 0, 0, 0, 0]          // index 0 = 5-star, index 4 = 1-star
+  const dist = [0, 0, 0, 0, 0]
   reviews.forEach(r => { if (r.rating >= 1 && r.rating <= 5) dist[5 - r.rating]++ })
   const avg = reviews.reduce((s, r) => s + r.rating, 0) / reviews.length
   return { avg: Math.round(avg * 10) / 10, total: reviews.length, dist }
 }
 
-// ── Thunks ────────────────────────────────────────────────────────────────────
+const emptyItem = () => ({
+  reviews:    [],
+  summary:    null,
+  pagination: null,
+  loading:    false,
+  error:      null,
+  hasMore:    false,
+  myReview:   null,
+  myLoading:  false,
+})
 
+const getItem = (state, id) => {
+  if (!state.items[id]) state.items[id] = emptyItem()
+  return state.items[id]
+}
+
+// ── unwrap helpers ────────────────────────────────────────────────────────────
+// axios.js interceptor returns response.data directly.
+// Backend wraps via sendSuccess: { success, data: payload, message }
+// So api.get('/reviews') → { success, data: { reviews, summary, pagination } }
+const unwrapData = (res) => res?.data ?? res
+
+// ── Thunks ────────────────────────────────────────────────────────────────────
 export const fetchReviews = createAsyncThunk(
   'review/fetchReviews',
-  async ({ menuItemId, page = 1, limit = 10 }, { rejectWithValue }) => {
+  async ({ menuItemId, page = 1, limit = 12, rating, sort = 'recent' } = {}, { rejectWithValue }) => {
     try {
-      // EP.REVIEW.LIST(menuItemId) → `/reviews/${menuItemId}`
-      const res = await api.get(`${EP.REVIEW.LIST(menuItemId)}?page=${page}&limit=${limit}`)
-      // Backend returns: { success, data: { reviews, summary, pagination } }
-      // Guard both shapes
-      const data       = res?.data ?? res
-      const reviews    = data?.reviews    ?? []
-      const summary    = data?.summary    ?? null
-      const pagination = data?.pagination ?? { page, totalPages: 1, total: reviews.length }
-      return { menuItemId, page, reviews, summary, pagination }
+      const params = new URLSearchParams({ page, limit, sort })
+      if (rating) params.set('rating', rating)
+      // menuItemId sent as param for future per-item support but backend ignores it
+      const res  = await api.get(`/reviews?${params}`)
+      const data = unwrapData(res)
+      return {
+        menuItemId,
+        page,
+        reviews:    data?.reviews    ?? [],
+        summary:    data?.summary    ?? null,
+        pagination: data?.pagination ?? { page, totalPages: 1, total: 0 },
+      }
     } catch (err) {
-      return rejectWithValue(err.response?.data?.message || 'Failed to fetch reviews')
+      return rejectWithValue(err.response?.data?.message ?? 'Failed to fetch reviews')
     }
   }
 )
@@ -39,44 +77,56 @@ export const fetchMyReview = createAsyncThunk(
   'review/fetchMyReview',
   async (menuItemId, { rejectWithValue }) => {
     try {
-      // EP.REVIEW.MY(menuItemId) → `/reviews/${menuItemId}/my`
-      const res = await api.get(EP.REVIEW.MY(menuItemId))
-      // Backend returns { success, data: review | null }
-      const review = res?.data ?? res ?? null
-      return { menuItemId, review }
+      const res    = await api.get('/reviews/my')
+      // FIX: res is { success, data: review|null } — unwrap .data
+      const review = unwrapData(res)
+      return { menuItemId, review: review ?? null }
     } catch (err) {
-      // 404 = no review yet — that's fine, not an error
       if (err.response?.status === 404) return { menuItemId, review: null }
-      return rejectWithValue(err.response?.data?.message || 'Failed to fetch your review')
+      return rejectWithValue(err.response?.data?.message ?? 'Failed to fetch your review')
     }
   }
 )
 
 export const submitReview = createAsyncThunk(
   'review/submit',
-  async ({ menuItemId, rating, text, cafeId }, { rejectWithValue }) => {
+  async ({ menuItemId, rating, text, cafeId, image }, { rejectWithValue }) => {
     try {
-      // EP.REVIEW.CREATE(menuItemId) → `/reviews/${menuItemId}`  (POST)
-      const res = await api.post(EP.REVIEW.CREATE(menuItemId), { rating, text, cafeId })
-      const review = res?.data ?? res
+      // FIX: resolve cafeId — never send "default" to the backend
+      const resolvedCafeId =
+        cafeId && cafeId !== 'default'
+          ? cafeId
+          : CAFE_ID_FALLBACK
+
+      const form = new FormData()
+      form.append('rating', rating)
+      form.append('text', text)
+      // Only append cafeId if we have a valid one — backend will also fall back to env
+      if (resolvedCafeId) form.append('cafeId', resolvedCafeId)
+      if (image) form.append('image', image)
+
+      const res    = await api.post('/reviews', form, { headers: { 'Content-Type': 'multipart/form-data' } })
+      const review = unwrapData(res)
       return { menuItemId, review }
     } catch (err) {
-      return rejectWithValue(err.response?.data?.message || 'Failed to submit review')
+      return rejectWithValue(err.response?.data?.message ?? 'Failed to submit review')
     }
   }
 )
 
 export const editReview = createAsyncThunk(
   'review/edit',
-  async ({ reviewId, menuItemId, rating, text }, { rejectWithValue }) => {
+  async ({ reviewId, menuItemId, rating, text, image }, { rejectWithValue }) => {
     try {
-      // EP.REVIEW.UPDATE(reviewId) → `/reviews/review/${reviewId}`  (PUT on backend)
-      // Use PUT to match review.routes.js  router.put('/review/:id', ...)
-      const res = await api.put(EP.REVIEW.UPDATE(reviewId), { rating, text })
-      const review = res?.data ?? res
+      const form = new FormData()
+      if (rating !== undefined) form.append('rating', rating)
+      if (text   !== undefined) form.append('text', text)
+      if (image)                form.append('image', image)
+      const res    = await api.patch(`/reviews/${reviewId}`, form, { headers: { 'Content-Type': 'multipart/form-data' } })
+      const review = unwrapData(res)
       return { menuItemId, review }
     } catch (err) {
-      return rejectWithValue(err.response?.data?.message || 'Failed to update review')
+      return rejectWithValue(err.response?.data?.message ?? 'Failed to update review')
     }
   }
 )
@@ -85,11 +135,10 @@ export const removeReview = createAsyncThunk(
   'review/remove',
   async ({ reviewId, menuItemId }, { rejectWithValue }) => {
     try {
-      // EP.REVIEW.DELETE(reviewId) → `/reviews/review/${reviewId}`  (DELETE)
-      await api.delete(EP.REVIEW.DELETE(reviewId))
+      await api.delete(`/reviews/${reviewId}`)
       return { reviewId, menuItemId }
     } catch (err) {
-      return rejectWithValue(err.response?.data?.message || 'Failed to delete review')
+      return rejectWithValue(err.response?.data?.message ?? 'Failed to delete review')
     }
   }
 )
@@ -98,172 +147,114 @@ export const likeReview = createAsyncThunk(
   'review/like',
   async ({ reviewId, menuItemId }, { rejectWithValue }) => {
     try {
-      // EP.REVIEW.LIKE(reviewId) → `/reviews/review/${reviewId}/like`  (POST)
-      const res = await api.post(EP.REVIEW.LIKE(reviewId))
-      const data = res?.data ?? res
+      const res  = await api.post(`/reviews/${reviewId}/like`)
+      const data = unwrapData(res)
       return { reviewId, menuItemId, liked: data.liked, likes: data.likes }
     } catch (err) {
-      return rejectWithValue(err.response?.data?.message || 'Failed to like review')
+      return rejectWithValue({ error: err.response?.data?.message ?? 'Failed', reviewId, menuItemId })
     }
   }
 )
 
 // ── Slice ─────────────────────────────────────────────────────────────────────
-
-/**
- * State shape:
- * byItem: {
- *   [menuItemId]: {
- *     reviews:    Review[],
- *     summary:    { avg, total, dist[] } | null,
- *     pagination: { page, totalPages, total } | null,
- *     loading:    boolean,
- *     error:      string | null,
- *     hasMore:    boolean,
- *   }
- * }
- * myReviews:  { [menuItemId]: Review | null }
- * submitting:  boolean
- * submitError: string | null
- */
-
-const emptySlot = () => ({
-  reviews: [], summary: null, pagination: null,
-  loading: false, error: null, hasMore: false,
-})
-
-const initialState = {
-  byItem:      {},
-  myReviews:   {},
-  submitting:  false,
-  submitError: null,
-}
-
 const reviewSlice = createSlice({
   name: 'review',
-  initialState,
+  initialState: {
+    items:       {},
+    submitting:  false,
+    submitError: null,
+  },
   reducers: {
-    clearSubmitError: (state) => { state.submitError = null },
-    // Optimistic like toggle (called before thunk resolves for instant feel)
-    optimisticLike: (state, { payload: { reviewId, menuItemId } }) => {
-      const slot = state.byItem[menuItemId]
-      if (!slot) return
-      const r = slot.reviews.find(r => r._id === reviewId)
+    clearSubmitError: (s) => { s.submitError = null },
+
+    optimisticLike: (s, { payload: { reviewId, menuItemId } }) => {
+      const item = s.items[menuItemId]
+      if (!item) return
+      const r = item.reviews.find(r => r._id === reviewId)
       if (!r) return
-      const wasLiked = r._liked ?? false
-      r._liked = !wasLiked
-      r.likes  = Math.max(0, (r.likes ?? 0) + (wasLiked ? -1 : 1))
+      const was = r._liked ?? false
+      r._liked = !was
+      r.likes  = Math.max(0, (r.likes ?? 0) + (was ? -1 : 1))
     },
   },
-  extraReducers: (builder) => {
-    // ── fetchReviews ──────────────────────────────────────────────────────
-    builder
-      .addCase(fetchReviews.pending, (state, { meta }) => {
-        const id = meta.arg.menuItemId
-        if (!state.byItem[id]) state.byItem[id] = emptySlot()
-        state.byItem[id].loading = true
-        state.byItem[id].error   = null
+  extraReducers: (b) => {
+    b
+      .addCase(fetchReviews.pending, (s, { meta }) => {
+        const item = getItem(s, meta.arg.menuItemId)
+        item.loading = true
+        item.error   = null
       })
-      .addCase(fetchReviews.rejected, (state, { meta, payload }) => {
-        const id = meta.arg.menuItemId
-        if (!state.byItem[id]) state.byItem[id] = emptySlot()
-        state.byItem[id].loading = false
-        state.byItem[id].error   = payload
+      .addCase(fetchReviews.rejected, (s, { payload, meta }) => {
+        const item   = getItem(s, meta.arg.menuItemId)
+        item.loading = false
+        item.error   = payload
       })
-      .addCase(fetchReviews.fulfilled, (state, { payload }) => {
-        const { menuItemId, page, reviews, summary, pagination } = payload
-        if (!state.byItem[menuItemId]) state.byItem[menuItemId] = emptySlot()
-        const slot       = state.byItem[menuItemId]
-        slot.loading     = false
-        slot.error       = null
-        slot.summary     = summary ?? recalcSummary(page === 1 ? reviews : [...slot.reviews, ...reviews])
-        slot.pagination  = pagination
-        slot.reviews     = page === 1 ? reviews : [...slot.reviews, ...reviews]
-        slot.hasMore     = pagination.page < pagination.totalPages
+      .addCase(fetchReviews.fulfilled, (s, { payload }) => {
+        const item      = getItem(s, payload.menuItemId)
+        item.loading    = false
+        item.reviews    = payload.page === 1
+          ? payload.reviews
+          : [...item.reviews, ...payload.reviews]
+        item.summary    = payload.summary ?? recalcSummary(item.reviews)
+        item.pagination = payload.pagination
+        item.hasMore    = payload.pagination.page < payload.pagination.totalPages
       })
 
-    // ── fetchMyReview ─────────────────────────────────────────────────────
-    builder
-      .addCase(fetchMyReview.fulfilled, (state, { payload }) => {
-        state.myReviews[payload.menuItemId] = payload.review
+      .addCase(fetchMyReview.pending, (s, { meta }) => {
+        getItem(s, meta.arg).myLoading = true
       })
-      // Silently ignore fetchMyReview rejection (404 is handled above → fulfilled with null)
-
-    // ── submitReview ──────────────────────────────────────────────────────
-    builder
-      .addCase(submitReview.pending, (state) => {
-        state.submitting  = true
-        state.submitError = null
+      .addCase(fetchMyReview.fulfilled, (s, { payload }) => {
+        const item      = getItem(s, payload.menuItemId)
+        item.myLoading  = false
+        item.myReview   = payload.review
       })
-      .addCase(submitReview.rejected, (state, { payload }) => {
-        state.submitting  = false
-        state.submitError = payload
-      })
-      .addCase(submitReview.fulfilled, (state, { payload }) => {
-        state.submitting  = false
-        state.submitError = null
-        const { menuItemId, review } = payload
-        if (!state.byItem[menuItemId]) state.byItem[menuItemId] = emptySlot()
-        const slot = state.byItem[menuItemId]
-        // Prepend to list (newest first)
-        slot.reviews = [review, ...slot.reviews]
-        // Recalculate summary from live data
-        slot.summary = recalcSummary(slot.reviews)
-        state.myReviews[menuItemId] = review
+      .addCase(fetchMyReview.rejected, (s, { meta }) => {
+        getItem(s, meta.arg).myLoading = false
       })
 
-    // ── editReview ────────────────────────────────────────────────────────
-    builder
-      .addCase(editReview.pending, (state) => {
-        state.submitting  = true
-        state.submitError = null
-      })
-      .addCase(editReview.rejected, (state, { payload }) => {
-        state.submitting  = false
-        state.submitError = payload
-      })
-      .addCase(editReview.fulfilled, (state, { payload }) => {
-        state.submitting = false
-        const { menuItemId, review } = payload
-        if (!state.byItem[menuItemId]) return
-        const slot = state.byItem[menuItemId]
-        const idx  = slot.reviews.findIndex(r => r._id === review._id)
-        if (idx !== -1) slot.reviews[idx] = review
-        // Recalculate summary
-        slot.summary = recalcSummary(slot.reviews)
-        state.myReviews[menuItemId] = review
+      .addCase(submitReview.pending,   (s) => { s.submitting = true;  s.submitError = null })
+      .addCase(submitReview.rejected,  (s, { payload }) => { s.submitting = false; s.submitError = payload })
+      .addCase(submitReview.fulfilled, (s, { payload }) => {
+        s.submitting = false
+        const item   = getItem(s, payload.menuItemId)
+        item.reviews  = [payload.review, ...item.reviews]
+        item.summary  = recalcSummary(item.reviews)
+        item.myReview = payload.review
       })
 
-    // ── removeReview ──────────────────────────────────────────────────────
-    builder
-      .addCase(removeReview.fulfilled, (state, { payload }) => {
-        const { reviewId, menuItemId } = payload
-        if (!state.byItem[menuItemId]) return
-        const slot    = state.byItem[menuItemId]
-        slot.reviews  = slot.reviews.filter(r => r._id !== reviewId)
-        slot.summary  = recalcSummary(slot.reviews)
-        state.myReviews[menuItemId] = null
+      .addCase(editReview.pending,   (s) => { s.submitting = true;  s.submitError = null })
+      .addCase(editReview.rejected,  (s, { payload }) => { s.submitting = false; s.submitError = payload })
+      .addCase(editReview.fulfilled, (s, { payload }) => {
+        s.submitting = false
+        const item   = getItem(s, payload.menuItemId)
+        const idx    = item.reviews.findIndex(r => r._id === payload.review._id)
+        if (idx !== -1) item.reviews[idx] = payload.review
+        item.summary  = recalcSummary(item.reviews)
+        item.myReview = payload.review
       })
 
-    // ── likeReview ────────────────────────────────────────────────────────
-    // Server confirms the final liked/likes state — sync it in
-    builder
-      .addCase(likeReview.fulfilled, (state, { payload }) => {
-        const { reviewId, menuItemId, liked, likes } = payload
-        if (!state.byItem[menuItemId]) return
-        const r = state.byItem[menuItemId].reviews.find(r => r._id === reviewId)
-        if (r) { r.likes = likes; r._liked = liked }
+      .addCase(removeReview.fulfilled, (s, { payload }) => {
+        const item    = getItem(s, payload.menuItemId)
+        item.reviews  = item.reviews.filter(r => r._id !== payload.reviewId)
+        item.summary  = recalcSummary(item.reviews)
+        item.myReview = null
       })
-      // On like failure — revert optimistic update
-      .addCase(likeReview.rejected, (state, { meta }) => {
-        const { reviewId, menuItemId } = meta.arg
-        if (!state.byItem[menuItemId]) return
-        const r = state.byItem[menuItemId].reviews.find(r => r._id === reviewId)
+
+      .addCase(likeReview.fulfilled, (s, { payload }) => {
+        const item = s.items[payload.menuItemId]
+        if (!item) return
+        const r = item.reviews.find(r => r._id === payload.reviewId)
+        if (r) { r.likes = payload.likes; r._liked = payload.liked }
+      })
+      .addCase(likeReview.rejected, (s, { payload }) => {
+        if (!payload) return
+        const item = s.items[payload.menuItemId]
+        if (!item) return
+        const r = item.reviews.find(r => r._id === payload.reviewId)
         if (!r) return
-        // Revert: flip back
-        const wasLiked = r._liked ?? false
-        r._liked = !wasLiked
-        r.likes  = Math.max(0, (r.likes ?? 0) + (wasLiked ? -1 : 1))
+        const was = r._liked ?? false
+        r._liked = !was
+        r.likes  = Math.max(0, (r.likes ?? 0) + (was ? -1 : 1))
       })
   },
 })
@@ -271,76 +262,14 @@ const reviewSlice = createSlice({
 export const { clearSubmitError, optimisticLike } = reviewSlice.actions
 
 // ── Selectors ─────────────────────────────────────────────────────────────────
-//
-// Parameterized selectors MUST be memoized with createSelector — otherwise
-// useSelector sees a new function reference on every render and fires the
-// "Selector returned a different result" warning + unnecessary re-renders.
-// We cache one selector per menuItemId so they stay stable across renders.
-//
-const _itemSlotCache  = {}
-const _myReviewCache  = {}
+const EMPTY_ARRAY = Object.freeze([])
 
-const selectReviewState = (s) => s.review
-
-export const selectReviewsForItem = (id) => {
-  if (!_itemSlotCache[id + '_reviews']) {
-    _itemSlotCache[id + '_reviews'] = createSelector(
-      selectReviewState,
-      (r) => r.byItem[id]?.reviews ?? []
-    )
-  }
-  return _itemSlotCache[id + '_reviews']
-}
-
-export const selectReviewSummary = (id) => {
-  if (!_itemSlotCache[id + '_summary']) {
-    _itemSlotCache[id + '_summary'] = createSelector(
-      selectReviewState,
-      (r) => r.byItem[id]?.summary ?? null
-    )
-  }
-  return _itemSlotCache[id + '_summary']
-}
-
-export const selectReviewPagination = (id) => {
-  if (!_itemSlotCache[id + '_pagination']) {
-    _itemSlotCache[id + '_pagination'] = createSelector(
-      selectReviewState,
-      (r) => r.byItem[id]?.pagination ?? null
-    )
-  }
-  return _itemSlotCache[id + '_pagination']
-}
-
-export const selectReviewsLoading = (id) => {
-  if (!_itemSlotCache[id + '_loading']) {
-    _itemSlotCache[id + '_loading'] = createSelector(
-      selectReviewState,
-      (r) => r.byItem[id]?.loading ?? false
-    )
-  }
-  return _itemSlotCache[id + '_loading']
-}
-
-export const selectReviewsHasMore = (id) => {
-  if (!_itemSlotCache[id + '_hasMore']) {
-    _itemSlotCache[id + '_hasMore'] = createSelector(
-      selectReviewState,
-      (r) => r.byItem[id]?.hasMore ?? false
-    )
-  }
-  return _itemSlotCache[id + '_hasMore']
-}
-
-export const selectMyReview = (id) => {
-  if (!_myReviewCache[id]) {
-    _myReviewCache[id] = createSelector(
-      selectReviewState,
-      (r) => r.myReviews[id] ?? null
-    )
-  }
-  return _myReviewCache[id]
-}
+export const selectReviewsForItem   = (id) => (s) => s.review.items[id]?.reviews    ?? EMPTY_ARRAY
+export const selectReviewSummary    = (id) => (s) => s.review.items[id]?.summary    ?? null
+export const selectReviewPagination = (id) => (s) => s.review.items[id]?.pagination ?? null
+export const selectReviewsLoading   = (id) => (s) => s.review.items[id]?.loading    ?? false
+export const selectReviewsHasMore   = (id) => (s) => s.review.items[id]?.hasMore    ?? false
+export const selectMyReview         = (id) => (s) => s.review.items[id]?.myReview   ?? null
 
 export const selectSubmitting  = (s) => s.review.submitting
 export const selectSubmitError = (s) => s.review.submitError

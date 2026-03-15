@@ -1,25 +1,30 @@
-// src/app/routes/AppRoutes.jsx
+// frontend/src/app/routes/AppRoutes.jsx
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useSelector }              from 'react-redux'
-import { selectIsLoggedIn, selectRole } from '@store/slices/authSlice'
+import { selectIsLoggedIn, selectRole, selectBootstrapReady } from '@store/slices/authSlice'
+import { selectTableId }            from '@store/slices/tableSessionSlice'
 import { lazy, Suspense }           from 'react'
 import LoadingSpinner               from '@shared/components/feedback/LoadingSpinner'
 import ProtectedRoute               from './ProtectedRoute'
 
 // ── Lazy imports ──────────────────────────────────────────────────────────────
+
 // Customer
 const TableDetectionPage = lazy(() => import('@modules/customer/pages/TableDetectionPage'))
 const LoginPage          = lazy(() => import('@modules/customer/pages/LoginPage'))
 const MenuPage           = lazy(() => import('@modules/customer/pages/MenuPage'))
 const ItemDetailPage     = lazy(() => import('@modules/customer/pages/ItemDetailPage'))
 const CartPage           = lazy(() => import('@modules/customer/pages/CartPage'))
-const TrackingPage       = lazy(() => import('@modules/customer/pages/TrackingPage'))
-const OrderStatusPage    = lazy(() => import('@modules/customer/pages/OrderStatusPage'))  // ← NEW
+const OrderStatusPage    = lazy(() => import('@modules/customer/pages/OrderStatusPage'))
+const OrderHistoryPage   = lazy(() => import('@modules/customer/pages/OrderHistoryPage'))
 const CallWaiterPage     = lazy(() => import('@modules/customer/pages/CallWaiterPage'))
 const LoyaltyPage        = lazy(() => import('@modules/customer/pages/LoyaltyPage'))
 const ProfilePage        = lazy(() => import('@modules/customer/pages/ProfilePage'))
 const PaymentPage        = lazy(() => import('@modules/customer/pages/PaymentPage'))
 const PaymentSuccessPage = lazy(() => import('@modules/customer/pages/PaymentSuccessPage'))
+const ReviewsPage        = lazy(() => import('@modules/customer/pages/ReviewsPage'))
+const GalleryPage        = lazy(() => import('@modules/customer/pages/GalleryPage'))
+const NotificationsPage  = lazy(() => import('@modules/customer/pages/NotificationsPage'))
 
 // Staff
 const StaffLoginPage     = lazy(() => import('@modules/staff/pages/StaffLoginPage'))
@@ -34,7 +39,8 @@ const KitchenDisplayPage = lazy(() => import('@modules/kitchen/pages/KitchenDisp
 const BillingPage        = lazy(() => import('@modules/cashier/pages/BillingPage'))
 
 // Manager
-const ManagerDashboard   = lazy(() => import('@modules/manager/pages/ManagerDashboard'))
+const ManagerDashboard      = lazy(() => import('@modules/manager/pages/ManagerDashboard'))
+const GalleryManagerPage    = lazy(() => import('@modules/manager/pages/GalleryManagerPage'))
 
 // Admin
 const AdminDashboard     = lazy(() => import('@modules/admin/pages/AdminDashboard'))
@@ -49,20 +55,33 @@ const getRoleHome = (role) => ({
   admin:    '/admin',
 }[role] || '/detect')
 
-// ── GuestRoute — redirect logged-in users away from auth pages ────────────────
-const GuestRoute = ({ children }) => {
-  const isLoggedIn = useSelector(selectIsLoggedIn)
-  const role       = useSelector(selectRole)
-  if (isLoggedIn) return <Navigate to={getRoleHome(role)} replace />
-  return children
-}
-
 // ── Full-screen spinner ───────────────────────────────────────────────────────
 const FullSpin = () => (
   <div className="min-h-screen flex items-center justify-center bg-[var(--bg-app)]">
     <LoadingSpinner size="lg" />
   </div>
 )
+
+// ── GuestRoute ────────────────────────────────────────────────────────────────
+const GuestRoute = ({ children }) => {
+  const isLoggedIn     = useSelector(selectIsLoggedIn)
+  const role           = useSelector(selectRole)
+  const bootstrapReady = useSelector(selectBootstrapReady)
+  if (!bootstrapReady) return <FullSpin />
+  if (isLoggedIn) return <Navigate to={getRoleHome(role)} replace />
+  return children
+}
+
+// ── DetectRoute ───────────────────────────────────────────────────────────────
+const DetectRoute = ({ children }) => {
+  const bootstrapReady = useSelector(selectBootstrapReady)
+  const isLoggedIn     = useSelector(selectIsLoggedIn)
+  const role           = useSelector(selectRole)
+  const tableId        = useSelector(selectTableId)
+  if (!bootstrapReady) return <FullSpin />
+  if (isLoggedIn && tableId) return <Navigate to={getRoleHome(role)} replace />
+  return children
+}
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 const AppRoutes = () => {
@@ -74,11 +93,11 @@ const AppRoutes = () => {
         {/* Root redirect */}
         <Route path="/" element={<Navigate to={role ? getRoleHome(role) : '/detect'} replace />} />
 
-        {/* Pre-auth — no protection */}
-        <Route path="/detect" element={<TableDetectionPage />} />
+        {/* Pre-auth */}
+        <Route path="/detect" element={<DetectRoute><TableDetectionPage /></DetectRoute>} />
         <Route path="/login"  element={<GuestRoute><LoginPage /></GuestRoute>} />
 
-        {/* Staff login — separate from customer auth */}
+        {/* Staff login */}
         <Route path="/staff/login" element={<StaffLoginPage />} />
 
         {/* ── Customer ── */}
@@ -91,15 +110,21 @@ const AppRoutes = () => {
         <Route path="/cart"
           element={<ProtectedRoute allowedRoles={['customer']}><CartPage /></ProtectedRoute>}
         />
+
+        {/* /track → redirect to /order/status (TrackingPage.jsx is deleted) */}
         <Route path="/track"
-          element={<ProtectedRoute allowedRoles={['customer']}><TrackingPage /></ProtectedRoute>}
+          element={<Navigate to="/order/status" replace />}
         />
 
-        {/* ── Order status (live tracking after placing) ── */}
+        {/* Order pages — live tracker + history */}
         <Route path="/order/status"
           element={<ProtectedRoute allowedRoles={['customer']}><OrderStatusPage /></ProtectedRoute>}
         />
+        <Route path="/order/history"
+          element={<ProtectedRoute allowedRoles={['customer']}><OrderHistoryPage /></ProtectedRoute>}
+        />
 
+        {/* Other customer pages */}
         <Route path="/call-waiter"
           element={<ProtectedRoute allowedRoles={['customer']}><CallWaiterPage /></ProtectedRoute>}
         />
@@ -114,6 +139,15 @@ const AppRoutes = () => {
         />
         <Route path="/payment-success"
           element={<ProtectedRoute allowedRoles={['customer']}><PaymentSuccessPage /></ProtectedRoute>}
+        />
+        <Route path="/reviews"
+          element={<ProtectedRoute allowedRoles={['customer']}><ReviewsPage /></ProtectedRoute>}
+        />
+        <Route path="/gallery"
+          element={<ProtectedRoute allowedRoles={['customer']}><GalleryPage /></ProtectedRoute>}
+        />
+        <Route path="/notifications"
+          element={<ProtectedRoute allowedRoles={['customer']}><NotificationsPage /></ProtectedRoute>}
         />
 
         {/* ── Waiter ── */}
@@ -134,6 +168,9 @@ const AppRoutes = () => {
         {/* ── Manager ── */}
         <Route path="/manager/*"
           element={<ProtectedRoute allowedRoles={['manager']}><ManagerDashboard /></ProtectedRoute>}
+        />
+        <Route path="/manager/gallery"
+          element={<ProtectedRoute allowedRoles={['manager']}><GalleryManagerPage /></ProtectedRoute>}
         />
 
         {/* ── Admin ── */}

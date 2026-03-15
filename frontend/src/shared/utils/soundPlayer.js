@@ -1,35 +1,46 @@
 // src/shared/utils/soundPlayer.js
+//
+// FIX: audioCache is now role-scoped. On role change the cache is cleared
+// so stale Audio objects from a previous role never play.
+
 import { SOUNDS } from '@sounds'
 
-const audioCache = {}
+// Role-scoped cache: { [path]: Audio }
+let _currentRole = null
+let audioCache   = {}
+
+const _clearCache = () => {
+  // Pause and discard all cached Audio objects
+  Object.values(audioCache).forEach((a) => { try { a.pause() } catch {} })
+  audioCache = {}
+}
 
 /**
  * Play a sound for a given role.
  * Admin role is always silenced.
- * @param {string} soundKey  - Key from SOUNDS[role]
- * @param {string} role      - User role
  */
 export const playSound = (soundKey, role) => {
-  // Admin is always silent — no exceptions
   if (!role || role === 'admin') return
-
-  // Respect user mute preference
   if (localStorage.getItem('kc_sounds_muted') === 'true') return
+
+  // Clear cache when role changes (e.g. logout → re-login as different role)
+  if (role !== _currentRole) {
+    _clearCache()
+    _currentRole = role
+  }
 
   const path = SOUNDS[role]?.[soundKey]
   if (!path) return
 
-  // Cache Audio objects for instant replay
   if (!audioCache[path]) {
     audioCache[path] = new Audio(path)
   }
 
-  const audio  = audioCache[path]
+  const audio = audioCache[path]
   audio.currentTime = 0
   audio.volume = parseFloat(localStorage.getItem('kc_sound_volume') || '0.7')
 
   audio.play().catch((err) => {
-    // Silent fail — browser autoplay policy may block
     if (import.meta.env.DEV) console.warn('[Sound] Autoplay blocked:', path, err.message)
   })
 }
@@ -40,12 +51,18 @@ export const playSound = (soundKey, role) => {
  */
 export const preloadSounds = (role) => {
   if (!role || role === 'admin') return
+
+  if (role !== _currentRole) {
+    _clearCache()
+    _currentRole = role
+  }
+
   const roleSounds = SOUNDS[role]
   if (!roleSounds) return
 
   Object.values(roleSounds).forEach((path) => {
     if (!audioCache[path]) {
-      const audio = new Audio(path)
+      const audio   = new Audio(path)
       audio.preload = 'auto'
       audioCache[path] = audio
     }

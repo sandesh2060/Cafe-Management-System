@@ -21,12 +21,10 @@ router.use(protect)
 router.post  ('/',              placeOrder)
 router.get   ('/active',        getActiveOrder)
 router.get   ('/history',       getOrderHistory)
-router.get   ('/:id',           getOrderById)
-router.post  ('/:id/cancel',    cancelOrder)
-
-// ── Staff / admin routes ──────────────────────────────────────────────────────
-router.patch ('/:id/status',    requireRole('waiter', 'kitchen', 'manager', 'admin'), updateOrderStatus)
 router.get   ('/kds',           requireRole('kitchen', 'manager', 'admin'), getKDSOrders)
 router.get   ('/waiter',        requireRole('waiter',  'manager', 'admin'), getWaiterQueue)
+router.get   ('/:id',           getOrderById)
+router.post  ('/:id/cancel',    cancelOrder)
+router.patch ('/:id/status',    requireRole('waiter', 'kitchen', 'manager', 'admin'), updateOrderStatus)
 
 export default router

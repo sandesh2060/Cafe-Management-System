@@ -1,22 +1,15 @@
 // src/modules/review/review.model.js
 import mongoose from 'mongoose'
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Review model
-//  • One review per customer per menuItem (enforced by unique compound index)
-//  • Any logged-in customer can review (no order-verification gate)
-//  • Rating: 1–5  |  text: required, 10–500 chars
-//  • Soft-delete via `isVisible` flag (manager can hide without deleting)
-// ─────────────────────────────────────────────────────────────────────────────
-
+/**
+ * Review — CAFE-LEVEL reviews (not per menu item)
+ *  • One review per customer (enforced by unique index on customerId)
+ *  • Rating 1-5, text required (10-500 chars)
+ *  • Optional photo upload via Cloudinary
+ *  • Soft-delete via `isVisible` (manager can hide)
+ */
 const reviewSchema = new mongoose.Schema(
   {
-    menuItemId: {
-      type:     mongoose.Schema.Types.ObjectId,
-      ref:      'MenuItem',
-      required: true,
-      index:    true,
-    },
     cafeId: {
       type:     mongoose.Schema.Types.ObjectId,
       ref:      'Cafe',
@@ -28,8 +21,8 @@ const reviewSchema = new mongoose.Schema(
       ref:      'User',
       required: true,
     },
-    customerName:  { type: String, default: 'Anonymous' },
-    customerAvatar:{ type: String, default: null },   // initials or emoji stored as string
+    customerName:   { type: String, default: 'Anonymous' },
+    customerAvatar: { type: String, default: null },
 
     rating: {
       type:     Number,
@@ -45,17 +38,25 @@ const reviewSchema = new mongoose.Schema(
       maxlength: 500,
     },
 
-    likes:     { type: Number, default: 0 },
-    likedBy:   [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],   // prevent double-likes
+    // Optional customer photo (Cloudinary)
+    photoUrl:  { type: String, default: null },
+    publicId:  { type: String, default: null },  // Cloudinary public_id for deletion
 
-    isVisible: { type: Boolean, default: true },    // manager hide flag
+    likes:   { type: Number, default: 0 },
+    likedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+
+    isVisible:   { type: Boolean, default: true },
+    managerReply: {
+      text:      { type: String, default: '' },
+      repliedAt: { type: Date,   default: null },
+    },
   },
   { timestamps: true }
 )
 
-// One review per customer per menu item
-reviewSchema.index({ menuItemId: 1, customerId: 1 }, { unique: true })
-reviewSchema.index({ menuItemId: 1, isVisible: 1, createdAt: -1 })
+// One review per customer (cafe-level)
+reviewSchema.index({ cafeId: 1, customerId: 1 }, { unique: true })
+reviewSchema.index({ cafeId: 1, isVisible: 1, createdAt: -1 })
+reviewSchema.index({ rating: 1 })
 
-const Review = mongoose.model('Review', reviewSchema)
-export default Review
+export default mongoose.model('Review', reviewSchema)

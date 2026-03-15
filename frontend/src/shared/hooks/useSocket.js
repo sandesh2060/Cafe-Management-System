@@ -1,17 +1,25 @@
 // src/shared/hooks/useSocket.js
-import { useEffect, useRef }          from 'react'
-import { useSelector, useDispatch }   from 'react-redux'
-import socketService                  from '@shared/services/socket.service'
-import { selectToken, selectRole }    from '@store/slices/authSlice'
-import { ROLE_SOUND_MAP }             from '@sounds'
-import { playSound }                  from '@shared/utils/soundPlayer'
-import { addNotification }            from '@store/slices/notificationSlice'
-import { receiveMessage }             from '@store/slices/messagingSlice'
-import { playNotificationSound }      from '@shared/hooks/useNotificationSound'
+//
+// FIXES:
+//   • Removed duplicate notification dispatch — notification:new and soundEvents
+//     loop were both dispatching addNotification for the same event
+//   • Added order:updated listener → dispatches socketOrderUpdated
+//   • Cleaned up all unsubs in return correctly
+
+import { useEffect, useRef }        from 'react'
+import { useSelector, useDispatch } from 'react-redux'
+import socketService                from '@shared/services/socket.service'
+import { selectToken, selectRole }  from '@store/slices/authSlice'
+import { ROLE_SOUND_MAP }           from '@sounds'
+import { playSound }                from '@shared/utils/soundPlayer'
+import { addNotification }          from '@store/slices/notificationSlice'
+import { receiveMessage }           from '@store/slices/messagingSlice'
+import { playNotificationSound }    from '@shared/hooks/useNotificationSound'
 import {
   socketStatusUpdate,
   socketOrderCancelled,
-}                                     from '@store/slices/orderSlice'
+  socketOrderUpdated,
+}                                   from '@store/slices/orderSlice'
 
 export const useSocket = () => {
   const token    = useSelector(selectToken)
@@ -30,20 +38,9 @@ export const useSocket = () => {
     if (!socket) return
     prevToken.current = token
 
-    // ── Notification handler ─────────────────────────────────────────────────
-    const handleNotification = (event, data) => {
-      const soundKey = ROLE_SOUND_MAP[role]?.[event]
-      if (soundKey) playSound(soundKey, role)
-      if (data?.notification) {
-        dispatch(addNotification({
-          ...data.notification,
-          id: data.notification.id || Date.now().toString(),
-        }))
-        playNotificationSound(data.notification.type || 'system')
-      }
-    }
-
-    // notification:new
+    // ── notification:new ─────────────────────────────────────────────────────
+    // Single handler — no role sound map overlap.
+    // ROLE_SOUND_MAP must NOT contain 'notification:new' to avoid double-fire.
     const unsubNotif = socketService.on('notification:new', (data) => {
       if (data?.notification) {
         dispatch(addNotification({
@@ -54,20 +51,25 @@ export const useSocket = () => {
       }
     })
 
-    // Role sound events
+    // ── Role-specific sound events (NO notification dispatch here) ────────────
+    // These events play sounds only. If any of them also carry a notification
+    // payload, the backend must emit notification:new separately.
     const soundEvents = Object.keys(ROLE_SOUND_MAP[role] || {})
-    const unsubs = soundEvents.map((event) =>
-      socketService.on(event, (data) => handleNotification(event, data))
+    const unsubSounds = soundEvents.map((event) =>
+      socketService.on(event, () => {
+        const soundKey = ROLE_SOUND_MAP[role]?.[event]
+        if (soundKey) playSound(soundKey, role)
+      })
     )
 
-    // Messages
+    // ── Messages ──────────────────────────────────────────────────────────────
     const unsubMsg = socketService.on('message:received', (msg) => {
       dispatch(receiveMessage(msg))
       playSound('newMessage', role)
       playNotificationSound('message')
     })
 
-    // ── Order events ─────────────────────────────────────────────────────────
+    // ── Order: status update ──────────────────────────────────────────────────
     const unsubOrderStatus = socketService.on('order:status_update', (data) => {
       dispatch(socketStatusUpdate({
         orderId: data.orderId ?? data.order?._id,
@@ -77,26 +79,36 @@ export const useSocket = () => {
       playNotificationSound('order')
     })
 
+    // ── Order: cancelled ──────────────────────────────────────────────────────
     const unsubOrderCancelled = socketService.on('order:cancelled', (data) => {
       dispatch(socketOrderCancelled({ order: data.order }))
       playNotificationSound('system')
     })
 
-    const unsubOrderPlaced = socketService.on('order:placed', (data) => {
-      // Confirmation echo — already handled by placeOrder thunk, just play sound
+    // ── Order: updated (merge/add-on from same session) ───────────────────────
+    // Was MISSING — this is emitted by backend when placeOrder merges items.
+    const unsubOrderUpdated = socketService.on('order:updated', (data) => {
+      if (data?.order) {
+        dispatch(socketOrderUpdated({ order: data.order }))
+      }
+    })
+
+    // ── Order: placed confirmation echo ───────────────────────────────────────
+    const unsubOrderPlaced = socketService.on('order:placed', () => {
       playNotificationSound('order')
     })
 
-    // Auth error
-    const onAuthError = () => console.warn('[useSocket] auth error')
+    // ── Auth error ────────────────────────────────────────────────────────────
+    const onAuthError = () => console.warn('[useSocket] auth error — token rejected')
     window.addEventListener('socket:auth-error', onAuthError)
 
     return () => {
       unsubNotif()
-      unsubs.forEach(fn => fn())
+      unsubSounds.forEach((fn) => fn())
       unsubMsg()
       unsubOrderStatus()
       unsubOrderCancelled()
+      unsubOrderUpdated()
       unsubOrderPlaced()
       window.removeEventListener('socket:auth-error', onAuthError)
     }

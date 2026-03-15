@@ -34,7 +34,7 @@ const injectFonts = () => {
   link.id = "wc-fonts";
   link.rel = "stylesheet";
   link.href =
-    "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&family=Bricolage+Grotesque:opsz,wght@12..96,800;12..96,900&family=Syne:wght@700;800;900&display=swap";
+    "https://fonts.googleapis.com/css2?family=Keania+One&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&family=Bricolage+Grotesque:opsz,wght@12..96,800;12..96,900&family=Syne:wght@700;800;900&display=swap";
   document.head.appendChild(link);
 };
 
@@ -98,7 +98,7 @@ const W_META = {
   snowy: { icon: "❄️",  label: "Snowy"  },
 };
 
-// ─── Weather canvas animations (unchanged) ─────────────────────
+// ─── Weather canvas animations ─────────────────────────────────
 const SunnyCanvas = ({ isDark }) => {
   const ref = useRef(null);
   useEffect(() => {
@@ -331,6 +331,11 @@ const WelcomeCard = ({ weather, loading = false }) => {
 
   const D = isDark;
 
+  // ── Name text-shadow: layered depth matching the weather palette ──
+  const nameTextShadow = D
+    ? `0 1px 0 rgba(0,0,0,0.5), 0 2px 12px ${theme.shadow}, 0 0 40px ${theme.shadow}`
+    : `0 1px 0 rgba(255,255,255,0.6), 0 2px 8px rgba(255,255,255,0.3), 0 4px 20px ${theme.shadow}`;
+
   return (
     <>
       <style>{`
@@ -366,6 +371,15 @@ const WelcomeCard = ({ weather, loading = false }) => {
           letter-spacing:-0.03em;
           line-height:1;
         }
+        /* ── Keania One name ── */
+        .wc-name {
+          font-family: 'Keania One', 'Bricolage Grotesque', system-ui, sans-serif;
+          font-weight: 400;            /* Keania One is a display face — 400 is its only weight */
+          letter-spacing: 0.01em;      /* just a breath of air — the font's own proportions do the work */
+          line-height: 1;
+          /* Subtle italic tilt — Keania One has a forward slant by design */
+          font-style: normal;
+        }
       `}</style>
 
       <div
@@ -395,10 +409,7 @@ const WelcomeCard = ({ weather, loading = false }) => {
         {/* Shimmer sweep */}
         <div ref={shimmerRef} style={{ position:"absolute",inset:0,width:"40%", background:`linear-gradient(108deg,transparent 20%,rgba(255,255,255,${D?"0.06":"0.14"}) 50%,transparent 80%)`, pointerEvents:"none", zIndex:2, transform:"translateX(-115%)" }} />
 
-        {/* ════════════════════════════════════════════════════
-            TABLE BADGE — absolutely positioned top-right
-            Animated in after 500ms delay via GSAP
-        ════════════════════════════════════════════════════ */}
+        {/* ════════ TABLE BADGE ════════ */}
         {tableNumber && tableVisible && (
           <div
             ref={tableRef}
@@ -407,10 +418,9 @@ const WelcomeCard = ({ weather, loading = false }) => {
               top: 14,
               right: 14,
               zIndex: 10,
-              opacity: 0, // GSAP animates this to 1
+              opacity: 0,
             }}
           >
-            {/* Pulse ring */}
             <div
               className="wc-badge-ring"
               style={{
@@ -421,7 +431,6 @@ const WelcomeCard = ({ weather, loading = false }) => {
                 pointerEvents: "none",
               }}
             />
-            {/* Badge body */}
             <div
               style={{
                 display: "flex",
@@ -442,9 +451,7 @@ const WelcomeCard = ({ weather, loading = false }) => {
                 gap: 2,
               }}
             >
-              {/* Chair icon */}
               <span style={{ fontSize: 11, lineHeight: 1, opacity: 0.6, marginBottom: 2 }}>🪑</span>
-              {/* "TABLE" label */}
               <span
                 style={{
                   fontFamily: "'Plus Jakarta Sans',sans-serif",
@@ -459,7 +466,6 @@ const WelcomeCard = ({ weather, loading = false }) => {
               >
                 Table
               </span>
-              {/* Table number — BIG */}
               <span
                 className="wc-table-num"
                 style={{
@@ -474,10 +480,7 @@ const WelcomeCard = ({ weather, loading = false }) => {
           </div>
         )}
 
-        {/* ════════════════════════════════════════════════════
-            MAIN CONTENT
-            Right padding reserves space for badge when present
-        ════════════════════════════════════════════════════ */}
+        {/* ════════ MAIN CONTENT ════════ */}
         <div
           style={{
             position: "relative",
@@ -523,27 +526,22 @@ const WelcomeCard = ({ weather, loading = false }) => {
             {isGuest ? "Welcome," : "Hey,"}
           </p>
 
-          {/* ── Row 3: Big name + wave ── */}
+          {/* ── Row 3: Big name (Keania One) + wave ── */}
           <div
             ref={nameRowRef}
             style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}
           >
             <span
+              className="wc-name capitalize"
               style={{
-                fontFamily: "'Syne','Bricolage Grotesque',system-ui,sans-serif",
-                fontSize: "clamp(34px,9.5vw,46px)",
-                fontWeight: 900,
+                fontSize: "clamp(36px,10vw,52px)",
                 color: theme.text,
-                letterSpacing: "-0.03em",
-                lineHeight: 1,
-                textShadow: D ? "0 2px 16px rgba(0,0,0,0.4)" : "0 2px 12px rgba(255,255,255,0.5)",
+                textShadow: nameTextShadow,
               }}
             >
               {displayName}
             </span>
-            <span style={{ fontSize: "clamp(20px,5.5vw,26px)", lineHeight: 1, filter: "drop-shadow(0 2px 6px rgba(0,0,0,0.18))" }}>
-              👋
-            </span>
+            
           </div>
 
           {/* ── Row 4: Sub line ── */}
@@ -562,7 +560,7 @@ const WelcomeCard = ({ weather, loading = false }) => {
             {greetSub}
           </p>
 
-          {/* ── Row 5: Pills (wrap-safe, never clips) ── */}
+          {/* ── Row 5: Pills ── */}
           <div
             ref={pillsRef}
             style={{

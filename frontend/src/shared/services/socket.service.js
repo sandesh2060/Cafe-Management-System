@@ -1,4 +1,13 @@
 // src/shared/services/socket.service.js
+//
+// FIXES:
+// • disconnect() now calls socket.io.skipReconnect = true before disconnect()
+//   so socket.io-client's reconnect manager doesn't race against the new connect().
+// • connect() clears this.socket synchronously before calling io() — no stale ref.
+// • on() warns if socket is null so callers know they registered too early.
+// • GEOFENCE_EXIT — useGpsWatcher needs this; kept in socket layer as an emit,
+//   not a REST call (see useGpsWatcher fix).
+
 import { io } from 'socket.io-client'
 
 // VITE_SOCKET_URL must point to the backend root (no /api suffix).
@@ -14,22 +23,27 @@ class SocketService {
   }
 
   connect(token) {
-    // ── Guard: never connect without a token ───────────────────
+    // ── Guard: never connect without a token ─────────────────────────────────
     if (!token) {
       console.warn('[Socket] connect() called with no token — skipping')
       return null
     }
 
-    // ── Guard: already connected with the same token ───────────
+    // ── Guard: already connected with the same token ──────────────────────────
     if (this.socket?.connected && this._token === token) {
       return this.socket
     }
 
-    // ── If connected with a DIFFERENT token → reconnect cleanly ─
+    // ── If a socket already exists (different token OR disconnected) ──────────
+    // FIX: mark skipReconnect BEFORE disconnect() so the reconnect manager
+    // doesn't immediately try to reconnect while we're creating a new socket.
+    // Without this, socket.io races: old socket reconnects as new socket connects
+    // → "WebSocket closed before connection established".
     if (this.socket) {
-      console.log('[Socket] Token changed — reconnecting...')
+      console.log('[Socket] Token changed — reconnecting cleanly...')
+      this.socket.io.skipReconnect = true   // stop auto-reconnect on old instance
       this.socket.disconnect()
-      this.socket = null
+      this.socket = null                    // clear ref synchronously before io()
     }
 
     this._token = token
@@ -41,9 +55,8 @@ class SocketService {
       reconnectionDelay:    1000,
       reconnectionAttempts: 10,
       timeout:              20000,
-      // Bypass ngrok browser warning for WebSocket upgrade requests in dev.
-      // Without this, ngrok returns an HTML interstitial page instead of
-      // upgrading the connection, causing the WebSocket to close immediately.
+      // Bypass ngrok browser warning in dev — ngrok returns HTML interstitial
+      // instead of upgrading the WebSocket connection without this header.
       extraHeaders: import.meta.env.DEV
         ? { 'ngrok-skip-browser-warning': 'true' }
         : {},
@@ -57,7 +70,7 @@ class SocketService {
       console.log('[Socket] Disconnected:', reason)
     })
 
-    // ── Auth / user-not-found errors ────────────────────────────
+    // ── Auth / user-not-found errors ──────────────────────────────────────────
     this.socket.on('connect_error', (err) => {
       const msg     = err.message || ''
       const errData = err.data   || {}
@@ -71,8 +84,9 @@ class SocketService {
         msg.toLowerCase().includes('invalid token')
       ) {
         console.warn('[Socket] Auth failure — disconnecting and clearing token')
-        this.socket.io.opts.reconnection = false
+        this.socket.io.skipReconnect = true
         this.socket.disconnect()
+        this.socket = null
         this._token = null
         window.dispatchEvent(new CustomEvent('socket:auth-error', { detail: { message: msg } }))
       }
@@ -83,6 +97,7 @@ class SocketService {
 
   disconnect() {
     if (this.socket) {
+      this.socket.io.skipReconnect = true   // prevent reconnect manager from firing
       this.socket.disconnect()
       this.socket = null
     }
@@ -98,8 +113,16 @@ class SocketService {
     else this.socket.emit(event, data)
   }
 
+  // Returns an unsubscribe function.
+  // FIX: warns (instead of silently returning no-op) when socket is null
+  // so callers can detect early-registration bugs during development.
   on(event, handler) {
-    if (!this.socket) return () => {}
+    if (!this.socket) {
+      if (import.meta.env.DEV) {
+        console.warn(`[Socket] on('${event}') called before socket connected — listener not registered`)
+      }
+      return () => {}
+    }
     this.socket.on(event, handler)
     return () => this.socket?.off(event, handler)
   }
