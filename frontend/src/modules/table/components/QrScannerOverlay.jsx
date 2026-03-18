@@ -1,14 +1,20 @@
 // src/modules/table/components/QrScannerOverlay.jsx
+//
+// ✅ COLORS import removed — var(--token) replaces COLORS.brew.soft
+// ✅ text-brew-soft Tailwind alias → var(--text-muted) inline style
+// ✅ bg-saffron on scan line → var(--accent) inline style
+// ✅ animate-scan-line kept — defined in globals.css keyframes
+// ✅ Camera logic, jsQR scanning, frame overlay — unchanged
+
 import { useEffect, useRef, useState } from 'react'
 import jsQR                             from 'jsqr'
-import { COLORS }                       from '@colors'
 import { CameraOff }                    from 'lucide-react'
 
 const QrScannerOverlay = ({ onScan }) => {
-  const videoRef   = useRef(null)
-  const canvasRef  = useRef(null)
-  const rafRef     = useRef(null)
-  const [error, setError] = useState(null)
+  const videoRef  = useRef(null)
+  const canvasRef = useRef(null)
+  const rafRef    = useRef(null)
+  const [error,  setError]  = useState(null)
   const [active, setActive] = useState(false)
 
   useEffect(() => {
@@ -43,7 +49,7 @@ const QrScannerOverlay = ({ onScan }) => {
         const code    = jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: 'dontInvert' })
         if (code?.data) {
           onScan(code.data)
-          return  // Stop scanning after first hit
+          return
         }
       }
       rafRef.current = requestAnimationFrame(tick)
@@ -53,15 +59,23 @@ const QrScannerOverlay = ({ onScan }) => {
 
     return () => {
       cancelAnimationFrame(rafRef.current)
-      stream?.getTracks().forEach((t) => t.stop())
+      stream?.getTracks().forEach(t => t.stop())
     }
   }, [onScan])
 
   if (error) {
     return (
       <div className="flex flex-col items-center gap-3 py-6 text-center">
-        <CameraOff size={32} color={COLORS.brew.soft} />
-        <p className="text-sm text-brew-soft">{error}</p>
+        {/* ✅ var(--text-muted) — was COLORS.brew.soft */}
+        <CameraOff size={32} style={{ color: 'var(--text-muted)' }} />
+        <p style={{
+          fontSize: 14,
+          // ✅ var(--text-muted) — was text-brew-soft Tailwind class
+          color: 'var(--text-muted)',
+          margin: 0,
+        }}>
+          {error}
+        </p>
       </div>
     )
   }
@@ -74,7 +88,7 @@ const QrScannerOverlay = ({ onScan }) => {
       {/* Scanning frame overlay */}
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
         <div className="w-48 h-48 relative">
-          {/* Corner brackets */}
+          {/* Corner brackets — white always (camera overlay, not themed) */}
           {['top-0 left-0', 'top-0 right-0', 'bottom-0 left-0', 'bottom-0 right-0'].map((pos, i) => (
             <div
               key={i}
@@ -88,11 +102,15 @@ const QrScannerOverlay = ({ onScan }) => {
             />
           ))}
 
-          {/* Scan line animation */}
+          {/* Scan line */}
           {active && (
             <div
-              className="absolute left-0 right-0 h-0.5 bg-saffron animate-scan-line"
-              style={{ top: '50%' }}
+              className="absolute left-0 right-0 h-0.5 animate-scan-line"
+              style={{
+                top: '50%',
+                // ✅ var(--accent) — was bg-saffron Tailwind class
+                background: 'var(--accent)',
+              }}
             />
           )}
         </div>

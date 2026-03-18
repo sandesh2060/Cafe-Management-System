@@ -1,22 +1,41 @@
-// src/modules/messaging/message.model.js
+// backend/src/modules/messaging/message.model.js
+//
+// FIXES:
+// ✅ Added threadId field — computed deterministically as [a,b].sort().join('_')
+//    so queries by threadId are O(1) instead of O(n) aggregation
+// ✅ Added readAt index for fast unread count queries
+// ✅ Pre-save hook auto-sets threadId if not provided
+// ✅ TTL index — messages auto-delete after 30 days
+
 import mongoose from 'mongoose'
 
 const messageSchema = new mongoose.Schema({
-  cafeId:      { type: mongoose.Schema.Types.ObjectId, ref: 'Cafe', required: true },
-  fromUserId:  { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  fromRole:    { type: String, enum: ['waiter', 'kitchen', 'manager', 'cashier'], required: true },
-  toUserId:    { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  toRole:      { type: String, enum: ['waiter', 'kitchen', 'manager', 'cashier'], required: true },
-  content:     { type: String, required: true, maxLength: 1000 },
-  orderRef:    { type: mongoose.Schema.Types.ObjectId, ref: 'Order',    default: null },
-  itemRef:     { type: mongoose.Schema.Types.ObjectId, ref: 'MenuItem', default: null },
-  type:        { type: String, enum: ['text', 'quick_reply', 'system'], default: 'text' },
-  readAt:      { type: Date, default: null },
+  cafeId:     { type: mongoose.Schema.Types.ObjectId, ref: 'Cafe', required: true, index: true },
+  threadId:   { type: String, index: true },  // [fromUserId, toUserId].sort().join('_')
+  fromUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  fromRole:   { type: String },
+  toUserId:   { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  toRole:     { type: String },
+  content:    { type: String, required: true, maxlength: 1000 },
+  type:       { type: String, enum: ['text', 'image', 'system'], default: 'text' },
+  orderRef:   { type: mongoose.Schema.Types.ObjectId, ref: 'Order', default: null },
+  itemRef:    { type: mongoose.Schema.Types.ObjectId, ref: 'MenuItem', default: null },
+  readAt:     { type: Date, default: null, index: true },
 }, { timestamps: true })
 
-messageSchema.index({ fromUserId: 1, toUserId: 1, createdAt: -1 })
-messageSchema.index({ cafeId: 1, createdAt: -1 })
-messageSchema.index({ readAt: 1, toUserId: 1 })
+// Auto-compute threadId before save
+messageSchema.pre('save', function (next) {
+  if (!this.threadId && this.fromUserId && this.toUserId) {
+    this.threadId = [this.fromUserId.toString(), this.toUserId.toString()].sort().join('_')
+  }
+  next()
+})
 
-const Message = mongoose.model('Message', messageSchema)
-export default Message
+// Compound index for thread queries
+messageSchema.index({ threadId: 1, createdAt: -1 })
+messageSchema.index({ cafeId: 1, threadId: 1 })
+
+// TTL — auto-delete messages older than 30 days
+messageSchema.index({ createdAt: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 })
+
+export default mongoose.model('Message', messageSchema)

@@ -1,9 +1,15 @@
 // src/modules/waiter/components/tables/WaiterTableMap.jsx
-import { useState, useEffect, useContext } from 'react'
-import api              from '@api/axios'
-import { ThemeContext }  from '@shared/context/ThemeContext'
-import { Map }           from 'lucide-react'
+//
+// ✅ Tailwind gray dark conditionals → var(--card-bg), var(--card-border), var(--text-*)
+// ✅ ZONE_META colors are semantic zone indicator colors — intentionally kept fixed
+// ✅ Skeleton uses .skeleton class from globals.css
 
+import { useState, useEffect, useContext } from 'react'
+import api             from '@api/axios'
+import { ThemeContext } from '@shared/context/ThemeContext'
+import { Map }          from 'lucide-react'
+
+// Semantic zone colors — fixed, not brand-themed
 const ZONE_META = {
   Indoor:  { color: '#8B5CF6', bg: 'rgba(139,92,246,0.15)'  },
   Outdoor: { color: '#22C55E', bg: 'rgba(34,197,94,0.15)'   },
@@ -13,9 +19,9 @@ const ZONE_META = {
 const DEFAULT_ZONE = { color: '#6B7280', bg: 'rgba(107,114,128,0.15)' }
 
 const WaiterTableMap = () => {
-  const [tables, setTables]   = useState([])
+  const [tables,  setTables]  = useState([])
   const [loading, setLoading] = useState(true)
-  const { isDark: dk }        = useContext(ThemeContext)
+  const { isDark } = useContext(ThemeContext)
 
   useEffect(() => {
     api.get('/tables')
@@ -28,58 +34,82 @@ const WaiterTableMap = () => {
   if (!zones.length && tables.length) zones.push('All')
 
   return (
-    <div className={`rounded-2xl border overflow-hidden
-      ${dk ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100 shadow-sm'}`}>
-
-      <div className={`flex items-center gap-2 px-4 py-3 border-b
-        ${dk ? 'border-gray-800' : 'border-gray-100'}`}>
-        <Map size={17} className={dk ? 'text-purple-400' : 'text-purple-500'} />
-        <h2 className={`font-bold text-base ${dk ? 'text-white' : 'text-gray-900'}`}>Tables</h2>
-        <span className={`text-xs ml-auto ${dk ? 'text-gray-500' : 'text-gray-400'}`}>
+    <div style={{
+      borderRadius: 16, overflow: 'hidden',
+      // ✅ var(--card-bg/border/shadow)
+      background: 'var(--card-bg)',
+      border: '1px solid var(--card-border)',
+      boxShadow: 'var(--card-shadow)',
+    }}>
+      {/* Header */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '12px 16px',
+        borderBottom: '1px solid var(--divider)',
+      }}>
+        {/* Semantic purple for map icon */}
+        <Map size={17} style={{ color: '#8B5CF6' }} />
+        <h2 style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-primary)', margin: 0, fontFamily: 'var(--font-body)' }}>
+          Tables
+        </h2>
+        <span style={{ fontSize: 12, marginLeft: 'auto', color: 'var(--text-muted)', fontFamily: 'var(--font-body)' }}>
           {tables.length} total
         </span>
       </div>
 
       {loading ? (
-        <div className="p-4 grid grid-cols-5 gap-2">
+        <div style={{ padding: 16, display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
           {[...Array(10)].map((_, i) => (
-            <div key={i} className={`aspect-square rounded-xl animate-pulse
-              ${dk ? 'bg-gray-800' : 'bg-gray-100'}`} />
+            // ✅ .skeleton class from globals.css
+            <div key={i} className="skeleton" style={{ aspectRatio: '1', borderRadius: 12 }} />
           ))}
         </div>
       ) : (
-        <div className="p-3 space-y-4">
+        <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 16 }}>
           {zones.map(zone => {
             const zoneTables = zone === 'All' ? tables : tables.filter(t => t.zone === zone)
             const meta = ZONE_META[zone] || DEFAULT_ZONE
             return (
               <div key={zone}>
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-2 h-2 rounded-full" style={{ background: meta.color }} />
-                  <p className="text-xs font-bold uppercase tracking-wider"
-                     style={{ color: meta.color }}>
+                {/* Zone header */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: meta.color }} />
+                  <p style={{
+                    fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em',
+                    color: meta.color, margin: 0, fontFamily: 'var(--font-body)',
+                  }}>
                     {zone}
                   </p>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium
-                    ${dk ? 'bg-white/8 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>
+                  <span style={{
+                    fontSize: 10, padding: '2px 6px', borderRadius: 99, fontWeight: 500,
+                    // ✅ var(--pill-bg/text-muted)
+                    background: 'var(--pill-bg)', color: 'var(--text-muted)',
+                    fontFamily: 'var(--font-body)',
+                  }}>
                     {zoneTables.length}
                   </span>
                 </div>
-                <div className="grid grid-cols-5 xs:grid-cols-6 sm:grid-cols-8 gap-1.5">
+
+                {/* Table grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
                   {zoneTables.map((t, i) => (
                     <div
                       key={t._id}
-                      className="aspect-square rounded-xl flex flex-col items-center justify-center
-                                 text-xs font-bold cursor-default transition-transform hover:scale-110"
                       style={{
-                        background: meta.bg,
-                        color: meta.color,
+                        aspectRatio: '1', borderRadius: 12,
+                        display: 'flex', flexDirection: 'column',
+                        alignItems: 'center', justifyContent: 'center',
+                        fontSize: 12, fontWeight: 700, cursor: 'default',
+                        background: meta.bg, color: meta.color,
                         border: `1.5px solid ${meta.color}44`,
-                        animationDelay: `${i * 30}ms`,
+                        transition: 'transform 0.15s',
+                        fontFamily: 'var(--font-body)',
                       }}
+                      onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.1)'}
+                      onMouseLeave={e => e.currentTarget.style.transform = ''}
                     >
-                      <span className="text-xs font-black">{t.tableNumber}</span>
-                      <span className="text-[8px] opacity-70">{t.capacity}p</span>
+                      <span style={{ fontSize: 12, fontWeight: 900 }}>{t.tableNumber}</span>
+                      <span style={{ fontSize: 8, opacity: 0.7 }}>{t.capacity}p</span>
                     </div>
                   ))}
                 </div>

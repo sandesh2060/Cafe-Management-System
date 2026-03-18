@@ -1,32 +1,33 @@
 // src/modules/customer/pages/PaymentSuccessPage.jsx
 //
-// FIXES (this pass):
-//  1. Countdown timer — was showing a static "8 seconds" forever. Now ticks down
-//     each second with useState so user sees live "7… 6… 5…" countdown.
-//  2. "Leave now" button added — calls logoutService.executeClient() immediately
-//     so user isn't stuck waiting for the auto-logout timer.
-//  3. COLORS.loyalty[newTier] crash guard — if backend returns an unexpected tier
-//     string, falls back to saffron colors instead of crashing on undefined.
-//  4. tierUpgraded sound plays after pointsEarned sound (1000ms delay) and
-//     only when tierUpgraded is truthy — correct as before ✅, no change needed.
+// ✅ useContext(ThemeContext) added — page had no dark mode awareness
+// ✅ All Tailwind color classes (bg-matcha, text-brew, bg-saffron-soft etc.)
+//    replaced with var(--token) inline styles
+// ✅ COLORS import removed — all icon colors use var(--accent) / var(--success)
+// ✅ BRAND.name replaces hardcoded 'कौसी चिया'
+// ✅ BRAND.currency replaces hardcoded 'Rs' in total display
+// ✅ Tier color lookup uses brand palette tokens instead of COLORS.loyalty
+// ✅ Live countdown, leave-now button, sound logic all unchanged
 
-import { useEffect, useRef, useState } from 'react'
-import { useLocation }                  from 'react-router-dom'
-import { useSelector }                  from 'react-redux'
-import { selectRole }                   from '@store/slices/authSlice'
-import ConfettiEffect                   from '@shared/components/effects/ConfettiEffect'
-import logoutService                    from '../services/logoutService'
-import { playSound }                    from '@shared/utils/soundPlayer'
-import { COLORS }                       from '@colors'
-import { Star, Gift, LogOut }           from 'lucide-react'
+import { useEffect, useRef, useState, useContext } from 'react'
+import { useLocation }                              from 'react-router-dom'
+import { useSelector }                              from 'react-redux'
+import { selectRole }                               from '@store/slices/authSlice'
+import { ThemeContext }                             from '@shared/context/ThemeContext'
+import { BRAND, getPalette }                        from '@shared/config/brand'
+import ConfettiEffect                               from '@shared/components/effects/ConfettiEffect'
+import logoutService                                from '../services/logoutService'
+import { playSound }                                from '@shared/utils/soundPlayer'
+import { Star, Gift, LogOut }                       from 'lucide-react'
 
 const DELAY_MS = parseInt(import.meta.env.VITE_PAYMENT_LOGOUT_DELAY_MS || '8000')
-// Pre-compute seconds so the render doesn't recalculate on every tick
 const DELAY_S  = Math.ceil(DELAY_MS / 1000)
 
 const PaymentSuccessPage = () => {
-  const { state } = useLocation()
-  const role      = useSelector(selectRole)
+  const { isDark }  = useContext(ThemeContext)
+  const { state }   = useLocation()
+  const role        = useSelector(selectRole)
+
   const {
     pointsEarned = 0,
     tierUpgraded = false,
@@ -34,7 +35,6 @@ const PaymentSuccessPage = () => {
     totalAmount  = 0,
   } = state || {}
 
-  // FIX: live countdown — ticks every second
   const [countdown, setCountdown] = useState(DELAY_S)
   const timerRef                  = useRef(null)
   const intervalRef               = useRef(null)
@@ -45,18 +45,13 @@ const PaymentSuccessPage = () => {
       setTimeout(() => playSound('tierUpgraded', role), 1000)
     }
 
-    // Auto-logout after full delay
     timerRef.current = setTimeout(() => {
       logoutService.executeClient()
     }, DELAY_MS)
 
-    // FIX: countdown tick — decrements every second so the UI shows live "7… 6…"
     intervalRef.current = setInterval(() => {
       setCountdown((c) => {
-        if (c <= 1) {
-          clearInterval(intervalRef.current)
-          return 0
-        }
+        if (c <= 1) { clearInterval(intervalRef.current); return 0 }
         return c - 1
       })
     }, 1000)
@@ -67,115 +62,186 @@ const PaymentSuccessPage = () => {
     }
   }, [role, tierUpgraded])
 
-  // FIX: "Leave now" handler — clears timers and logs out immediately
   const handleLeaveNow = () => {
     clearTimeout(timerRef.current)
     clearInterval(intervalRef.current)
     logoutService.executeClient()
   }
 
-  // FIX: loyalty color lookup with fallback — backend could return an unexpected tier
-  const LOYALTY_FALLBACK = {
-    color:   COLORS.saffron?.DEFAULT ?? '#FF9F1C',
-    bg:      COLORS.saffron?.soft    ?? '#FFF3DC',
-    text:    COLORS.brew?.DEFAULT    ?? '#5C3317',
-    DEFAULT: COLORS.saffron?.DEFAULT ?? '#FF9F1C',
+  // ✅ Tier colors from brand palette instead of COLORS.loyalty lookup
+  // Maps tier names to brand token suffixes — fully dynamic
+  const TIER_COLORS = {
+    bronze: { bg: 'var(--accent-dim)',   border: 'var(--accent-border)',  text: 'var(--accent)'    },
+    silver: { bg: 'var(--info-bg)',      border: 'var(--info-border)',    text: 'var(--info)'      },
+    gold:   { bg: 'var(--loyalty-bg)',   border: 'var(--loyalty-border)', text: 'var(--loyalty-text)' },
   }
-  const tierColor = (COLORS.loyalty?.[newTier] ?? LOYALTY_FALLBACK)
+  const tierStyle = TIER_COLORS[newTier] ?? TIER_COLORS.bronze
+
+  const discountByTier = { gold: '15%', silver: '10%', bronze: '5%' }
 
   return (
-    <div
-      className="min-h-screen bg-gradient-to-br from-matcha-soft to-white
-                 flex items-center justify-center p-6"
-    >
+    <div style={{
+      minHeight: '100vh',
+      // ✅ var(--bg) — was bg-gradient-to-br from-matcha-soft to-white
+      background: 'var(--bg)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: 24,
+      fontFamily: "'DM Sans', system-ui, sans-serif",
+    }}>
       <ConfettiEffect trigger duration={5000} />
 
-      <div className="text-center max-w-sm w-full space-y-6 animate-slide-up">
+      <div style={{
+        textAlign: 'center', maxWidth: 384, width: '100%',
+        display: 'flex', flexDirection: 'column', gap: 24,
+        animation: 'slideUp 0.5s ease-out both',
+      }}>
 
         {/* Success icon */}
-        <div
-          className="w-24 h-24 rounded-full bg-matcha flex items-center justify-center
-                     mx-auto shadow-lg text-5xl animate-bounce-soft"
-        >
+        <div style={{
+          width: 96, height: 96, borderRadius: '50%',
+          // ✅ var(--success-bg) — was bg-matcha
+          background: 'var(--success-bg)',
+          border: '2px solid var(--success-border)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          margin: '0 auto',
+          fontSize: 44,
+          boxShadow: '0 8px 24px var(--success-bg)',
+          animation: 'bounceSoft 2s ease-in-out infinite',
+        }}>
           ✅
         </div>
 
-        <div className="space-y-2">
-          <h1 className="text-3xl font-bold text-brew">Payment Done!</h1>
-          <p className="text-brew-soft">Thank you for visiting कौसी चिया ☕</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <h1 style={{
+            margin: 0, fontSize: 30, fontWeight: 800, letterSpacing: '-0.03em',
+            // ✅ var(--text-primary) — was text-brew
+            color: 'var(--text-primary)',
+          }}>
+            Payment Done!
+          </h1>
+          {/* ✅ BRAND.name replaces hardcoded 'कौसी चिया' */}
+          <p style={{ margin: 0, fontSize: 14, color: 'var(--text-muted)' }}>
+            Thank you for visiting {BRAND.name} {BRAND.emoji}
+          </p>
         </div>
 
         {/* Total */}
         {totalAmount > 0 && (
-          <div className="card text-center py-3">
-            <p className="text-brew-soft text-sm">Total Paid</p>
-            <p className="text-2xl font-bold text-brew">Rs {totalAmount}</p>
+          <div style={{
+            background: 'var(--card-bg)',
+            border: '1px solid var(--card-border)',
+            borderRadius: 16, padding: '14px 20px',
+            textAlign: 'center',
+          }}>
+            <p style={{ margin: '0 0 4px', fontSize: 13, color: 'var(--text-muted)' }}>
+              Total Paid
+            </p>
+            {/* ✅ BRAND.currency replaces hardcoded 'Rs' */}
+            <p style={{
+              margin: 0, fontSize: 26, fontWeight: 800,
+              color: 'var(--text-primary)', letterSpacing: '-0.02em',
+            }}>
+              {BRAND.currency} {totalAmount}
+            </p>
           </div>
         )}
 
         {/* Points earned */}
         {pointsEarned > 0 && (
-          <div className="card flex items-center gap-3 bg-saffron-soft border-saffron/30">
-            <div className="w-10 h-10 rounded-full bg-saffron/20 flex items-center justify-center flex-shrink-0">
-              <Star
-                size={20}
-                color={COLORS.saffron?.DEFAULT ?? '#FF9F1C'}
-                fill={COLORS.saffron?.DEFAULT  ?? '#FF9F1C'}
-              />
+          <div style={{
+            background: 'var(--loyalty-bg)',
+            border: '1px solid var(--loyalty-border)',
+            borderRadius: 16, padding: '14px 16px',
+            display: 'flex', alignItems: 'center', gap: 12,
+          }}>
+            <div style={{
+              width: 40, height: 40, borderRadius: '50%',
+              background: 'var(--accent-dim)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0,
+            }}>
+              {/* ✅ var(--accent) — was COLORS.saffron?.DEFAULT */}
+              <Star size={20} style={{ color: 'var(--accent)' }} fill="currentColor" />
             </div>
-            <div className="text-left">
-              <p className="font-bold text-brew">+{pointsEarned} Points Earned!</p>
-              <p className="text-sm text-brew-soft">Added to your loyalty balance</p>
+            <div style={{ textAlign: 'left' }}>
+              <p style={{
+                margin: '0 0 2px', fontWeight: 800, fontSize: 14,
+                color: 'var(--loyalty-text)',
+              }}>
+                +{pointsEarned} Points Earned!
+              </p>
+              <p style={{ margin: 0, fontSize: 12, color: 'var(--loyalty-sub-text)' }}>
+                Added to your loyalty balance
+              </p>
             </div>
           </div>
         )}
 
-        {/* Tier upgrade */}
+        {/* Tier upgrade — ✅ tierStyle uses var(--token) instead of COLORS.loyalty */}
         {tierUpgraded && newTier && (
-          <div
-            className="card flex items-center gap-3 border-2"
-            style={{
-              backgroundColor: tierColor.bg,
-              borderColor:     tierColor.DEFAULT,
-            }}
-          >
-            <Gift size={24} color={tierColor.DEFAULT} />
-            <div className="text-left">
-              <p className="font-bold" style={{ color: tierColor.text }}>
+          <div style={{
+            background: tierStyle.bg,
+            border: `2px solid ${tierStyle.border}`,
+            borderRadius: 16, padding: '14px 16px',
+            display: 'flex', alignItems: 'center', gap: 12,
+          }}>
+            {/* ✅ color from tierStyle.text — no COLORS import needed */}
+            <Gift size={24} style={{ color: tierStyle.text, flexShrink: 0 }} />
+            <div style={{ textAlign: 'left' }}>
+              <p style={{
+                margin: '0 0 2px', fontWeight: 800, fontSize: 14,
+                color: tierStyle.text,
+              }}>
                 🎉 Welcome to {newTier.charAt(0).toUpperCase() + newTier.slice(1)} Tier!
               </p>
-              <p className="text-sm" style={{ color: tierColor.text }}>
-                You now get{' '}
-                {newTier === 'gold'
-                  ? '15%'
-                  : newTier === 'silver'
-                  ? '10%'
-                  : '5%'}{' '}
-                discount
+              <p style={{ margin: 0, fontSize: 12, color: tierStyle.text }}>
+                You now get {discountByTier[newTier] ?? '5%'} discount
               </p>
             </div>
           </div>
         )}
 
-        {/* FIX: live countdown + "Leave now" button */}
-        <div className="space-y-3">
-          <p className="text-brew-soft text-sm">
+        {/* Live countdown + leave now */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <p style={{ margin: 0, fontSize: 13.5, color: 'var(--text-muted)' }}>
             {countdown > 0
               ? `Logging out automatically in ${countdown} second${countdown !== 1 ? 's' : ''}…`
               : 'Logging out…'}
           </p>
           <button
             onClick={handleLeaveNow}
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl
-                       border-2 border-brew-soft/30 text-brew-soft text-sm font-semibold
-                       active:scale-95 transition-all"
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', gap: 8,
+              padding: '13px 20px', borderRadius: 14,
+              // ✅ var(--card-border) — was border-brew-soft/30
+              border: '1.5px solid var(--card-border)',
+              // ✅ var(--pill-bg) — was transparent
+              background: 'var(--pill-bg)',
+              color: 'var(--text-secondary)',
+              fontSize: 13.5, fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'transform 0.15s, background 0.15s',
+            }}
+            onMouseDown={e => e.currentTarget.style.transform = 'scale(0.97)'}
+            onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
           >
             <LogOut size={16} />
             Leave now
           </button>
         </div>
-
       </div>
+
+      <style>{`
+        @keyframes slideUp {
+          from { opacity: 0; transform: translateY(24px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes bounceSoft {
+          0%, 100% { transform: translateY(0); }
+          50%       { transform: translateY(-8px); }
+        }
+      `}</style>
     </div>
   )
 }

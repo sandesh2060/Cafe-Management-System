@@ -1,4 +1,15 @@
 // src/modules/customer/components/menu/CategoryPills.jsx
+//
+// FIXES vs previous version:
+// ✅ All theme colors moved to CSS custom properties on .cp-root
+//    → pill bg/border/hover update instantly on dark/light toggle
+//    → no JS template literal color injection into <style> at render time
+//    → html.dark .cp-root overrides vars — works with ThemeContext .dark class
+// ✅ GSAP IDLE_COLOR reads from CSS var at animation time (not baked at render)
+//    → useEffect([isDark]) re-runs GSAP with fresh color on every theme change
+// ✅ Responsive: tablet+ gets more horizontal padding on the scroll track
+// ✅ All animation logic, liquid morphing, stagger — UNTOUCHED
+
 import { useRef, useLayoutEffect, useEffect, useContext } from 'react'
 import gsap from 'gsap'
 import { ThemeContext } from '@shared/context/ThemeContext'
@@ -30,10 +41,14 @@ const CategoryPills = ({ categories = [], active = 'all', onChange }) => {
   const isFirst    = useRef(true)
   const tlRef      = useRef(null)
 
-  const IDLE_COLOR   = D ? 'rgba(255,200,120,0.45)' : 'rgba(92,51,23,0.45)'
+  // FIX: Read colors from CSS at animation time — not baked into JS at render.
+  // getComputedStyle reads the current CSS var value, which is already
+  // updated by the html.dark class before useEffect([isDark]) fires.
+  const getIdleColor   = () => getComputedStyle(document.documentElement)
+    .getPropertyValue('--cp-idle-color').trim()
   const ACTIVE_COLOR = '#ffffff'
 
-  /* ── Stagger mount animation ────────────────────────────────────────── */
+  /* ── Stagger mount animation ─────────────────────────────────────────── */
   useEffect(() => {
     const pills = Object.values(pillRefs.current).filter(Boolean)
     if (!pills.length) return
@@ -50,7 +65,7 @@ const CategoryPills = ({ categories = [], active = 'all', onChange }) => {
     )
   }, [categories])
 
-  /* ── Liquid morphing track ──────────────────────────────────────────── */
+  /* ── Liquid morphing track ───────────────────────────────────────────── */
   useLayoutEffect(() => {
     const activePill = pillRefs.current[active]
     const wrap       = scrollRef.current
@@ -68,7 +83,7 @@ const CategoryPills = ({ categories = [], active = 'all', onChange }) => {
       gsap.set(track, { x: targetX, width: targetW, opacity: 1 })
       categories.forEach(cat => {
         const el = pillRefs.current[cat]
-        if (el) gsap.set(el, { color: cat === active ? ACTIVE_COLOR : IDLE_COLOR })
+        if (el) gsap.set(el, { color: cat === active ? ACTIVE_COLOR : getIdleColor() })
       })
       isFirst.current = false
       prevActive.current = active
@@ -99,7 +114,7 @@ const CategoryPills = ({ categories = [], active = 'all', onChange }) => {
     if (prevActive.current && prevActive.current !== active) {
       const prevEl = pillRefs.current[prevActive.current]
       if (prevEl) {
-        tl.to(prevEl, { color: IDLE_COLOR, duration: 0.2, ease: 'power1.out' }, 0)
+        tl.to(prevEl, { color: getIdleColor(), duration: 0.2, ease: 'power1.out' }, 0)
       }
     }
 
@@ -118,13 +133,14 @@ const CategoryPills = ({ categories = [], active = 'all', onChange }) => {
 
   }, [active, categories])
 
-  /* ── Handle theme change — reset colors ─────────────────────────────── */
+  /* ── Handle theme change — reset all pill colors via GSAP ────────────── */
   useEffect(() => {
+    const idleColor = getIdleColor()
     categories.forEach(cat => {
       const el = pillRefs.current[cat]
       if (!el) return
       gsap.to(el, {
-        color: cat === active ? ACTIVE_COLOR : IDLE_COLOR,
+        color: cat === active ? ACTIVE_COLOR : idleColor,
         duration: 0.22, ease: 'power2.out',
       })
     })
@@ -148,7 +164,6 @@ const CategoryPills = ({ categories = [], active = 'all', onChange }) => {
                 className="cp-pill"
                 aria-pressed={cat === active}
                 aria-label={`Filter by ${meta.text}`}
-                style={{ color: IDLE_COLOR }}
               >
                 <span className="cp-icon" aria-hidden="true">{meta.icon}</span>
                 <span className="cp-text">{meta.text}</span>
@@ -161,12 +176,44 @@ const CategoryPills = ({ categories = [], active = 'all', onChange }) => {
         <div className="cp-edge-fade" aria-hidden="true" />
       </div>
 
+      {/*
+        FIX: All theme colors are now CSS custom properties.
+        html.dark .cp-root overrides them — ThemeContext adds .dark to <html>
+        so theme toggle updates these instantly without JS re-render.
+        No more template literal color injection.
+      */}
       <style>{`
+        /* ── Theme tokens — light mode defaults ── */
         .cp-root {
           position: relative;
           overflow: hidden;
+
+          /* Pill surface */
+          --cp-pill-bg:           rgba(255,248,238,0.6);
+          --cp-pill-border:       rgba(237,217,184,0.7);
+          --cp-pill-hover-bg:     rgba(237,217,184,0.35);
+          --cp-pill-hover-border: rgba(237,170,80,0.5);
+
+          /* Edge fade — matches page bg */
+          --cp-edge-bg-start:     rgba(253,249,242,1);
+
+          /* GSAP idle text color — read by getIdleColor() via CSS var on :root */
         }
 
+        /* ── Dark mode overrides — applied when html has .dark class ── */
+        html.dark .cp-root {
+          --cp-pill-bg:           rgba(255,255,255,0.03);
+          --cp-pill-border:       rgba(255,255,255,0.07);
+          --cp-pill-hover-bg:     rgba(255,255,255,0.07);
+          --cp-pill-hover-border: rgba(255,255,255,0.12);
+          --cp-edge-bg-start:     rgba(12,8,4,1);
+        }
+
+        /* ── Idle color token on :root (read by getIdleColor() in JS) ── */
+        :root          { --cp-idle-color: rgba(92,51,23,0.45);   }
+        html.dark      { --cp-idle-color: rgba(255,200,120,0.45); }
+
+        /* ── Scroll track ── */
         .cp-scroll {
           position: relative;
           display: flex;
@@ -178,6 +225,14 @@ const CategoryPills = ({ categories = [], active = 'all', onChange }) => {
           scrollbar-width: none;
         }
         .cp-scroll::-webkit-scrollbar { display: none; }
+
+        /* Responsive: more padding on wider screens */
+        @media (min-width: 640px) {
+          .cp-scroll { padding: 2px 20px 8px; gap: 6px; }
+        }
+        @media (min-width: 1024px) {
+          .cp-scroll { padding: 2px 24px 8px; gap: 7px; }
+        }
 
         /* ── Liquid track ── */
         .cp-track {
@@ -207,8 +262,9 @@ const CategoryPills = ({ categories = [], active = 'all', onChange }) => {
           padding: 0 13px;
           height: 34px;
           border-radius: 100px;
-          border: 1px solid ${D ? 'rgba(255,255,255,0.07)' : 'rgba(237,217,184,0.7)'};
-          background: ${D ? 'rgba(255,255,255,0.03)' : 'rgba(255,248,238,0.6)'};
+          /* FIX: use CSS vars — update instantly on theme toggle */
+          border: 1px solid var(--cp-pill-border);
+          background: var(--cp-pill-bg);
           cursor: pointer;
           white-space: nowrap;
           font-family: "DM Sans", sans-serif;
@@ -217,13 +273,23 @@ const CategoryPills = ({ categories = [], active = 'all', onChange }) => {
           letter-spacing: 0.005em;
           -webkit-tap-highlight-color: transparent;
           outline: none;
+          /* Only transition border/background — not color (GSAP handles color) */
           transition:
-            background 0.18s ease,
-            border-color 0.18s ease;
+            background var(--transition-fast, 150ms ease),
+            border-color var(--transition-fast, 150ms ease);
         }
+
+        /* Responsive: taller pills on tablet+ */
+        @media (min-width: 640px) {
+          .cp-pill { height: 36px; padding: 0 15px; font-size: 13px; }
+        }
+        @media (min-width: 1024px) {
+          .cp-pill { height: 38px; padding: 0 17px; font-size: 13.5px; gap: 6px; }
+        }
+
         .cp-pill:hover {
-          background: ${D ? 'rgba(255,255,255,0.07)' : 'rgba(237,217,184,0.35)'};
-          border-color: ${D ? 'rgba(255,255,255,0.12)' : 'rgba(237,170,80,0.5)'};
+          background: var(--cp-pill-hover-bg);
+          border-color: var(--cp-pill-hover-border);
         }
         .cp-pill:active { transform: scale(0.94); }
         .cp-pill:focus-visible {
@@ -234,19 +300,27 @@ const CategoryPills = ({ categories = [], active = 'all', onChange }) => {
         .cp-icon { font-size: 13px; line-height: 1; }
         .cp-text  { line-height: 1; }
 
-        /* ── Right edge fade ── */
+        /* ── Right edge fade — uses CSS var ── */
         .cp-edge-fade {
           position: absolute;
           top: 0; right: 0;
           width: 48px; height: 100%;
+          /* FIX: CSS var instead of baked JS color */
           background: linear-gradient(
             to left,
-            ${D ? 'rgba(12,8,4,1)' : 'rgba(253,249,242,1)'} 0%,
+            var(--cp-edge-bg-start) 0%,
             transparent 100%
           );
           pointer-events: none;
           z-index: 5;
-          transition: background var(--transition-theme);
+          /* Smooth on theme toggle since it's now a CSS var */
+          transition: background var(--transition-theme, 300ms ease);
+        }
+
+        /* Reduced motion */
+        @media (prefers-reduced-motion: reduce) {
+          .cp-pill        { transition: none; }
+          .cp-edge-fade   { transition: none; }
         }
       `}</style>
     </>

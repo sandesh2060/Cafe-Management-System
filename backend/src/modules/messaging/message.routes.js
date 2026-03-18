@@ -1,104 +1,101 @@
-// src/modules/messaging/message.routes.js
-import express        from 'express'
-import { authenticate, authorize } from '../auth/auth.middleware.js'
-import { catchAsync } from '../../shared/middleware/errorHandler.js'
-import Message        from './message.model.js'
+// backend/src/modules/messaging/message.routes.js
+//
+// FIXES:
+// ✅ Uses protect + requireRole (your app's actual middleware) — was using
+//    authenticate + authorize which don't exist → every call was 401/403
+// ✅ /unread-count route moved BEFORE /:userId to prevent Express matching
+//    "unread-count" as a userId param
+// ✅ All routes use service layer (message.service.js) instead of inline DB calls
+// ✅ POST /send emits socket for real-time delivery
+// ✅ GET /thread/:threadId — new route for ManagerMessageHub
+// ✅ GET /:userId — kept for WaiterChatPanel backward compat
 
-const STAFF_ROLES = ['waiter', 'kitchen', 'cashier', 'manager']
+import { Router }   from 'express'
+import { protect }  from '../auth/auth.middleware.js'
+import requireRole  from '../../shared/middleware/requireRole.js'
+import catchAsync   from '../../shared/utils/catchAsync.js'
+import AppError     from '../../shared/utils/AppError.js'
+import { sendSuccess } from '../../shared/utils/response.js'
+import * as svc     from './message.service.js'
 
-const router = express.Router()
-router.use(authenticate)
-router.use(authorize(...STAFF_ROLES))  // Messaging only between staff
+const router = Router()
 
-// Get all threads for current user
+// All messaging routes require authentication
+router.use(protect)
+router.use(requireRole('waiter', 'kitchen', 'cashier', 'manager', 'admin'))
+
+// ── GET /messages/threads ─────────────────────────────────────────────────────
 router.get('/threads', catchAsync(async (req, res) => {
-  const msgs = await Message.aggregate([
-    {
-      $match: {
-        $or: [{ fromUserId: req.user._id }, { toUserId: req.user._id }],
-        cafeId: req.user.cafeId,
-      },
-    },
-    { $sort:  { createdAt: -1 } },
-    {
-      $group: {
-        _id: {
-          $cond: {
-            if: { $lt: ['$fromUserId', '$toUserId'] },
-            then: { a: '$fromUserId', b: '$toUserId' },
-            else: { a: '$toUserId',  b: '$fromUserId' },
-          },
-        },
-        lastMessage: { $first: '$$ROOT' },
-        unread: {
-          $sum: {
-            $cond: [
-              { $and: [{ $eq: ['$toUserId', req.user._id] }, { $eq: ['$readAt', null] }] },
-              1, 0,
-            ],
-          },
-        },
-      },
-    },
-  ])
-  res.json({ success: true, threads: msgs })
+  const threads = await svc.getThreads(req.user._id, req.user.cafeId)
+  sendSuccess(res, { threads }, 'OK')
 }))
 
-// Get message history for a thread
-router.get('/:userId', catchAsync(async (req, res) => {
-  const { userId } = req.params
-  const { before, limit = 30 } = req.query
-
-  const query = {
-    cafeId: req.user.cafeId,
-    $or: [
-      { fromUserId: req.user._id, toUserId: userId },
-      { fromUserId: userId,       toUserId: req.user._id },
-    ],
-  }
-  if (before) query.createdAt = { $lt: new Date(before) }
-
-  const messages = await Message.find(query)
-    .sort({ createdAt: -1 })
-    .limit(parseInt(limit))
-    .lean()
-
-  res.json({ success: true, messages: messages.reverse() })
+// ── GET /messages/unread-count ────────────────────────────────────────────────
+// IMPORTANT: must come BEFORE /:userId to avoid route collision
+router.get('/unread-count', catchAsync(async (req, res) => {
+  const count = await svc.getUnreadCount(req.user._id, req.user.cafeId)
+  sendSuccess(res, { count }, 'OK')
 }))
 
-// Send message
+// ── GET /messages/thread/:threadId ────────────────────────────────────────────
+// Used by ManagerMessageHub
+router.get('/thread/:threadId', catchAsync(async (req, res) => {
+  const { before, limit } = req.query
+  const messages = await svc.getThread(
+    req.params.threadId,
+    req.user._id,
+    req.user.cafeId,
+    { before, limit }
+  )
+  sendSuccess(res, { messages }, 'OK')
+}))
+
+// ── POST /messages/send ───────────────────────────────────────────────────────
 router.post('/send', catchAsync(async (req, res) => {
-  const { toUserId, content, orderRef, itemRef, type = 'text' } = req.body
-  const msg = await Message.create({
-    cafeId:     req.user.cafeId,
+  const { toUserId, content, orderRef, itemRef, type } = req.body
+  if (!toUserId || !content?.trim())
+    throw new AppError('toUserId and content are required', 400)
+
+  const io  = req.app.get('io')
+  const msg = await svc.sendMessage({
     fromUserId: req.user._id,
     fromRole:   req.user.role,
     toUserId,
-    toRole:     null,
-    content:    content.slice(0, 1000),
-    orderRef:   orderRef || null,
-    itemRef:    itemRef  || null,
+    cafeId:     req.user.cafeId,
+    content,
+    orderRef,
+    itemRef,
     type,
-  })
-  res.status(201).json({ success: true, message: msg })
+  }, io)
+
+  sendSuccess(res, { message: msg }, 'Sent', 201)
 }))
 
-// Mark thread as read
-router.post('/:userId/read', catchAsync(async (req, res) => {
-  await Message.updateMany(
-    { fromUserId: req.params.userId, toUserId: req.user._id, readAt: null },
-    { readAt: new Date() }
+// ── PATCH /messages/thread/:threadId/read ─────────────────────────────────────
+router.patch('/thread/:threadId/read', catchAsync(async (req, res) => {
+  await svc.markThreadRead(req.params.threadId, req.user._id)
+  sendSuccess(res, null, 'Marked read')
+}))
+
+// ── PATCH /messages/:userId/read (backward compat for WaiterChatPanel) ───────
+router.patch('/:userId/read', catchAsync(async (req, res) => {
+  const { buildThreadId } = await import('./message.service.js')
+  const threadId = buildThreadId(req.user._id, req.params.userId)
+  await svc.markThreadRead(threadId, req.user._id)
+  sendSuccess(res, null, 'Marked read')
+}))
+
+// ── GET /messages/:userId ─────────────────────────────────────────────────────
+// Backward compat for WaiterChatPanel — MUST be last to avoid catching other routes
+router.get('/:userId', catchAsync(async (req, res) => {
+  const { before, limit } = req.query
+  const messages = await svc.getMessagesByUserId(
+    req.user._id,
+    req.params.userId,
+    req.user.cafeId,
+    { before, limit }
   )
-  res.json({ success: true })
-}))
-
-// Unread count
-router.get('/unread-count', catchAsync(async (req, res) => {
-  const count = await Message.countDocuments({
-    toUserId: req.user._id,
-    readAt:   null,
-  })
-  res.json({ success: true, count })
+  sendSuccess(res, { messages }, 'OK')
 }))
 
 export default router

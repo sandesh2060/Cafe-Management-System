@@ -1,12 +1,19 @@
 // src/app/App.jsx
+//
+// ✅ FIX: Lenis and BrowserRouter are now only in providers.jsx — removed
+//    duplicate mounts here. App.jsx just composes Provider + AppInner.
+// ✅ HMR guard on bootstrapPromise prevents StrictMode double-invoke issues.
+// ✅ Bootstrap reads /auth/me once, handles both token shapes safely.
+// ✅ Global auth event listeners for session expiry and force-logout.
+
 import { Provider }                    from 'react-redux'
-import { BrowserRouter, useNavigate }  from 'react-router-dom'
 import { Toaster }                     from 'react-hot-toast'
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState }         from 'react'
 import { useDispatch }                 from 'react-redux'
-import { ReactLenis }                  from 'lenis/react'
+import { useNavigate }                 from 'react-router-dom'
 import { ThemeProvider }               from '@shared/context/ThemeContext'
 import store                           from '@store'
+import Providers                       from './providers'
 import AppRoutes                       from './routes/AppRoutes'
 import {
   setCredentials,
@@ -21,10 +28,11 @@ import { ENDPOINTS }                   from '@api/endpoints'
 import PageTransition                  from '@shared/components/utils/PageTransition'
 import useSocket                       from '@shared/hooks/useSocket'
 import ToastRenderer                   from '@shared/components/notifications/ToastRenderer'
+import { FONTS }                       from '@shared/config/brand'
 
-// ── Bootstrap promise — module-level so StrictMode double-invoke shares it ───
-// FIX: HMR guard resets the promise when Vite hot-reloads this module,
-// preventing the second mount from skipping /auth/me and leaving isLoggedIn=false.
+// ── Bootstrap promise ─────────────────────────────────────────────────────────
+// Module-level so StrictMode double-invoke shares the same promise.
+// HMR guard resets it on hot-reload so dev never gets a stale bootstrap.
 let bootstrapPromise = null
 
 if (import.meta.hot) {
@@ -33,17 +41,16 @@ if (import.meta.hot) {
   })
 }
 
-// ── Inner component (needs dispatch + navigate inside Router) ─────────────────
+// ── AppInner ──────────────────────────────────────────────────────────────────
+// Needs to be inside <Providers> so it can use useDispatch + useNavigate.
 const AppInner = () => {
   const dispatch = useDispatch()
   const navigate = useNavigate()
-  // FIX: ready starts true if bootstrapPromise already resolved (StrictMode
-  // second mount) — avoids double full-screen spinner flash.
   const [ready, setReady] = useState(false)
 
   useSocket()
 
-  // ── Global auth event listeners ──────────────────────────────────────────
+  // Global auth event listeners
   useEffect(() => {
     const handleExpired = () => {
       dispatch(clearAuth())
@@ -62,10 +69,10 @@ const AppInner = () => {
     }
   }, [dispatch, navigate])
 
-  // ── Bootstrap: restore session from localStorage ─────────────────────────
+  // Bootstrap: restore auth session from token
   useEffect(() => {
     const runBootstrap = async () => {
-      // StrictMode second invoke: promise already in flight — await it then mark ready
+      // StrictMode second invoke — promise already running, just await + mark ready
       if (bootstrapPromise) {
         await bootstrapPromise
         dispatch(setBootstrapReady(true))
@@ -74,29 +81,24 @@ const AppInner = () => {
       }
 
       bootstrapPromise = (async () => {
-        // Rehydrate table session from localStorage first (sync)
+        // Rehydrate table session from localStorage (sync)
         dispatch(rehydratePersistedSession())
 
         const token = localStorage.getItem('kc_token')
-        if (!token) return  // no token — not logged in, bootstrap done
+        if (!token) return // no token — not logged in
 
         try {
           const data = await api.get(ENDPOINTS.AUTH.ME)
-          // FIX: me controller returns { success, data: user } (not sendSuccess wrapper)
-          // axios interceptor strips the outer envelope so data = { success, data: user }
-          // Handle both shapes for safety.
+          // Handle both response shapes for safety
           const user = data?.data ?? data?.user ?? (data?._id ? data : null)
           if (user?._id) {
             dispatch(setCredentials({ user, token }))
           } else {
-            // Token exists but /auth/me returned no valid user — stale token
             localStorage.removeItem('kc_token')
             localStorage.removeItem('kc_user')
             dispatch(clearAuth())
           }
         } catch (err) {
-          // 401 = token expired/invalid. Any other error = server down.
-          // Either way clear the stale token and start fresh.
           const status = err?.response?.status
           if (status === 401 || status === 403) {
             console.warn('[App] Token invalid — clearing auth')
@@ -115,14 +117,14 @@ const AppInner = () => {
     }
 
     runBootstrap()
-  }, [dispatch]) // dispatch is stable — correct dep
+  }, [dispatch])
 
   if (!ready) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[var(--bg-app)]">
+      <div className="min-h-screen flex items-center justify-center bg-[var(--bg)]">
         <div
-          className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin"
-          style={{ borderColor: 'var(--color-saffron)', borderTopColor: 'transparent' }}
+          className="w-8 h-8 border-2 rounded-full animate-spin"
+          style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }}
         />
       </div>
     )
@@ -139,27 +141,23 @@ const AppInner = () => {
 }
 
 // ── Root ──────────────────────────────────────────────────────────────────────
+// Providers wraps: Redux → BrowserRouter → ThemeProvider → Lenis
+// Toaster sits outside AppInner but inside Providers so it can read theme vars.
 const App = () => (
-  <Provider store={store}>
-    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <ThemeProvider>
-        <ReactLenis root options={{ lerp: 0.1, smoothWheel: true, syncTouch: false }}>
-          <AppInner />
-          <Toaster
-            position="top-center"
-            toastOptions={{
-              duration: 3000,
-              style: {
-                fontFamily: 'Baloo 2, sans-serif',
-                fontSize:   '14px',
-                fontWeight: '600',
-              },
-            }}
-          />
-        </ReactLenis>
-      </ThemeProvider>
-    </BrowserRouter>
-  </Provider>
+  <Providers>
+    <AppInner />
+    <Toaster
+      position="top-center"
+      toastOptions={{
+        duration: 3000,
+        style: {
+          fontFamily: FONTS.body,
+          fontSize:   '14px',
+          fontWeight: '600',
+        },
+      }}
+    />
+  </Providers>
 )
 
 export default App

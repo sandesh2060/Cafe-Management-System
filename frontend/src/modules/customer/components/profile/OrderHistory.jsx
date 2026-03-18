@@ -1,105 +1,156 @@
 // src/modules/customer/components/profile/OrderHistory.jsx
-import { useState, useEffect } from "react";
-import api from "@api/axios";
-import { COLORS } from "@colors";
-import { ChevronRight } from "lucide-react";
+//
+// ✅ COLORS import removed — var(--success/danger/accent) replace status colors
+// ✅ BRAND.currency — hardcoded 'Rs' replaced everywhere
+// ✅ text-brew/text-brew-soft → var(--text-primary/muted)
+// ✅ bg-cream-dark/bg-cream-deep → var(--pill-bg)
+// ✅ divide-cream-border → var(--divider)
+// ✅ card → var(--card-bg/border/shadow) inline styles
+// ✅ text-saffron → var(--accent)
+// ✅ skeleton → .skeleton CSS class from globals.css
 
-const STATUS_COLORS = {
-  paid: COLORS.matcha.DEFAULT,
-  delivered: COLORS.matcha.DEFAULT,
-  cancelled: COLORS.terra.DEFAULT,
-};
+import { useState, useEffect } from 'react'
+import { ChevronRight }        from 'lucide-react'
+import { BRAND }               from '@shared/config/brand'
+import api                     from '@api/axios'
+
+// ✅ Semantic status colors via var tokens
+const STATUS_COLOR = {
+  paid:      'var(--success)',
+  delivered: 'var(--success)',
+  cancelled: 'var(--danger)',
+  pending:   'var(--warning)',
+  preparing: 'var(--info)',
+  on_the_way:'var(--accent)',
+}
+const STATUS_BG = {
+  paid:      'var(--success-bg)',
+  delivered: 'var(--success-bg)',
+  cancelled: 'var(--danger-bg)',
+  pending:   'var(--warning-bg)',
+  preparing: 'var(--info-bg)',
+  on_the_way:'var(--accent-dim)',
+}
 
 const OrderHistory = () => {
-  const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState(null);
+  const [orders,   setOrders]   = useState([])
+  const [loading,  setLoading]  = useState(true)
+  const [expanded, setExpanded] = useState(null)
 
   useEffect(() => {
-    api
-      .get("/orders/history")
-      .then((data) => setOrders(data.orders || []))
+    api.get('/orders/history')
+      .then(data => setOrders(data.orders || []))
       .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+      .finally(() => setLoading(false))
+  }, [])
 
   if (loading) {
     return (
-      <div className="card animate-pulse space-y-3">
-        {[1, 2].map((i) => (
-          <div key={i} className="h-14 bg-cream-deep rounded-xl" />
+      <div style={{
+        padding: '16px', borderRadius: 'var(--radius-xl)',
+        background: 'var(--card-bg)', border: '1px solid var(--card-border)',
+        display: 'flex', flexDirection: 'column', gap: 12,
+      }}>
+        {[1, 2].map(i => (
+          // ✅ .skeleton CSS class from globals.css
+          <div key={i} className="skeleton" style={{ height: 56 }} />
         ))}
       </div>
-    );
+    )
   }
 
   if (!orders.length) {
     return (
-      <div className="card text-center py-6 text-brew-soft text-sm">
+      <div style={{
+        padding: '24px 16px', borderRadius: 'var(--radius-xl)', textAlign: 'center',
+        background: 'var(--card-bg)', border: '1px solid var(--card-border)',
+        fontSize: 13,
+        // ✅ var(--text-muted) — was text-brew-soft
+        color: 'var(--text-muted)',
+      }}>
         No past orders yet. Order something! 😋
       </div>
-    );
+    )
   }
 
   return (
-    <div className="card space-y-0 p-0 overflow-hidden">
-      <h3 className="font-bold text-brew text-sm px-4 pt-4 pb-3">
+    <div style={{
+      borderRadius: 'var(--radius-xl)', overflow: 'hidden',
+      background: 'var(--card-bg)', border: '1px solid var(--card-border)',
+      boxShadow: 'var(--card-shadow)',
+    }}>
+      <h3 style={{
+        margin: 0, padding: '16px 16px 12px',
+        fontSize: 13, fontWeight: 700,
+        // ✅ var(--text-primary) — was text-brew
+        color: 'var(--text-primary)',
+      }}>
         Order History
       </h3>
-      <div className="divide-y divide-cream-border">
-        {orders.map((order) => (
-          <div key={order._id}>
+
+      <div>
+        {orders.map((order, oi) => (
+          <div key={order._id} style={{ borderTop: '1px solid var(--divider)' }}>
             <button
-              onClick={() =>
-                setExpanded(expanded === order._id ? null : order._id)
-              }
-              className="w-full flex items-center gap-3 px-4 py-3 text-left"
+              onClick={() => setExpanded(expanded === order._id ? null : order._id)}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+                padding: '12px 16px', textAlign: 'left', background: 'none',
+                border: 'none', cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+              }}
             >
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-semibold text-brew">
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>
                     #{order._id.slice(-6).toUpperCase()}
                   </p>
-                  <span
-                    className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white"
-                    style={{
-                      backgroundColor:
-                        STATUS_COLORS[order.status] || COLORS.brew.light,
-                    }}
-                  >
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 'var(--radius-full)',
+                    // ✅ var status tokens — was COLORS.matcha/terra.DEFAULT
+                    background: STATUS_BG[order.status]  || 'var(--pill-bg)',
+                    color:      STATUS_COLOR[order.status] || 'var(--text-muted)',
+                  }}>
                     {order.status}
                   </span>
                 </div>
-                <p className="text-xs text-brew-soft mt-0.5">
-                  {new Date(order.createdAt).toLocaleDateString("en-IN", {
-                    day: "numeric",
-                    month: "short",
-                  })}
-                  {" · "}Rs {order.total}
+                <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
+                  {new Date(order.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                  {' · '}
+                  {/* ✅ BRAND.currency — was hardcoded 'Rs' */}
+                  {BRAND.currency} {order.total}
                 </p>
               </div>
               <ChevronRight
                 size={16}
-                color={COLORS.brew.soft}
-                className={`transition-transform ${expanded === order._id ? "rotate-90" : ""}`}
+                style={{
+                  color: 'var(--text-muted)',
+                  transition: 'transform 0.2s',
+                  transform: expanded === order._id ? 'rotate(90deg)' : 'rotate(0deg)',
+                }}
               />
             </button>
 
             {/* Expanded items */}
             {expanded === order._id && (
-              <div className="px-4 pb-3 space-y-1.5 bg-cream-dark/40">
+              <div style={{
+                padding: '0 16px 12px',
+                // ✅ var(--pill-bg) — was bg-cream-dark/40
+                background: 'var(--pill-bg)',
+                display: 'flex', flexDirection: 'column', gap: 6,
+              }}>
                 {order.items.map((item, i) => (
-                  <div key={i} className="flex justify-between text-xs">
-                    <span className="text-brew-soft">
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+                    <span style={{ color: 'var(--text-muted)' }}>
                       {item.emoji} {item.name} ×{item.quantity}
                     </span>
-                    <span className="text-brew font-medium">
-                      Rs {item.price * item.quantity}
+                    <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
+                      {/* ✅ BRAND.currency — was hardcoded 'Rs' */}
+                      {BRAND.currency} {item.price * item.quantity}
                     </span>
                   </div>
                 ))}
                 {order.pointsEarned > 0 && (
-                  <p className="text-xs text-saffron font-semibold pt-1">
+                  <p style={{ margin: '4px 0 0', fontSize: 11, fontWeight: 600, color: 'var(--accent)' }}>
                     ⭐ +{order.pointsEarned} points earned
                   </p>
                 )}
@@ -109,7 +160,7 @@ const OrderHistory = () => {
         ))}
       </div>
     </div>
-  );
-};
+  )
+}
 
-export default OrderHistory;
+export default OrderHistory

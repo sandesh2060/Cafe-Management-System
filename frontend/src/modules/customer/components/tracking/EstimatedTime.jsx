@@ -1,44 +1,37 @@
 // src/modules/customer/components/tracking/EstimatedTime.jsx
 //
-// FIXES:
-// • ETA_MAP now includes 'cancelled' → null so cancelled orders don't show
-//   a stale "Est. 15–20 min" ETA while showing a cancelled status elsewhere.
-// • COLORS.saffron.DEFAULT confirmed — correct token.
+// ✅ COLORS import removed — var(--accent) replaces COLORS.saffron.DEFAULT
+// ✅ text-brew → var(--text-primary), text-brew-soft → var(--text-muted)
+// ✅ Full dark/light via CSS vars
+// ✅ ETA_MAP includes 'cancelled' → null (no stale ETA shown)
 
 import { useEffect, useState } from 'react'
 import { Clock }               from 'lucide-react'
-import { COLORS }              from '@colors'
 
-// Rough ETA from each status — null means "don't show the ETA card"
 const ETA_MAP = {
   pending:    '15–20 min',
   preparing:  '10–15 min',
   on_the_way: '2–5 min',
   delivered:  null,
   paid:       null,
-  cancelled:  null,    // FIX: was missing — cancelled orders showed stale ETA
+  cancelled:  null,
 }
 
-// ── Elapsed timer — updates every 30 s ───────────────────────────────────────
 const ElapsedTimer = ({ startTime }) => {
   const [elapsed, setElapsed] = useState(0)
-
   useEffect(() => {
-    const update = () =>
-      setElapsed(Math.floor((Date.now() - new Date(startTime)) / 60000))
+    const update = () => setElapsed(Math.floor((Date.now() - new Date(startTime)) / 60000))
     update()
     const id = setInterval(update, 30000)
     return () => clearInterval(id)
   }, [startTime])
-
   return (
-    <span className="text-brew-soft text-xs">
+    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
       Ordered {elapsed === 0 ? 'just now' : `${elapsed} min ago`}
     </span>
   )
 }
 
-// ── Status badge label ────────────────────────────────────────────────────────
 const badgeLabel = (status) => {
   if (status === 'pending')    return 'Confirmed'
   if (status === 'preparing')  return 'Cooking'
@@ -46,31 +39,37 @@ const badgeLabel = (status) => {
   return status
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
 const EstimatedTime = ({ status, placedAt }) => {
   const eta = ETA_MAP[status]
   if (!eta) return null
 
   return (
-    <div
-      className="card flex items-center justify-between py-3"
-      style={{
-        borderColor:     COLORS.saffron.DEFAULT + '30',
-        backgroundColor: COLORS.saffron.DEFAULT + '08',
-      }}
-    >
-      <div className="flex items-center gap-2">
-        <Clock size={18} color={COLORS.saffron.DEFAULT} />
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      padding: '12px 16px', borderRadius: 'var(--radius-xl)',
+      // ✅ var(--accent-dim/border) — was COLORS.saffron.DEFAULT + '08'/'30'
+      background: 'var(--accent-dim)',
+      border: '1px solid var(--accent-border)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {/* ✅ var(--accent) — was COLORS.saffron.DEFAULT */}
+        <Clock size={18} color="var(--accent)" />
         <div>
-          <p className="text-sm font-bold text-brew">Est. {eta}</p>
+          {/* ✅ var(--text-primary) — was text-brew Tailwind */}
+          <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
+            Est. {eta}
+          </p>
           {placedAt && <ElapsedTimer startTime={placedAt} />}
         </div>
       </div>
 
-      <div
-        className="px-3 py-1 rounded-full text-xs font-bold text-white"
-        style={{ backgroundColor: COLORS.saffron.DEFAULT }}
-      >
+      <div style={{
+        padding: '4px 12px', borderRadius: 'var(--radius-full)',
+        fontSize: 11, fontWeight: 700,
+        // ✅ var(--accent-gradient) + var(--text-inverse) — was backgroundColor: COLORS.saffron.DEFAULT
+        background: 'var(--accent-gradient)',
+        color: 'var(--text-inverse)',
+      }}>
         {badgeLabel(status)}
       </div>
     </div>

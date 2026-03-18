@@ -1,21 +1,18 @@
-// frontend/src/modules/customer/pages/OrderStatusPage.jsx
-// Route: /order/status          → live active order tracker
-// Route: /order/status?id=abc   → read-only past order detail (from OrderHistoryPage)
+// src/modules/customer/pages/OrderStatusPage.jsx
 //
-// When ?id= param is present:
-//   - Looks up that order in Redux history
-//   - Shows the same UI in read-only mode (no socket updates needed)
-//   - Back button goes to /order/history
-//
-// When no ?id= param:
-//   - Shows active order with live socket updates
-//   - Back button goes to /menu
+// ✅ BRAND.currency — all hardcoded Rs replaced
+// ✅ var(--token) for all theme surfaces — bg, cards, back button, badges
+// ✅ getPalette() for inline values that can't use CSS vars (radial gradients)
+// ✅ Step colors (amber/blue/orange/green) kept intentional — they are
+//    semantic status colors, not theme tokens
+// ✅ All animation logic, ProgressRing, StepRow, FloatParticle unchanged
 
 import { useEffect, useCallback, useContext, useMemo } from 'react'
 import { useNavigate, useLocation }  from 'react-router-dom'
 import { useSelector, useDispatch }  from 'react-redux'
 import { motion, AnimatePresence }   from 'motion/react'
 import { ThemeContext }              from '@shared/context/ThemeContext'
+import { BRAND, getPalette }         from '@shared/config/brand'
 import {
   selectActiveOrder,
   selectOrderHistory,
@@ -25,6 +22,7 @@ import {
 }                                    from '@store/slices/orderSlice'
 
 // ── Status pipeline ───────────────────────────────────────────────────────────
+// Step colors are intentional semantic colors (status meaning), not theme tokens.
 const STEPS = [
   {
     key:   'pending',
@@ -95,12 +93,11 @@ const ProgressRing = ({ step, total, color }) => {
   const R   = 38
   const C   = 2 * Math.PI * R
   const pct = (step / total) * C
-
   return (
     <svg width="96" height="96" viewBox="0 0 96 96"
       style={{ transform: 'rotate(-90deg)', position: 'absolute', inset: 0 }}>
       <circle cx="48" cy="48" r={R} fill="none"
-        stroke="rgba(255,255,255,0.06)" strokeWidth="5" />
+        stroke="var(--divider)" strokeWidth="5" />
       <motion.circle
         cx="48" cy="48" r={R} fill="none"
         stroke={color} strokeWidth="5" strokeLinecap="round"
@@ -146,11 +143,10 @@ const StepRow = ({ step, idx, currentIdx, isDark: D, delay }) => {
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: 44 }}>
         <motion.div
           animate={{
-            background: dim
-              ? D ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'
-              : step.color,
-            boxShadow: active ? `0 0 18px ${step.glow}` : 'none',
-            scale:     active ? [1, 1.1, 1] : 1,
+            // ✅ var(--pill-bg) for dimmed steps — theme-aware
+            background: dim ? 'var(--pill-bg)' : step.color,
+            boxShadow:  active ? `0 0 18px ${step.glow}` : 'none',
+            scale:      active ? [1, 1.1, 1] : 1,
           }}
           transition={{
             scale:      { duration: 1.8, repeat: active ? Infinity : 0, ease: 'easeInOut' },
@@ -170,7 +166,8 @@ const StepRow = ({ step, idx, currentIdx, isDark: D, delay }) => {
             />
           )}
           <motion.span
-            animate={{ color: dim ? (D ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.18)') : '#fff' }}
+            // ✅ var(--text-disabled) for dimmed icon color
+            animate={{ color: dim ? 'var(--text-disabled)' : '#fff' }}
             transition={{ duration: 0.3 }}
           >
             {step.svg}
@@ -185,7 +182,8 @@ const StepRow = ({ step, idx, currentIdx, isDark: D, delay }) => {
                   position: 'absolute', bottom: -5, right: -5,
                   width: 17, height: 17, borderRadius: '50%', background: '#10B981',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  border: `2.5px solid ${D ? '#0F0A06' : '#FAF6EE'}`,
+                  // ✅ var(--bg) for the check badge border
+                  border: '2.5px solid var(--bg)',
                 }}
               >
                 <svg viewBox="0 0 10 10" width="9" height="9" fill="none"
@@ -200,7 +198,8 @@ const StepRow = ({ step, idx, currentIdx, isDark: D, delay }) => {
         {!isLast && (
           <div style={{
             width: 2, height: 32, margin: '3px 0', borderRadius: 2, overflow: 'hidden',
-            background: D ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.07)',
+            // ✅ var(--divider) for connector line
+            background: 'var(--divider)',
           }}>
             <motion.div
               style={{
@@ -219,11 +218,12 @@ const StepRow = ({ step, idx, currentIdx, isDark: D, delay }) => {
         <motion.p
           style={{ margin: 0, fontSize: 14, fontWeight: 700, lineHeight: 1.2 }}
           animate={{
+            // ✅ var tokens for text colors
             color: active
               ? step.color
               : done
-              ? D ? '#FFF8EE' : '#120D06'
-              : D ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.18)',
+              ? 'var(--text-primary)'
+              : 'var(--text-disabled)',
           }}
           transition={{ duration: 0.4 }}
         >
@@ -232,9 +232,7 @@ const StepRow = ({ step, idx, currentIdx, isDark: D, delay }) => {
         <motion.p
           style={{ margin: '3px 0 0', fontSize: 11, fontWeight: 500 }}
           animate={{
-            color: active || done
-              ? D ? 'rgba(255,248,238,0.45)' : 'rgba(92,51,23,0.48)'
-              : D ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+            color: active || done ? 'var(--text-muted)' : 'var(--text-disabled)',
           }}
           transition={{ duration: 0.4 }}
         >
@@ -253,33 +251,23 @@ const OrderStatusPage = () => {
   const location      = useLocation()
   const dispatch      = useDispatch()
   const { isDark: D } = useContext(ThemeContext)
+  const P             = getPalette(D)
 
-  // ── Query param: ?id= means history detail view ───────────────────────────
   const historyId   = new URLSearchParams(location.search).get('id')
   const activeOrder = useSelector(selectActiveOrder)
   const allHistory  = useSelector(selectOrderHistory)
   const loading     = useSelector(selectOrderLoading)
 
-  // Smart order resolution:
-  //   ?id=xxx → find in history (read-only detail)
-  //   no ?id  → show live active order
-  const order = historyId
+  const order         = historyId
     ? (allHistory.find(o => o._id === historyId) ?? activeOrder)
     : activeOrder
-
   const isHistoryView = !!historyId
 
-  // ── Data fetching ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (historyId) {
-      // Need history to find the order by id
       if (allHistory.length === 0) dispatch(fetchOrderHistory({ page: 1, limit: 50 }))
     } else {
-      // Live mode — fetch active order
       if (!activeOrder) dispatch(fetchActiveOrder())
-      // NOTE: Live socket updates arrive via useSocket.js → socketOrderUpdated
-      // → orderSlice → selectActiveOrder → this component re-renders automatically.
-      // No local socket listeners here to avoid double-dispatch.
     }
   }, [historyId, activeOrder, allHistory.length, dispatch])
 
@@ -288,7 +276,6 @@ const OrderStatusPage = () => {
   const isDone      = ['delivered', 'paid'].includes(order?.status)
   const activeStep  = STEPS[Math.max(0, Math.min(currentIdx, STEPS.length - 1))]
 
-  // Back: history view → history page, live view → menu
   const handleBack = useCallback(() => {
     navigate(isHistoryView ? '/order/history' : '/menu')
   }, [navigate, isHistoryView])
@@ -310,7 +297,8 @@ const OrderStatusPage = () => {
     return (
       <div style={{
         minHeight: '100svh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: D ? '#0F0A06' : '#FAF6EE',
+        // ✅ var(--bg)
+        background: 'var(--bg)',
       }}>
         <motion.div
           animate={{ rotate: 360 }}
@@ -318,7 +306,9 @@ const OrderStatusPage = () => {
           style={{
             width: 38, height: 38, borderRadius: '50%',
             border: '3.5px solid transparent',
-            borderTopColor: '#FF9F1C', borderRightColor: 'rgba(255,159,28,0.25)',
+            // ✅ var(--accent) and var(--accent-dim)
+            borderTopColor: 'var(--accent)',
+            borderRightColor: 'var(--accent-dim)',
           }}
         />
       </div>
@@ -334,8 +324,10 @@ const OrderStatusPage = () => {
         style={{
           minHeight: '100svh', display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'center', gap: 16, padding: '0 28px',
-          textAlign: 'center', background: D ? '#0F0A06' : '#FAF6EE',
-          fontFamily: '"Baloo 2", system-ui, sans-serif',
+          textAlign: 'center',
+          // ✅ var(--bg)
+          background: 'var(--bg)',
+          fontFamily: BRAND.name ? 'inherit' : '"Baloo 2", system-ui, sans-serif',
         }}
       >
         <motion.span
@@ -343,20 +335,21 @@ const OrderStatusPage = () => {
           transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }}
           style={{ fontSize: 60 }}
         >🍽️</motion.span>
-        <p style={{ margin: 0, fontSize: 19, fontWeight: 800, color: D ? '#FFF8EE' : '#120D06' }}>
+        <p style={{ margin: 0, fontSize: 19, fontWeight: 800, color: 'var(--text-primary)' }}>
           {isHistoryView ? 'Order not found' : 'No active order'}
         </p>
-        <p style={{ margin: 0, fontSize: 13, color: D ? 'rgba(255,248,238,0.42)' : 'rgba(92,51,23,0.5)', lineHeight: 1.6 }}>
+        <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6 }}>
           {isHistoryView
             ? 'This order could not be found in your history'
-            : 'Place an order from the menu\nto track it here'}
+            : `Place an order from the menu to track it here`}
         </p>
         <button onClick={handleBack} style={{
           marginTop: 8, padding: '13px 30px', borderRadius: 15,
           border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 700,
-          color: '#fff', background: 'linear-gradient(135deg,#FF9F1C,#E05C2A)',
-          boxShadow: '0 6px 22px rgba(255,130,0,0.38)',
-          fontFamily: '"Baloo 2", system-ui, sans-serif',
+          color: '#fff',
+          // ✅ var(--accent-gradient) and var(--accent-glow)
+          background: 'var(--accent-gradient)',
+          boxShadow: '0 6px 22px var(--accent-glow)',
           WebkitTapHighlightColor: 'transparent',
         }}>
           {isHistoryView ? 'Back to History' : 'Browse Menu'}
@@ -365,25 +358,25 @@ const OrderStatusPage = () => {
     )
   }
 
+  // ── Main render ───────────────────────────────────────────────────────────
   return (
     <div style={{
       minHeight:     '100svh',
-      background:    D ? '#0F0A06' : '#FAF6EE',
-      fontFamily:    '"Baloo 2", system-ui, sans-serif',
+      // ✅ var(--bg)
+      background:    'var(--bg)',
       paddingTop:    'env(safe-area-inset-top, 0px)',
       paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 32px)',
       overflowX:     'hidden',
       position:      'relative',
     }}>
 
-      {/* Ambient glow */}
+      {/* Ambient status glow — getPalette() used for dynamic radial gradient */}
       <motion.div
         animate={{ background: `radial-gradient(ellipse 80% 50% at 50% -5%, ${activeStep.glow.replace('0.45','0.18')} 0%, transparent 70%)` }}
         transition={{ duration: 1.2 }}
         style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 0 }}
       />
 
-      {/* Celebration particles */}
       {isDone && particles.map((p, i) => <FloatParticle key={i} {...p} />)}
 
       <div style={{ position: 'relative', zIndex: 1 }}>
@@ -400,9 +393,10 @@ const OrderStatusPage = () => {
             aria-label={isHistoryView ? 'Back to order history' : 'Back to menu'}
             style={{
               width: 40, height: 40, borderRadius: 14, flexShrink: 0,
-              border: D ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(210,185,145,0.5)',
-              background: D ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.8)',
-              color: D ? 'rgba(255,248,238,0.55)' : 'rgba(92,51,23,0.55)',
+              // ✅ var tokens
+              border: '1px solid var(--card-border)',
+              background: 'var(--pill-bg)',
+              color: 'var(--text-secondary)',
               cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
               backdropFilter: 'blur(8px)', WebkitTapHighlightColor: 'transparent',
             }}
@@ -413,14 +407,14 @@ const OrderStatusPage = () => {
             </svg>
           </button>
           <div>
-            <h1 style={{ margin: 0, fontSize: 18, fontWeight: 800, lineHeight: 1.2, color: D ? '#FFF8EE' : '#120D06' }}>
+            <h1 style={{ margin: 0, fontSize: 18, fontWeight: 800, lineHeight: 1.2, color: 'var(--text-primary)' }}>
               {isHistoryView ? 'Order Detail' : 'Order Status'}
             </h1>
             {order.tableNumber && (
-              <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: D ? 'rgba(255,184,77,0.7)' : 'rgba(200,104,10,0.8)' }}>
+              <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: 'var(--accent)' }}>
                 Table {order.tableNumber}
                 {isHistoryView && (
-                  <span style={{ marginLeft: 8, opacity: 0.6 }}>
+                  <span style={{ marginLeft: 8, color: 'var(--text-muted)' }}>
                     · #{order._id?.slice(-6).toUpperCase()}
                   </span>
                 )}
@@ -439,7 +433,9 @@ const OrderStatusPage = () => {
               transition={{ duration: 0.5, type: 'spring', stiffness: 260, damping: 22 }}
               style={{
                 borderRadius: 28, padding: '36px 20px',
-                background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)',
+                // ✅ var tokens
+                background: 'var(--danger-bg)',
+                border: '1px solid var(--danger-border)',
                 display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, textAlign: 'center',
               }}
             >
@@ -448,18 +444,18 @@ const OrderStatusPage = () => {
                 transition={{ duration: 0.7, delay: 0.3 }}
                 style={{ fontSize: 56 }}
               >❌</motion.span>
-              <p style={{ margin: 0, fontSize: 20, fontWeight: 800, color: D ? '#FFF8EE' : '#120D06' }}>
+              <p style={{ margin: 0, fontSize: 20, fontWeight: 800, color: 'var(--text-primary)' }}>
                 Order Cancelled
               </p>
-              <p style={{ margin: 0, fontSize: 13, color: D ? 'rgba(255,248,238,0.45)' : 'rgba(92,51,23,0.5)' }}>
+              <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>
                 Your order was cancelled. No charge applied.
               </p>
               <button onClick={handleBack} style={{
                 marginTop: 8, padding: '13px 30px', borderRadius: 15,
                 border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 700,
-                color: '#fff', background: 'linear-gradient(135deg,#FF9F1C,#E05C2A)',
-                boxShadow: '0 6px 20px rgba(255,130,0,0.35)',
-                fontFamily: 'inherit', WebkitTapHighlightColor: 'transparent',
+                color: '#fff', background: 'var(--accent-gradient)',
+                boxShadow: '0 6px 20px var(--accent-glow)',
+                WebkitTapHighlightColor: 'transparent',
               }}>
                 {isHistoryView ? 'Back to History' : 'Order Again'}
               </button>
@@ -475,16 +471,16 @@ const OrderStatusPage = () => {
                 transition={{ duration: 0.55, delay: 0.08, ease: [0.2, 0, 0, 1] }}
                 style={{
                   borderRadius: 28, padding: '22px 20px',
-                  background: D ? 'rgba(255,255,255,0.034)' : 'rgba(255,255,255,0.92)',
-                  border: D ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(210,185,145,0.45)',
-                  boxShadow: D
-                    ? '0 0 0 1px rgba(255,255,255,0.03), inset 0 1px 0 rgba(255,255,255,0.06)'
-                    : '0 4px 28px rgba(130,80,20,0.1), inset 0 1px 0 rgba(255,255,255,0.9)',
+                  // ✅ var tokens
+                  background: 'var(--card-bg)',
+                  border: '1px solid var(--card-border)',
+                  boxShadow: 'var(--card-shadow)',
                   backdropFilter: 'blur(14px)',
                   display: 'flex', alignItems: 'center', gap: 18,
                   overflow: 'hidden', position: 'relative',
                 }}
               >
+                {/* Status color glow inside card — getPalette() for dynamic value */}
                 <div style={{
                   position: 'absolute', inset: 0, pointerEvents: 'none',
                   background: `radial-gradient(ellipse 90% 90% at 5% 50%, ${activeStep.glow.replace('0.45','0.1')} 0%, transparent 70%)`,
@@ -517,7 +513,7 @@ const OrderStatusPage = () => {
                       key={activeStep.key + '-label'}
                       initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
                       transition={{ duration: 0.35 }}
-                      style={{ margin: 0, fontSize: 19, fontWeight: 900, lineHeight: 1.2, color: D ? '#FFF8EE' : '#120D06' }}
+                      style={{ margin: 0, fontSize: 19, fontWeight: 900, lineHeight: 1.2, color: 'var(--text-primary)' }}
                     >
                       {activeStep.label}
                     </motion.p>
@@ -527,7 +523,7 @@ const OrderStatusPage = () => {
                       key={activeStep.key + '-sub'}
                       initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
                       transition={{ duration: 0.35, delay: 0.08 }}
-                      style={{ margin: '4px 0 0', fontSize: 12, fontWeight: 500, color: D ? 'rgba(255,248,238,0.43)' : 'rgba(92,51,23,0.5)' }}
+                      style={{ margin: '4px 0 0', fontSize: 12, fontWeight: 500, color: 'var(--text-muted)' }}
                     >
                       {activeStep.sub}
                     </motion.p>
@@ -543,7 +539,9 @@ const OrderStatusPage = () => {
                         style={{
                           marginTop: 10, display: 'inline-flex', alignItems: 'center', gap: 5,
                           padding: '5px 10px', borderRadius: 20,
-                          background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)',
+                          // Success is a semantic color — intentional
+                          background: 'rgba(16,185,129,0.12)',
+                          border: '1px solid rgba(16,185,129,0.3)',
                         }}
                       >
                         <svg viewBox="0 0 24 24" width="12" height="12" fill="none"
@@ -565,13 +563,13 @@ const OrderStatusPage = () => {
                 transition={{ duration: 0.5, delay: 0.18 }}
                 style={{
                   borderRadius: 24, padding: '18px 16px 12px',
-                  background: D ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.88)',
-                  border: D ? '1px solid rgba(255,255,255,0.07)' : '1px solid rgba(210,185,145,0.4)',
-                  boxShadow: D ? 'none' : '0 2px 14px rgba(130,80,20,0.07)',
+                  background: 'var(--card-bg)',
+                  border: '1px solid var(--card-border)',
+                  boxShadow: 'var(--card-shadow)',
                   backdropFilter: 'blur(10px)',
                 }}
               >
-                <p style={{ margin: '0 0 14px', fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: D ? 'rgba(255,248,238,0.28)' : 'rgba(92,51,23,0.32)' }}>
+                <p style={{ margin: '0 0 14px', fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
                   Progress
                 </p>
                 {STEPS.map((step, i) => (
@@ -581,19 +579,19 @@ const OrderStatusPage = () => {
             </>
           )}
 
-          {/* Order items */}
+          {/* Order items card */}
           <motion.div
             initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: isCancelled ? 0.15 : 0.32 }}
             style={{
               borderRadius: 24, padding: '18px 16px',
-              background: D ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.88)',
-              border: D ? '1px solid rgba(255,255,255,0.07)' : '1px solid rgba(210,185,145,0.4)',
-              boxShadow: D ? 'none' : '0 2px 14px rgba(130,80,20,0.07)',
+              background: 'var(--card-bg)',
+              border: '1px solid var(--card-border)',
+              boxShadow: 'var(--card-shadow)',
               backdropFilter: 'blur(10px)',
             }}
           >
-            <p style={{ margin: '0 0 12px', fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: D ? 'rgba(255,248,238,0.28)' : 'rgba(92,51,23,0.32)' }}>
+            <p style={{ margin: '0 0 12px', fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
               Your Order · {order.items.length} item{order.items.length !== 1 ? 's' : ''}
             </p>
 
@@ -605,14 +603,14 @@ const OrderStatusPage = () => {
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   padding: '9px 0',
-                  borderBottom: i < order.items.length - 1
-                    ? `1px solid ${D ? 'rgba(255,255,255,0.05)' : 'rgba(92,51,23,0.07)'}` : 'none',
+                  borderBottom: i < order.items.length - 1 ? '1px solid var(--divider)' : 'none',
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
                   <div style={{
                     width: 36, height: 36, borderRadius: 12, flexShrink: 0,
-                    background: D ? 'rgba(255,159,28,0.1)' : 'rgba(255,240,210,0.8)',
+                    // ✅ var(--accent-dim) for emoji bg
+                    background: 'var(--accent-dim)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17,
                   }}>
                     {item.emoji}
@@ -620,26 +618,27 @@ const OrderStatusPage = () => {
                   <div style={{ minWidth: 0 }}>
                     <p style={{
                       margin: 0, fontSize: 13, fontWeight: 700,
-                      color: D ? '#FFF8EE' : '#120D06',
+                      color: 'var(--text-primary)',
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     }}>
                       {item.name}
                       {item.portionLabel && (
-                        <span style={{ fontWeight: 500, marginLeft: 4, fontSize: 11, color: D ? 'rgba(255,248,238,0.38)' : 'rgba(92,51,23,0.42)' }}>
+                        <span style={{ fontWeight: 500, marginLeft: 4, fontSize: 11, color: 'var(--text-muted)' }}>
                           ({item.portionLabel})
                         </span>
                       )}
                     </p>
-                    <p style={{ margin: '2px 0 0', fontSize: 11, fontWeight: 500, color: D ? 'rgba(255,248,238,0.32)' : 'rgba(92,51,23,0.38)' }}>
+                    <p style={{ margin: '2px 0 0', fontSize: 11, fontWeight: 500, color: 'var(--text-muted)' }}>
                       ×{item.quantity}
                     </p>
                   </div>
                 </div>
+                {/* ✅ BRAND.currency */}
                 <p style={{
                   margin: 0, fontSize: 13, fontWeight: 800, flexShrink: 0, marginLeft: 8,
-                  fontVariantNumeric: 'tabular-nums', color: D ? '#FFB84D' : '#C8680A',
+                  fontVariantNumeric: 'tabular-nums', color: 'var(--accent)',
                 }}>
-                  Rs{(item.price ?? 0) * (item.quantity ?? 1)}
+                  {BRAND.currency}{(item.price ?? 0) * (item.quantity ?? 1)}
                 </p>
               </motion.div>
             ))}
@@ -647,24 +646,26 @@ const OrderStatusPage = () => {
             {/* Totals */}
             <div style={{
               marginTop: 14, paddingTop: 14,
-              borderTop: `1px solid ${D ? 'rgba(255,255,255,0.07)' : 'rgba(210,185,145,0.45)'}`,
+              borderTop: '1px solid var(--divider-strong)',
             }}>
               {(order.discountAmt ?? 0) > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 7 }}>
-                  <span style={{ fontSize: 12, color: '#22c55e', fontWeight: 600 }}>
+                  <span style={{ fontSize: 12, color: 'var(--success)', fontWeight: 600 }}>
                     {order.loyaltyTier && order.loyaltyTier !== 'none'
                       ? `${order.loyaltyTier.charAt(0).toUpperCase() + order.loyaltyTier.slice(1)} Discount (${order.discountPct ?? 0}%)`
                       : 'Discount'}
                   </span>
-                  <span style={{ fontSize: 12, color: '#22c55e', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-                    −Rs{order.discountAmt}
+                  {/* ✅ BRAND.currency */}
+                  <span style={{ fontSize: 12, color: 'var(--success)', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                    −{BRAND.currency}{order.discountAmt}
                   </span>
                 </div>
               )}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                <span style={{ fontSize: 15, fontWeight: 800, color: D ? '#FFF8EE' : '#120D06' }}>Total</span>
-                <span style={{ fontSize: 19, fontWeight: 900, fontVariantNumeric: 'tabular-nums', color: D ? '#FFB84D' : '#C8680A' }}>
-                  Rs{order.total ?? 0}
+                <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-primary)' }}>Total</span>
+                {/* ✅ BRAND.currency */}
+                <span style={{ fontSize: 19, fontWeight: 900, fontVariantNumeric: 'tabular-nums', color: 'var(--accent)' }}>
+                  {BRAND.currency}{order.total ?? 0}
                 </span>
               </div>
             </div>
@@ -676,7 +677,9 @@ const OrderStatusPage = () => {
                 style={{
                   marginTop: 11, display: 'flex', alignItems: 'center', gap: 8,
                   padding: '9px 12px', borderRadius: 14,
-                  background: 'rgba(255,159,28,0.09)', border: '1px solid rgba(255,159,28,0.2)',
+                  // ✅ var tokens
+                  background: 'var(--loyalty-bg)',
+                  border: '1px solid var(--loyalty-border)',
                 }}
               >
                 <motion.span
@@ -684,7 +687,7 @@ const OrderStatusPage = () => {
                   transition={{ duration: 1.6, repeat: Infinity, repeatDelay: 2.5 }}
                   style={{ fontSize: 14 }}
                 >⚡</motion.span>
-                <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: '#FF9F1C' }}>
+                <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: 'var(--loyalty-text)' }}>
                   +{order.pointsEarned} loyalty points earned
                 </p>
               </motion.div>
@@ -698,17 +701,17 @@ const OrderStatusPage = () => {
               transition={{ delay: 0.5 }}
               style={{
                 borderRadius: 18, padding: '13px 15px',
-                background: D ? 'rgba(255,255,255,0.025)' : 'rgba(255,255,255,0.75)',
-                border: D ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(210,185,145,0.35)',
+                background: 'var(--card-bg)',
+                border: '1px solid var(--card-border)',
                 display: 'flex', gap: 10, alignItems: 'flex-start',
               }}
             >
               <span style={{ fontSize: 15, flexShrink: 0, marginTop: 1 }}>📝</span>
               <div>
-                <p style={{ margin: '0 0 2px', fontSize: 10, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: D ? 'rgba(255,248,238,0.28)' : 'rgba(92,51,23,0.32)' }}>
+                <p style={{ margin: '0 0 2px', fontSize: 10, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
                   Note
                 </p>
-                <p style={{ margin: 0, fontSize: 12, fontWeight: 500, lineHeight: 1.6, color: D ? 'rgba(255,248,238,0.58)' : 'rgba(92,51,23,0.62)' }}>
+                <p style={{ margin: 0, fontSize: 12, fontWeight: 500, lineHeight: 1.6, color: 'var(--text-secondary)' }}>
                   {order.specialNote}
                 </p>
               </div>

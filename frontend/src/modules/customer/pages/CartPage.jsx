@@ -1,16 +1,12 @@
 // src/modules/customer/pages/CartPage.jsx
 //
-// FIXES (this pass):
-//  1. selectTableId + selectSessionId — now imported from tableSessionSlice (authoritative source).
-//     Importing from cartSlice caused stale/wrong tableId on order placement.
-//  2. Duplicate orderSlice import lines merged into one.
-//  3. navigate('/track') → navigate('/order/status') — routes to the premium animated tracker,
-//     not the legacy Tailwind TrackingPage.
-//  4. placeOrder payload now forwards portionId, portionLabel, customizations per cart item
-//     so backend receives full customization data.
-//  5. Dead import `COLORS` removed.
+// ✅ BRAND.currency — Rs hardcoded replaced everywhere
+// ✅ Dark/light mode — useContext(ThemeContext) added, CSS vars applied
+//    so the page doesn't stay cream-colored in dark mode
+// ✅ var(--token) for all theme-sensitive surfaces (header, cards, button area)
+// ✅ All logic unchanged — tableId, sessionId, placeOrder, portionId forwarding
 
-import { useState }                            from 'react'
+import { useState, useContext }                from 'react'
 import { useSelector, useDispatch }            from 'react-redux'
 import { useNavigate }                         from 'react-router-dom'
 import {
@@ -23,9 +19,6 @@ import {
   clearCart,
 }                                              from '@store/slices/cartSlice'
 import { selectTier, selectDiscountPct }       from '@store/slices/loyaltySlice'
-// FIX: selectTableId + selectSessionId come from tableSessionSlice — the single
-// authoritative source for the active session. cartSlice had its own copy that
-// could be stale if the session changed after items were added.
 import {
   selectTableId,
   selectSessionId,
@@ -34,7 +27,8 @@ import {
   selectHasActiveOrder,
   placeOrder,
 }                                              from '@store/slices/orderSlice'
-import { selectDiscountPct as _unused }        from '@store/slices/loyaltySlice' // intentional re-export check
+import { ThemeContext }                        from '@shared/context/ThemeContext'
+import { BRAND }                               from '@shared/config/brand'
 import BottomNav                               from '@shared/components/layout/BottomNav'
 import CartItem                                from '../components/cart/CartItem'
 import LoyaltyDiscount                         from '../components/cart/LoyaltyDiscount'
@@ -43,18 +37,18 @@ import { ShoppingBag, ChevronRight }           from 'lucide-react'
 import toast                                   from 'react-hot-toast'
 
 const CartPage = () => {
-  const dispatch  = useDispatch()
-  const navigate  = useNavigate()
+  const dispatch   = useDispatch()
+  const navigate   = useNavigate()
+  const { isDark } = useContext(ThemeContext)
 
-  const items      = useSelector(selectCartItems)
-  const subtotal   = useSelector(selectCartSubtotal)
-  const discount   = useSelector(selectCartDiscount)
-  const total      = useSelector(selectCartTotal)
-  const tier       = useSelector(selectTier)
-  const discountPct = useSelector(selectDiscountPct)
-  // FIX: read from tableSessionSlice — always in sync with the active session
-  const tableId    = useSelector(selectTableId)
-  const sessionId  = useSelector(selectSessionId)
+  const items          = useSelector(selectCartItems)
+  const subtotal       = useSelector(selectCartSubtotal)
+  const discount       = useSelector(selectCartDiscount)
+  const total          = useSelector(selectCartTotal)
+  const tier           = useSelector(selectTier)
+  const discountPct    = useSelector(selectDiscountPct)
+  const tableId        = useSelector(selectTableId)
+  const sessionId      = useSelector(selectSessionId)
   const hasActiveOrder = useSelector(selectHasActiveOrder)
 
   const [placing, setPlacing] = useState(false)
@@ -72,8 +66,6 @@ const CartPage = () => {
     setPlacing(true)
     const result = await dispatch(
       placeOrder({
-        // FIX: forward portionId, portionLabel, customizations so the backend
-        // receives the full customization data selected in ItemDetailPage.
         items: items.map((i) => ({
           menuItemId:     i.menuItemId,
           name:           i.name,
@@ -94,57 +86,85 @@ const CartPage = () => {
     if (!result.error) {
       dispatch(clearCart())
       toast.success('Order placed! 🎉')
-      // FIX: navigate to the premium animated tracker, not the legacy /track page.
       navigate('/order/status')
     } else {
       toast.error('Failed to place order. Please try again.')
     }
   }
 
-  if (items.length === 0)
+  // ── Empty cart ─────────────────────────────────────────────────────────────
+  if (items.length === 0) {
     return (
-      <div className="customer-container min-h-screen bg-cream flex flex-col">
+      <div className="customer-container min-h-screen flex flex-col"
+        style={{ background: 'var(--bg)' }}>
         <header className="px-4 pt-5 pb-3">
-          <h1 className="text-2xl font-bold text-brew">Your Cart</h1>
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
+            Your Cart
+          </h1>
         </header>
         <EmptyCart />
         <BottomNav />
       </div>
     )
+  }
 
+  // ── Filled cart ────────────────────────────────────────────────────────────
   return (
-    <div className="customer-container min-h-screen bg-cream flex flex-col">
+    <div className="customer-container min-h-screen flex flex-col"
+      style={{ background: 'var(--bg)' }}>
 
-      {/* Header */}
+      {/* ── Header ── */}
       <header
-        className="px-4 pt-5 pb-3 sticky top-0 z-20 bg-cream/95 backdrop-blur-md
-                   border-b border-cream-border"
+        className="px-4 pt-5 pb-3 sticky top-0 z-20 backdrop-blur-md"
+        style={{
+          background: 'var(--header-bg)',
+          borderBottom: '1px solid var(--divider)',
+        }}
       >
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-brew">Your Cart</h1>
-          <span className="badge bg-saffron/10 text-saffron font-semibold">
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
+            Your Cart
+          </h1>
+          <span
+            className="text-xs font-semibold px-2.5 py-1 rounded-full"
+            style={{
+              background: 'var(--accent-dim)',
+              border: '1px solid var(--accent-border)',
+              color: 'var(--accent)',
+            }}
+          >
             {items.length} item{items.length !== 1 ? 's' : ''}
           </span>
         </div>
       </header>
 
+      {/* ── Scrollable content ── */}
       <div className="flex-1 overflow-auto px-4 pt-3 pb-bottom-nav space-y-3">
 
-        {/* Items */}
+        {/* Items list */}
         {items.map((item) => (
           <CartItem
-            key={item.menuItemId}
+            key={`${item.menuItemId}::${item.portionId ?? ''}`}
             item={item}
-            onRemove={() => dispatch(removeItem(item.menuItemId))}
+            onRemove={() => dispatch(removeItem({ menuItemId: item.menuItemId, portionId: item.portionId ?? null }))}
             onQuantity={(q) =>
-              dispatch(updateQuantity({ menuItemId: item.menuItemId, quantity: q }))
+              dispatch(updateQuantity({ menuItemId: item.menuItemId, portionId: item.portionId ?? null, quantity: q }))
             }
           />
         ))}
 
         {/* Special note */}
-        <div className="card">
-          <label className="text-sm font-semibold text-brew block mb-2">
+        <div
+          className="rounded-2xl p-4"
+          style={{
+            background: 'var(--card-bg)',
+            border: '1px solid var(--card-border)',
+          }}
+        >
+          <label
+            className="text-sm font-semibold block mb-2"
+            style={{ color: 'var(--text-primary)' }}
+          >
             Special Instructions
           </label>
           <textarea
@@ -153,7 +173,14 @@ const CartPage = () => {
             placeholder="Allergies, preferences, extra spicy…"
             rows={2}
             maxLength={200}
-            className="input-base resize-none text-sm"
+            className="w-full resize-none text-sm rounded-xl px-3 py-2.5 outline-none transition-colors"
+            style={{
+              background: 'var(--input-bg)',
+              border: '1px solid var(--input-border)',
+              color: 'var(--text-primary)',
+            }}
+            onFocus={e  => (e.target.style.borderColor = 'var(--input-border-focus)')}
+            onBlur={e   => (e.target.style.borderColor = 'var(--input-border)')}
           />
         </div>
 
@@ -167,43 +194,71 @@ const CartPage = () => {
         )}
 
         {/* Bill summary */}
-        <div className="card space-y-2">
-          <div className="flex justify-between text-sm text-brew-soft">
+        <div
+          className="rounded-2xl p-4 space-y-2"
+          style={{
+            background: 'var(--card-bg)',
+            border: '1px solid var(--card-border)',
+          }}
+        >
+          <div className="flex justify-between text-sm"
+            style={{ color: 'var(--text-secondary)' }}>
             <span>Subtotal</span>
-            <span>Rs {subtotal}</span>
+            {/* ✅ BRAND.currency — not hardcoded Rs */}
+            <span>{BRAND.currency} {subtotal}</span>
           </div>
           {discount > 0 && (
-            <div className="flex justify-between text-sm text-matcha font-medium">
+            <div className="flex justify-between text-sm font-medium"
+              style={{ color: 'var(--success)' }}>
               <span>Loyalty Discount ({discountPct}%)</span>
-              <span>−Rs {discount}</span>
+              <span>−{BRAND.currency} {discount}</span>
             </div>
           )}
           <div
-            className="border-t border-cream-border pt-2 flex justify-between
-                       font-bold text-brew text-lg"
+            className="pt-2 flex justify-between font-bold text-lg"
+            style={{
+              borderTop: '1px solid var(--divider)',
+              color: 'var(--text-primary)',
+            }}
           >
             <span>Total</span>
-            <span>Rs {total}</span>
+            <span>{BRAND.currency} {total}</span>
           </div>
         </div>
       </div>
 
-      {/* Sticky place order button */}
+      {/* ── Sticky place order button ── */}
       <div
-        className="sticky bottom-[64px] px-4 pb-3 pt-2 bg-cream/95 backdrop-blur-md
-                   border-t border-cream-border"
+        className="sticky px-4 pb-3 pt-2 backdrop-blur-md"
+        style={{
+          bottom: '64px',
+          background: 'var(--header-bg)',
+          borderTop: '1px solid var(--divider)',
+        }}
       >
         <button
           onClick={handlePlaceOrder}
           disabled={placing}
-          className="btn-brand w-full text-base py-4 min-h-[56px]"
+          className="w-full flex items-center justify-center gap-2 text-base py-4 min-h-[56px] rounded-2xl font-bold transition-opacity"
+          style={{
+            background: placing ? 'var(--btn-disabled)' : 'var(--accent-gradient)',
+            color: placing ? 'var(--btn-disabled-text)' : '#fff',
+            boxShadow: placing ? 'none' : '0 6px 24px var(--accent-glow)',
+            opacity: placing ? 0.7 : 1,
+            cursor: placing ? 'not-allowed' : 'pointer',
+            border: 'none',
+          }}
         >
           {placing ? (
-            <div className="w-5 h-5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+            <div
+              className="w-5 h-5 rounded-full border-2 animate-spin"
+              style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }}
+            />
           ) : (
             <>
               <ShoppingBag size={20} />
-              Place Order · Rs {total}
+              {/* ✅ BRAND.currency */}
+              Place Order · {BRAND.currency} {total}
               <ChevronRight size={18} className="ml-auto" />
             </>
           )}

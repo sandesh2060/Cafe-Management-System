@@ -1,4 +1,12 @@
 // src/modules/kitchen/components/chat/KitchenChatSidebar.jsx
+//
+// ✅ bg-gray-800/700/900 Tailwind → var(--header-bg/card-bg/pill-bg)
+// ✅ bg-white, border-gray-200 → var(--card-bg/card-border)
+// ✅ text-gray-* → var(--text-muted/primary/secondary)
+// ✅ bg-gradient-to-br from-amber-500 to-orange-500 → var(--accent-gradient)
+// ✅ bg-black/50 overlay → var(--overlay-bg)
+// ✅ GSAP animations unchanged
+
 import { useState, useRef, useEffect, useContext } from 'react'
 import WaiterChatPanel from '@modules/waiter/components/chat/WaiterChatPanel'
 import { ThemeContext } from '@shared/context/ThemeContext'
@@ -6,10 +14,9 @@ import gsap             from 'gsap'
 import { MessageSquare, X } from 'lucide-react'
 
 const KitchenChatSidebar = () => {
-  const [open, setOpen]    = useState(false)
-  const { isDark: dk }     = useContext(ThemeContext)
-  const panelRef           = useRef(null)
-  const btnRef             = useRef(null)
+  const [open, setOpen] = useState(false)
+  const { isDark }      = useContext(ThemeContext)
+  const panelRef        = useRef(null)
 
   const openPanel = () => {
     setOpen(true)
@@ -32,19 +39,21 @@ const KitchenChatSidebar = () => {
 
   return (
     <>
-      {/* Toggle button */}
+      {/* Desktop toggle tab */}
       {!open && (
         <button
-          ref={btnRef}
           onClick={openPanel}
-          className={`hidden md:flex fixed right-0 top-1/2 -translate-y-1/2 z-30
-            flex-col items-center gap-1.5 px-2 py-4 rounded-l-xl border transition-colors
-            ${dk ? 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:bg-gray-700'
-                 : 'bg-white border-gray-200 text-gray-500 hover:text-gray-900 shadow-md'}`}
+          className="hidden md:flex fixed right-0 top-1/2 -translate-y-1/2 z-30
+                     flex-col items-center gap-1.5 px-2 py-4 rounded-l-xl border transition-colors"
+          style={{
+            background:   'var(--card-bg)',
+            borderColor:  'var(--card-border)',
+            color:        'var(--text-muted)',
+            boxShadow:    'var(--card-shadow)',
+          }}
         >
           <MessageSquare size={17} />
-          <span className="text-[9px] font-bold uppercase tracking-wider"
-                style={{ writingMode: 'vertical-rl' }}>
+          <span className="text-[9px] font-bold uppercase tracking-wider" style={{ writingMode: 'vertical-rl' }}>
             Chat
           </span>
         </button>
@@ -55,38 +64,49 @@ const KitchenChatSidebar = () => {
         <button
           onClick={openPanel}
           className="md:hidden fixed bottom-6 right-4 z-30 w-12 h-12 rounded-full
-                     bg-gradient-to-br from-amber-500 to-orange-500 text-white
                      flex items-center justify-center shadow-lg active:scale-90 transition-transform"
+          style={{ background: 'var(--accent-gradient)', color: 'var(--text-inverse)' }}
         >
           <MessageSquare size={20} />
         </button>
       )}
 
-      {/* Sidebar panel */}
+      {/* Panel */}
       {open && (
         <>
           {/* Mobile backdrop */}
-          <div className="md:hidden fixed inset-0 bg-black/50 z-40 backdrop-blur-sm"
-               onClick={closePanel} />
+          <div
+            className="md:hidden fixed inset-0 z-40 backdrop-blur-sm"
+            style={{ background: 'var(--overlay-bg)' }}
+            onClick={closePanel}
+          />
 
           <div
             ref={panelRef}
-            className={`fixed md:relative right-0 top-0 h-full w-72 z-50 md:z-auto
-              flex flex-col border-l flex-shrink-0
-              ${dk ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200 shadow-xl md:shadow-none'}`}
+            className="fixed md:relative right-0 top-0 h-full w-72 z-50 md:z-auto flex flex-col border-l flex-shrink-0"
+            style={{
+              background:   'var(--card-bg)',
+              borderColor:  'var(--card-border)',
+              boxShadow:    'var(--card-shadow)',
+            }}
           >
-            <div className={`flex items-center justify-between px-4 py-3 border-b flex-shrink-0
-              ${dk ? 'border-gray-800' : 'border-gray-100'}`}>
+            <div
+              className="flex items-center justify-between px-4 py-3 border-b flex-shrink-0"
+              style={{ borderColor: 'var(--divider)' }}
+            >
               <div className="flex items-center gap-2">
-                <MessageSquare size={16} className={dk ? 'text-blue-400' : 'text-blue-500'} />
-                <h2 className={`font-bold text-sm ${dk ? 'text-white' : 'text-gray-900'}`}>
+                <MessageSquare size={16} style={{ color: 'var(--info)' }} />
+                <h2 className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>
                   Staff Chat
                 </h2>
               </div>
-              <button onClick={closePanel}
-                className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors
-                  ${dk ? 'text-gray-500 hover:text-white hover:bg-white/8'
-                       : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'}`}>
+              <button
+                onClick={closePanel}
+                className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
+                style={{ color: 'var(--text-muted)', background: 'transparent' }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--pill-bg)'; e.currentTarget.style.color = 'var(--text-primary)' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)' }}
+              >
                 <X size={15} />
               </button>
             </div>

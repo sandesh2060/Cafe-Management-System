@@ -1,32 +1,35 @@
 // src/app/providers.jsx
 //
-// Top-level provider composition for the app.
-// Wraps children with all context providers in the correct order:
-//   Redux store → React Router → Theme → Lenis scroll
+// Single source of all top-level providers.
+// Order:
+//   Redux → BrowserRouter → DeviceTierProvider → ThemeProvider → Lenis
 //
-// App.jsx renders: <Providers><AppInner /></Providers>
-// This keeps App.jsx clean and providers composable/testable.
+// DeviceTierProvider added so every component can call useDeviceTier().
+// Detection runs once at app start — never again.
 
-import { Provider }       from 'react-redux'
-import { BrowserRouter }  from 'react-router-dom'
-import { ReactLenis }     from 'lenis/react'
-import { ThemeProvider }  from '@shared/context/ThemeContext'
-import store              from '@store'
+import { Provider }           from 'react-redux'
+import { BrowserRouter }      from 'react-router-dom'
+import { ReactLenis }         from 'lenis/react'
+import { ThemeProvider }      from '@shared/context/ThemeContext'
+import { DeviceTierProvider } from '@shared/context/DeviceTierContext'
+import store                  from '@store'
 
 const lenisOptions = {
-  lerp:         0.1,
-  smoothWheel:  true,
-  syncTouch:    false,   // don't hijack native touch scroll on mobile
+  lerp:        0.1,
+  smoothWheel: true,
+  syncTouch:   false,
 }
 
 const Providers = ({ children }) => (
   <Provider store={store}>
-    <BrowserRouter>
-      <ThemeProvider>
-        <ReactLenis root options={lenisOptions}>
-          {children}
-        </ReactLenis>
-      </ThemeProvider>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <DeviceTierProvider>
+        <ThemeProvider>
+          <ReactLenis root options={lenisOptions}>
+            {children}
+          </ReactLenis>
+        </ThemeProvider>
+      </DeviceTierProvider>
     </BrowserRouter>
   </Provider>
 )

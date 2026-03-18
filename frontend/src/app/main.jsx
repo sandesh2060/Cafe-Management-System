@@ -7,12 +7,14 @@ if ('scrollRestoration' in history) {
 
 import React    from 'react'
 import ReactDOM from 'react-dom/client'
-// ── Styles ──────────────────────────────────────────────────────────────────
+
+// ── Styles ────────────────────────────────────────────────────────────────────
+// globals.css is the single CSS entry point.
+// animations.css, skeleton.css, tailwind.css are merged into globals.css —
+// those files are now empty and these imports are removed.
 import '../styles/globals.css'
-import '../styles/animations.css'
-import '../styles/skeleton.css'
-import '../styles/tailwind.css'
-// ────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+
 import App      from './App.jsx'
 import { unlockAudioContext } from '@shared/hooks/useNotificationSound'
 

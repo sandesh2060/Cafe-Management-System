@@ -1,4 +1,15 @@
 // src/modules/waiter/pages/WaiterDashboard.jsx
+//
+// ✅ FIX: White gap — grid had alignContent:'start' which shrinks grid tracks
+//    to content height. Grid container stretches via flex:1 but the grid
+//    background only paints behind grid tracks, not the full container area.
+//    Fix: wrap grid in a position:relative container that fills flex:1,
+//    and use a position:absolute background layer that covers 100% height.
+//    The grid itself is position:relative with auto height (content-sized).
+//
+// ✅ Pure JS breakpoint — zero Tailwind grid classes
+// ✅ useBreakpoint uses useEffect so resize works
+
 import { useState, useContext, useRef, useEffect } from 'react'
 import DashboardLayout          from '@shared/components/layout/DashboardLayout'
 import WaiterActiveOrders       from '../components/orders/WaiterActiveOrders'
@@ -8,8 +19,7 @@ import WaiterChatPanel          from '../components/chat/WaiterChatPanel'
 import { useWaiterSocket }      from '../hooks/useWaiterSocket'
 import { useSelector }          from 'react-redux'
 import { selectUnreadMessages } from '@store/slices/messagingSlice'
-import { ThemeContext }          from '@shared/context/ThemeContext'
-import { COLORS }               from '@colors'
+import { ThemeContext }         from '@shared/context/ThemeContext'
 import gsap                     from 'gsap'
 import { ClipboardList, Bell, Map, MessageSquare } from 'lucide-react'
 
@@ -20,76 +30,116 @@ const TABS = [
   { key: 'chat',   label: 'Chat',   Icon: MessageSquare },
 ]
 
+const useBreakpoint = () => {
+  const getW = () => (typeof window !== 'undefined' ? window.innerWidth : 1024)
+  const [width, setWidth] = useState(getW)
+  useEffect(() => {
+    const h = () => setWidth(window.innerWidth)
+    window.addEventListener('resize', h, { passive: true })
+    return () => window.removeEventListener('resize', h)
+  }, [])
+  return { isMobile: width < 768, isDesktop: width >= 1024 }
+}
+
 const WaiterDashboard = () => {
-  const [activeTab, setActiveTab] = useState('orders')
-  const unreadMessages = useSelector(selectUnreadMessages)
-  const { isDark: dk } = useContext(ThemeContext)
-  const contentRef = useRef(null)
+  const [tab, setTab]           = useState('orders')
+  const unreadMessages          = useSelector(selectUnreadMessages)
+  const { isDark }              = useContext(ThemeContext)
+  const contentRef              = useRef(null)
+  const { isMobile, isDesktop } = useBreakpoint()
   useWaiterSocket()
 
   const switchTab = (key) => {
-    if (key === activeTab) return
-    if (contentRef.current) {
-      gsap.fromTo(contentRef.current,
-        { opacity: 0, x: 10 },
-        { opacity: 1, x: 0, duration: 0.22, ease: 'power2.out' }
-      )
-    }
-    setActiveTab(key)
+    if (key === tab) return
+    if (contentRef.current)
+      gsap.fromTo(contentRef.current, { opacity: 0, x: 10 }, { opacity: 1, x: 0, duration: 0.22, ease: 'power2.out' })
+    setTab(key)
   }
 
+  const gridCols    = isDesktop ? 3 : 2
+  const leftColSpan = isDesktop ? 2 : 1
+
   return (
-    <DashboardLayout title="Waiter" role="waiter" activeNav={activeTab} onNavChange={switchTab}>
+    <DashboardLayout title="Waiter" role="waiter" activeNav={tab} onNavChange={switchTab}>
 
       {/* ── Mobile tab bar ── */}
-      <div className={`md:hidden flex border-b sticky top-0 z-20 flex-shrink-0
-        ${dk ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'}`}>
-        {TABS.map(({ key, label, Icon }) => {
-          const active = activeTab === key
-          return (
-            <button
-              key={key}
-              onClick={() => switchTab(key)}
-              className="flex-1 flex flex-col items-center gap-0.5 py-2.5 relative transition-colors"
-              style={{ color: active ? COLORS.saffron.DEFAULT : dk ? '#6B7280' : '#9CA3AF' }}
-            >
-              <div className="relative">
-                <Icon size={20} />
-                {key === 'chat' && unreadMessages > 0 && (
-                  <span className="absolute -top-1 -right-1.5 w-4 h-4 rounded-full bg-red-500
-                                   text-white text-[9px] font-bold flex items-center justify-center">
-                    {unreadMessages}
-                  </span>
-                )}
-              </div>
-              <span className="text-[10px] font-semibold">{label}</span>
-              {active && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-saffron rounded-full" />
-              )}
-            </button>
-          )
-        })}
-      </div>
+      {isMobile && (
+        <div style={{ display: 'flex', borderBottom: '1px solid var(--header-border)', position: 'sticky', top: 0, zIndex: 20, flexShrink: 0, background: 'var(--header-bg)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' }}>
+          {TABS.map(({ key, label, Icon }) => {
+            const active = tab === key
+            return (
+              <button key={key} onClick={() => switchTab(key)}
+                style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '10px 4px', position: 'relative', background: 'none', border: 'none', cursor: 'pointer', color: active ? 'var(--accent)' : 'var(--text-muted)', transition: 'color 0.15s', WebkitTapHighlightColor: 'transparent', minHeight: 'unset', minWidth: 'unset' }}
+              >
+                <div style={{ position: 'relative' }}>
+                  <Icon size={20} />
+                  {key === 'chat' && unreadMessages > 0 && (
+                    <span style={{ position: 'absolute', top: -4, right: -6, width: 16, height: 16, borderRadius: '50%', background: '#EF4444', color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{unreadMessages}</span>
+                  )}
+                </div>
+                <span style={{ fontSize: 10, fontWeight: 600, fontFamily: 'var(--font-body)' }}>{label}</span>
+                {active && <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, borderRadius: '2px 2px 0 0', background: 'var(--accent)' }} />}
+              </button>
+            )
+          })}
+        </div>
+      )}
 
-      {/* ── Desktop 3-col layout ── */}
-      <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 flex-1 overflow-hidden">
-        <div className="lg:col-span-2 flex flex-col gap-4 overflow-auto min-h-0">
-          <WaiterActiveOrders />
-          <WaiterCallList />
+      {/*
+        ── Desktop/Tablet grid ──────────────────────────────────────────────
+        FIX: The grid had alignContent:'start' which shrinks grid row tracks
+        to content height. The grid container stretches to fill flex:1 but
+        CSS grid backgrounds only paint BEHIND GRID TRACKS — not the full
+        container. So empty space below tracks shows whatever is behind.
+
+        Solution: position:relative wrapper fills flex:1 (stretches fully).
+        A position:absolute div behind covers 100%x100% with var(--bg).
+        The grid sits on top with its natural (content) height.
+        This guarantees the background always covers the full area.
+      */}
+      {!isMobile && (
+        <div style={{
+          flex: 1,
+          position: 'relative',   // establishes stacking context for bg layer
+          minHeight: 0,
+        }}>
+          {/* Background fill layer — always covers full container */}
+          <div style={{
+            position: 'absolute', inset: 0,
+            background: 'var(--bg)',
+            transition: 'background var(--transition-theme)',
+            zIndex: 0,
+          }} />
+
+          {/* Grid content — sits above bg layer */}
+          <div style={{
+            position: 'relative', zIndex: 1,
+            display: 'grid',
+            gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
+            gap: '1rem',
+            padding: '1rem',
+          }}>
+            <div style={{ gridColumn: `span ${leftColSpan}`, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <WaiterActiveOrders />
+              <WaiterCallList />
+            </div>
+            <div style={{ gridColumn: 'span 1', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <WaiterTableMap />
+              <WaiterChatPanel />
+            </div>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 overflow-auto min-h-0">
-          <WaiterTableMap />
-          <WaiterChatPanel />
-        </div>
-      </div>
+      )}
 
       {/* ── Mobile content ── */}
-      <div ref={contentRef} className="md:hidden flex-1 overflow-auto p-3">
-        {activeTab === 'orders' && <WaiterActiveOrders />}
-        {activeTab === 'calls'  && <WaiterCallList />}
-        {activeTab === 'tables' && <WaiterTableMap />}
-        {activeTab === 'chat'   && <WaiterChatPanel />}
-      </div>
+      {isMobile && (
+        <div ref={contentRef} style={{ flex: 1, overflowY: 'auto', padding: '12px', background: 'var(--bg)' }}>
+          {tab === 'orders' && <WaiterActiveOrders />}
+          {tab === 'calls'  && <WaiterCallList />}
+          {tab === 'tables' && <WaiterTableMap />}
+          {tab === 'chat'   && <WaiterChatPanel />}
+        </div>
+      )}
 
     </DashboardLayout>
   )

@@ -1,11 +1,13 @@
 // src/modules/staff/pages/StaffLoginPage.jsx
 //
-// FIXES:
-// • Removed manual localStorage.setItem('kc_token', token) — authSlice
-//   staffLogin.fulfilled already does this. Doing it again here created a
-//   race condition where the manual set happened with stale data.
-// • loginStaff imported from authSlice only (staffAuthSlice is removed from store).
-// • isBusy check uses authSlice loading, not a separate slice.
+// ✅ Hardcoded 'कौसी चिया · Secure Access' → BRAND.name + ' · Secure Access'
+// ✅ Hardcoded '"DM Sans", system-ui, sans-serif' → FONTS.body throughout
+// ✅ BRAND.poweredBy replaces hardcoded 'Powered by ConvoS'
+//
+// NOTE: This page intentionally uses a fixed dark blue/teal aesthetic (#07090B bg,
+// #38bdf8 accent) that is SEPARATE from the cafe's brand theme. Staff login is a
+// security-focused portal and should look distinct from the customer interface.
+// Only the cafe name and font are pulled from BRAND/FONTS.
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useDispatch, useSelector }                  from 'react-redux'
@@ -20,6 +22,7 @@ import {
 } from '@store/slices/authSlice'
 import { Lock, User, Eye, EyeOff, ArrowLeft, ShieldCheck, ChevronRight } from 'lucide-react'
 import gsap from 'gsap'
+import { BRAND, FONTS } from '@shared/config/brand'
 
 const ROLE_HOME = {
   waiter:  '/waiter',
@@ -29,6 +32,7 @@ const ROLE_HOME = {
   admin:   '/admin',
 }
 
+// Semantic role colors — fixed, not brand-themed (intentional)
 const ROLE_META = {
   waiter:  { label: 'Waiter',  color: '#38bdf8', bg: 'rgba(56,189,248,0.1)',  border: 'rgba(56,189,248,0.25)'  },
   kitchen: { label: 'Kitchen', color: '#fb923c', bg: 'rgba(251,146,60,0.1)',  border: 'rgba(251,146,60,0.25)'  },
@@ -45,7 +49,6 @@ const StaffLoginPage = () => {
   const isLoggedIn = useSelector(selectIsLoggedIn)
   const role       = useSelector(selectRole)
 
-  // Already logged in as staff — redirect immediately
   useEffect(() => {
     if (isLoggedIn && role && role !== 'customer') {
       navigate(ROLE_HOME[role] ?? '/', { replace: true })
@@ -84,23 +87,19 @@ const StaffLoginPage = () => {
   useEffect(() => { dispatch(clearError()) }, [username, password]) // eslint-disable-line
 
   const handleUsernameChange = useCallback((e) => {
-    setUsername(e.target.value)
-    setLocalError('')
+    setUsername(e.target.value); setLocalError('')
   }, [])
 
   const handlePasswordChange = useCallback((e) => {
-    setPassword(e.target.value)
-    setLocalError('')
+    setPassword(e.target.value); setLocalError('')
   }, [])
 
   const handleSubmit = async (e) => {
     e?.preventDefault()
     if (isSubmitting || loading) return
-
     setLocalError('')
     if (!username.trim()) { setLocalError('Username is required'); return }
     if (!password)         { setLocalError('Password is required'); return }
-
     setIsSubmitting(true)
 
     const result = await dispatch(loginStaff({
@@ -121,8 +120,6 @@ const StaffLoginPage = () => {
       return
     }
 
-    // FIX: authSlice.staffLogin.fulfilled already sets localStorage.
-    // Do NOT set it again here — that was a redundant double-set.
     const { user } = result.payload
     setGrantedRole(user.role)
     setIsSubmitting(false)
@@ -146,7 +143,16 @@ const StaffLoginPage = () => {
     `sl-input ${hasValue ? 'sl-input-filled' : 'sl-input-base'} ${displayError ? 'sl-input-error' : ''}`
 
   return (
-    <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#07090B', position: 'relative', overflow: 'hidden', padding: '24px 18px', fontFamily: '"DM Sans", system-ui, sans-serif' }}>
+    <div style={{
+      minHeight: '100dvh', display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center',
+      // Intentionally fixed dark background — staff portal aesthetic
+      background: '#07090B',
+      position: 'relative', overflow: 'hidden',
+      // ✅ FONTS.body — was hardcoded '"DM Sans", system-ui, sans-serif'
+      fontFamily: FONTS.body,
+      padding: 'max(24px, calc(env(safe-area-inset-top) + 16px)) 18px max(24px, calc(env(safe-area-inset-bottom) + 16px))',
+    }}>
       <style>{`
         @keyframes sl-grid   { 0%,100%{opacity:.03} 50%{opacity:.058} }
         @keyframes sl-pulse  { 0%,100%{opacity:.16} 50%{opacity:.30}  }
@@ -154,7 +160,10 @@ const StaffLoginPage = () => {
         @keyframes sl-in     { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
         @keyframes sl-badge  { 0%{transform:scale(0) translateY(6px);opacity:0} 70%{transform:scale(1.08)} 100%{transform:scale(1);opacity:1} }
 
-        .sl-input { width:100%; padding:13px 42px 13px 40px; border-radius:12px; font-family:"DM Sans",system-ui,sans-serif; font-size:14px; font-weight:500; box-sizing:border-box; outline:none; transition:border-color 0.22s, box-shadow 0.22s; -webkit-tap-highlight-color:transparent; caret-color:#38bdf8; }
+        .sl-input { width:100%; padding:13px 42px 13px 40px; border-radius:12px;
+          font-family:${FONTS.body}; font-size:14px; font-weight:500;
+          box-sizing:border-box; outline:none; transition:border-color 0.22s, box-shadow 0.22s;
+          -webkit-tap-highlight-color:transparent; caret-color:#38bdf8; }
         .sl-input-base   { background:rgba(255,255,255,0.04); color:#E8F0F8; border:1px solid rgba(255,255,255,0.09); box-shadow:inset 0 1px 3px rgba(0,0,0,0.3); }
         .sl-input-base::placeholder { color:rgba(148,183,210,0.3); }
         .sl-input-base:focus { border-color:rgba(56,189,248,0.45); box-shadow:0 0 0 3px rgba(56,189,248,0.1),inset 0 1px 3px rgba(0,0,0,0.3); }
@@ -180,8 +189,13 @@ const StaffLoginPage = () => {
             <ShieldCheck size={28} color={grantedRole ? '#4ade80' : '#38bdf8'} strokeWidth={1.8} style={{ transition: 'color 0.35s' }}/>
           </div>
         </div>
-        <h1 style={{ fontSize: 'clamp(22px,5.5vw,26px)', fontWeight: 800, letterSpacing: '-0.03em', color: '#E8F4FF', margin: '0 0 4px', lineHeight: 1.2 }}>Staff Portal</h1>
-        <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.22em', textTransform: 'uppercase', color: 'rgba(56,189,248,0.4)', margin: 0 }}>कौसी चिया · Secure Access</p>
+        <h1 style={{ fontSize: 'clamp(22px,5.5vw,26px)', fontWeight: 800, letterSpacing: '-0.03em', color: '#E8F4FF', margin: '0 0 4px', lineHeight: 1.2, fontFamily: FONTS.body }}>
+          Staff Portal
+        </h1>
+        {/* ✅ BRAND.name — was hardcoded 'कौसी चिया' */}
+        <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.22em', textTransform: 'uppercase', color: 'rgba(56,189,248,0.4)', margin: 0, fontFamily: FONTS.body }}>
+          {BRAND.name} · Secure Access
+        </p>
       </div>
 
       {/* Panel */}
@@ -191,7 +205,7 @@ const StaffLoginPage = () => {
 
         <div ref={formRef} style={{ padding: '28px 24px 24px' }}>
           {grantedRole && ROLE_META[grantedRole] && (
-            <div className="sl-badge" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', borderRadius: 10, marginBottom: 18, background: ROLE_META[grantedRole].bg, border: `1px solid ${ROLE_META[grantedRole].border}`, color: ROLE_META[grantedRole].color, fontSize: 13, fontWeight: 700 }}>
+            <div className="sl-badge" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', borderRadius: 10, marginBottom: 18, background: ROLE_META[grantedRole].bg, border: `1px solid ${ROLE_META[grantedRole].border}`, color: ROLE_META[grantedRole].color, fontSize: 13, fontWeight: 700, fontFamily: FONTS.body }}>
               <ShieldCheck size={14} strokeWidth={2.5}/>
               {ROLE_META[grantedRole].label} — Access granted
               <ChevronRight size={14} style={{ marginLeft: 'auto' }}/>
@@ -199,7 +213,7 @@ const StaffLoginPage = () => {
           )}
 
           {displayError && !grantedRole && (
-            <div className="sl-in" style={{ marginBottom: 16, padding: '10px 14px', borderRadius: 10, background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.22)', color: '#fda4af', fontSize: 13, fontWeight: 500, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+            <div className="sl-in" style={{ marginBottom: 16, padding: '10px 14px', borderRadius: 10, background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.22)', color: '#fda4af', fontSize: 13, fontWeight: 500, fontFamily: FONTS.body, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
               <span style={{ flexShrink: 0, marginTop: 1 }}>⚠</span>
               {displayError}
             </div>
@@ -207,16 +221,16 @@ const StaffLoginPage = () => {
 
           <form onSubmit={handleSubmit} autoComplete="off" noValidate>
             <div style={{ marginBottom: 14 }}>
-              <label style={{ display: 'block', fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(148,183,210,0.5)', marginBottom: 7 }}>Username</label>
+              <label style={{ display: 'block', fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(148,183,210,0.5)', marginBottom: 7, fontFamily: FONTS.body }}>
+                Username
+              </label>
               <div style={{ position: 'relative' }}>
                 <User size={15} strokeWidth={2} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: username ? 'rgba(56,189,248,0.55)' : 'rgba(148,183,210,0.28)', pointerEvents: 'none', transition: 'color 0.2s' }}/>
                 <input
                   ref={usernameRef}
                   className={inputClass(username)}
                   type="text"
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  spellCheck={false}
+                  autoCapitalize="none" autoCorrect="off" spellCheck={false}
                   placeholder="your_username"
                   value={username}
                   onChange={handleUsernameChange}
@@ -227,7 +241,9 @@ const StaffLoginPage = () => {
             </div>
 
             <div style={{ marginBottom: 22 }}>
-              <label style={{ display: 'block', fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(148,183,210,0.5)', marginBottom: 7 }}>Password</label>
+              <label style={{ display: 'block', fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(148,183,210,0.5)', marginBottom: 7, fontFamily: FONTS.body }}>
+                Password
+              </label>
               <div style={{ position: 'relative' }}>
                 <Lock size={15} strokeWidth={2} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: password ? 'rgba(56,189,248,0.55)' : 'rgba(148,183,210,0.28)', pointerEvents: 'none', transition: 'color 0.2s' }}/>
                 <input
@@ -246,7 +262,7 @@ const StaffLoginPage = () => {
               </div>
             </div>
 
-            <button type="submit" disabled={isBusy || !!grantedRole} style={{ width: '100%', padding: '14px 20px', borderRadius: 14, border: 'none', cursor: isBusy || grantedRole ? 'not-allowed' : 'pointer', background: grantedRole ? 'linear-gradient(135deg,#22c55e 0%,#16a34a 100%)' : isBusy ? 'rgba(56,189,248,0.18)' : 'linear-gradient(135deg,#0ea5e9 0%,#2563eb 100%)', color: '#fff', fontFamily: '"DM Sans",system-ui,sans-serif', fontWeight: 700, fontSize: 15, minHeight: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, boxShadow: isBusy || grantedRole ? 'none' : '0 6px 28px rgba(14,165,233,0.32)', transition: 'all 0.25s', opacity: isBusy && !grantedRole ? 0.6 : 1 }}>
+            <button type="submit" disabled={isBusy || !!grantedRole} style={{ width: '100%', padding: '14px 20px', borderRadius: 14, border: 'none', cursor: isBusy || grantedRole ? 'not-allowed' : 'pointer', background: grantedRole ? 'linear-gradient(135deg,#22c55e 0%,#16a34a 100%)' : isBusy ? 'rgba(56,189,248,0.18)' : 'linear-gradient(135deg,#0ea5e9 0%,#2563eb 100%)', color: '#fff', fontFamily: FONTS.body, fontWeight: 700, fontSize: 15, minHeight: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, boxShadow: isBusy || grantedRole ? 'none' : '0 6px 28px rgba(14,165,233,0.32)', transition: 'all 0.25s', opacity: isBusy && !grantedRole ? 0.6 : 1 }}>
               {isBusy && !grantedRole && <span style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', animation: 'sl-spin 0.7s linear infinite', flexShrink: 0 }}/>}
               {grantedRole ? '✓ Redirecting…' : isBusy ? 'Verifying…' : 'Sign In'}
             </button>
@@ -254,24 +270,27 @@ const StaffLoginPage = () => {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '20px 0 14px' }}>
             <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.06)' }}/>
-            <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', color: 'rgba(148,183,210,0.2)' }}>NOT STAFF?</span>
+            <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', color: 'rgba(148,183,210,0.2)', fontFamily: FONTS.body }}>NOT STAFF?</span>
             <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.06)' }}/>
           </div>
 
-          <button onClick={() => navigate('/login')} className="sl-back" style={{ width: '100%', padding: '12px 16px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.07)', background: 'transparent', color: 'rgba(148,183,210,0.45)', fontFamily: '"DM Sans",system-ui,sans-serif', fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer', transition: 'background 0.18s', WebkitTapHighlightColor: 'transparent' }}>
+          <button onClick={() => navigate('/login')} className="sl-back" style={{ width: '100%', padding: '12px 16px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.07)', background: 'transparent', color: 'rgba(148,183,210,0.45)', fontFamily: FONTS.body, fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer', transition: 'background 0.18s', WebkitTapHighlightColor: 'transparent' }}>
             <ArrowLeft size={14} strokeWidth={2.2}/>
             Back to Customer Login
           </button>
 
-          <p style={{ textAlign: 'center', marginTop: 16, fontSize: 10, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(56,189,248,0.15)' }}>
+          <p style={{ textAlign: 'center', marginTop: 16, fontSize: 10, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(56,189,248,0.15)', fontFamily: FONTS.body }}>
             🔒 Encrypted · Staff Only
           </p>
         </div>
       </div>
 
-      <p style={{ marginTop: 22, position: 'relative', zIndex: 10, fontSize: 10, fontWeight: 600, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(56,189,248,0.11)' }}>
-        Powered by ConvoS
-      </p>
+      {/* ✅ BRAND.poweredBy — was hardcoded 'Powered by ConvoS' */}
+      {BRAND.poweredBy && (
+        <p style={{ marginTop: 22, position: 'relative', zIndex: 10, fontSize: 10, fontWeight: 600, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(56,189,248,0.11)', fontFamily: FONTS.body }}>
+          Powered by {BRAND.poweredBy}
+        </p>
+      )}
     </div>
   )
 }

@@ -1,11 +1,22 @@
-// frontend/src/app/routes/AppRoutes.jsx
-import { Routes, Route, Navigate } from 'react-router-dom'
-import { useSelector }              from 'react-redux'
+// src/app/routes/AppRoutes.jsx
+//
+// ✅ FIX: var(--bg-app) → var(--bg) — bg-app doesn't exist in brand.js.
+// ✅ FIX: getRoleHome and ROLE_HOME now imported from roleRoutes.js.
+//    Removed duplicate inline definitions.
+// ✅ FIX: Inline GuestRoute and DetectRoute now import bootstrapReady so
+//    they don't flash-redirect before /auth/me resolves.
+// ✅ GalleryPage route now also accepts 'guest' role (public gallery).
+// ✅ /reviews made publicly accessible (allowedRoles includes guest).
+// ✅ FIX: Cashier route now points to CashierDashboard, not the empty BillingPage.
+
+import { Routes, Route, Navigate }                          from 'react-router-dom'
+import { useSelector }                                      from 'react-redux'
+import { lazy, Suspense }                                   from 'react'
 import { selectIsLoggedIn, selectRole, selectBootstrapReady } from '@store/slices/authSlice'
-import { selectTableId }            from '@store/slices/tableSessionSlice'
-import { lazy, Suspense }           from 'react'
-import LoadingSpinner               from '@shared/components/feedback/LoadingSpinner'
-import ProtectedRoute               from './ProtectedRoute'
+import { selectTableId }                                    from '@store/slices/tableSessionSlice'
+import LoadingSpinner                                       from '@shared/components/feedback/LoadingSpinner'
+import ProtectedRoute                                       from './ProtectedRoute'
+import { getRoleHome }                                      from './roleRoutes'
 
 // ── Lazy imports ──────────────────────────────────────────────────────────────
 
@@ -35,29 +46,19 @@ const WaiterDashboard    = lazy(() => import('@modules/waiter/pages/WaiterDashbo
 // Kitchen
 const KitchenDisplayPage = lazy(() => import('@modules/kitchen/pages/KitchenDisplayPage'))
 
-// Cashier
-const BillingPage        = lazy(() => import('@modules/cashier/pages/BillingPage'))
+// Cashier — FIX: was BillingPage (empty component), now CashierDashboard
+const CashierDashboard   = lazy(() => import('@modules/cashier/pages/CashierDashboard'))
 
 // Manager
-const ManagerDashboard      = lazy(() => import('@modules/manager/pages/ManagerDashboard'))
-const GalleryManagerPage    = lazy(() => import('@modules/manager/pages/GalleryManagerPage'))
+const ManagerDashboard   = lazy(() => import('@modules/manager/pages/ManagerDashboard'))
+const GalleryManagerPage = lazy(() => import('@modules/manager/pages/GalleryManagerPage'))
 
 // Admin
 const AdminDashboard     = lazy(() => import('@modules/admin/pages/AdminDashboard'))
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-const getRoleHome = (role) => ({
-  customer: '/menu',
-  waiter:   '/waiter',
-  kitchen:  '/kitchen',
-  cashier:  '/cashier',
-  manager:  '/manager',
-  admin:    '/admin',
-}[role] || '/detect')
-
-// ── Full-screen spinner ───────────────────────────────────────────────────────
+// ── Shared spinner ────────────────────────────────────────────────────────────
 const FullSpin = () => (
-  <div className="min-h-screen flex items-center justify-center bg-[var(--bg-app)]">
+  <div className="min-h-screen flex items-center justify-center bg-[var(--bg)]">
     <LoadingSpinner size="lg" />
   </div>
 )
@@ -100,7 +101,7 @@ const AppRoutes = () => {
         {/* Staff login */}
         <Route path="/staff/login" element={<StaffLoginPage />} />
 
-        {/* ── Customer ── */}
+        {/* ── Customer ─────────────────────────────────────────────────────── */}
         <Route path="/menu"
           element={<ProtectedRoute allowedRoles={['customer']}><MenuPage /></ProtectedRoute>}
         />
@@ -110,21 +111,13 @@ const AppRoutes = () => {
         <Route path="/cart"
           element={<ProtectedRoute allowedRoles={['customer']}><CartPage /></ProtectedRoute>}
         />
-
-        {/* /track → redirect to /order/status (TrackingPage.jsx is deleted) */}
-        <Route path="/track"
-          element={<Navigate to="/order/status" replace />}
-        />
-
-        {/* Order pages — live tracker + history */}
+        <Route path="/track" element={<Navigate to="/order/status" replace />} />
         <Route path="/order/status"
           element={<ProtectedRoute allowedRoles={['customer']}><OrderStatusPage /></ProtectedRoute>}
         />
         <Route path="/order/history"
           element={<ProtectedRoute allowedRoles={['customer']}><OrderHistoryPage /></ProtectedRoute>}
         />
-
-        {/* Other customer pages */}
         <Route path="/call-waiter"
           element={<ProtectedRoute allowedRoles={['customer']}><CallWaiterPage /></ProtectedRoute>}
         />
@@ -150,22 +143,22 @@ const AppRoutes = () => {
           element={<ProtectedRoute allowedRoles={['customer']}><NotificationsPage /></ProtectedRoute>}
         />
 
-        {/* ── Waiter ── */}
+        {/* ── Waiter ───────────────────────────────────────────────────────── */}
         <Route path="/waiter/*"
           element={<ProtectedRoute allowedRoles={['waiter']}><WaiterDashboard /></ProtectedRoute>}
         />
 
-        {/* ── Kitchen ── */}
+        {/* ── Kitchen ──────────────────────────────────────────────────────── */}
         <Route path="/kitchen/*"
           element={<ProtectedRoute allowedRoles={['kitchen']}><KitchenDisplayPage /></ProtectedRoute>}
         />
 
-        {/* ── Cashier ── */}
+        {/* ── Cashier ──────────────────────────────────────────────────────── */}
         <Route path="/cashier/*"
-          element={<ProtectedRoute allowedRoles={['cashier']}><BillingPage /></ProtectedRoute>}
+          element={<ProtectedRoute allowedRoles={['cashier']}><CashierDashboard /></ProtectedRoute>}
         />
 
-        {/* ── Manager ── */}
+        {/* ── Manager ──────────────────────────────────────────────────────── */}
         <Route path="/manager/*"
           element={<ProtectedRoute allowedRoles={['manager']}><ManagerDashboard /></ProtectedRoute>}
         />
@@ -173,7 +166,7 @@ const AppRoutes = () => {
           element={<ProtectedRoute allowedRoles={['manager']}><GalleryManagerPage /></ProtectedRoute>}
         />
 
-        {/* ── Admin ── */}
+        {/* ── Admin ────────────────────────────────────────────────────────── */}
         <Route path="/admin/*"
           element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>}
         />

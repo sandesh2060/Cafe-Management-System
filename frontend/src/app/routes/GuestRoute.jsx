@@ -1,37 +1,36 @@
 // src/app/routes/GuestRoute.jsx
 //
-// Redirects already-authenticated users away from guest-only pages
-// (e.g. /login, /detect) to their role's home route.
-//
-// Used in AppRoutes.jsx:
-//   <Route path="/login" element={<GuestRoute><LoginPage /></GuestRoute>} />
-//
-// NOTE: AppRoutes.jsx already inlines this component locally.
-// This standalone file exists so other route files or tests can import it
-// without pulling in all of AppRoutes.
+// ✅ FIX: Was missing bootstrapReady check — on refresh, isLoggedIn is false
+//    for a brief moment even with a valid token (Redux not hydrated yet).
+//    Without the check, logged-in users landing on /login briefly see the
+//    login page before being redirected. Now waits for bootstrap first.
+// ✅ FIX: getRoleHome imported from roleRoutes.js — no duplication.
 
 import { Navigate }    from 'react-router-dom'
 import { useSelector } from 'react-redux'
-import { selectIsLoggedIn, selectRole } from '@store/slices/authSlice'
+import {
+  selectIsLoggedIn,
+  selectRole,
+  selectBootstrapReady,
+} from '@store/slices/authSlice'
+import { getRoleHome } from './roleRoutes'
 
-const ROLE_HOME = {
-  customer: '/menu',
-  waiter:   '/waiter',
-  kitchen:  '/kitchen',
-  cashier:  '/cashier',
-  manager:  '/manager',
-  admin:    '/admin',
-}
-
-const getRoleHome = (role) => ROLE_HOME[role] ?? '/detect'
-
-/**
- * GuestRoute — wraps pages that should only be visible to unauthenticated users.
- * If the user is already logged in, redirects to their role's home page.
- */
 const GuestRoute = ({ children }) => {
-  const isLoggedIn = useSelector(selectIsLoggedIn)
-  const role       = useSelector(selectRole)
+  const isLoggedIn     = useSelector(selectIsLoggedIn)
+  const role           = useSelector(selectRole)
+  const bootstrapReady = useSelector(selectBootstrapReady)
+
+  // Wait for bootstrap before redirecting — prevents flash on refresh
+  if (!bootstrapReady) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[var(--bg)]">
+        <div
+          className="w-8 h-8 border-2 rounded-full animate-spin"
+          style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }}
+        />
+      </div>
+    )
+  }
 
   if (isLoggedIn) {
     return <Navigate to={getRoleHome(role)} replace />

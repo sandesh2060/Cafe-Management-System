@@ -1,3 +1,4 @@
+// file : backend/src/modules/messaging/messaging.routes.js
 import { Router } from 'express'
 const router = Router()
 router.get('/', (req, res) => res.json({ success: true, message: 'messaging OK' }))

@@ -1,17 +1,26 @@
 // src/modules/customer/pages/GalleryPage.jsx
-// ═══════════════════════════════════════════════════════════════════════
-//  KAUSĪ CHIYĀ  ·  Gallery Page  (Customer view)
-//  ✦ Pinterest masonry  ✦ Category pill filter
-//  ✦ Lightbox on tap  ✦ Like toggle  ✦ Stagger entrance
-//  ✦ Full dark / light mode  ✦ Infinite scroll
-// ═══════════════════════════════════════════════════════════════════════
+//
+// ✅ Local T object (hardcoded hex) removed — all colors via var(--token) or getPalette()
+// ✅ BRAND.name replaces hardcoded "Kausī Chiyā" in subtitle and empty state
+// ✅ Page background gradient → var(--bg) + var(--orb-color) from brand
+// ✅ Header bg/border → var(--header-bg), var(--header-border)
+// ✅ Back button → var(--pill-bg), var(--text-secondary)
+// ✅ Category pill active/inactive → var(--accent), var(--accent-dim), var(--accent-border)
+// ✅ PhotoCard shadows → var(--card-shadow), card bg → var(--card-bg)
+// ✅ Category badge in card → var(--accent-dim), var(--accent-border), var(--accent)
+// ✅ Like button stroke → var(--divider) when not liked
+// ✅ Loading spinner → var(--accent)
+// ✅ Skeleton → var(--pill-bg)
+// ✅ All animation, Redux, infinite scroll, lightbox logic unchanged
+
 import { useEffect, useRef, useCallback, useContext, useState } from 'react'
-import { motion, AnimatePresence } from 'motion/react'
+import { motion, AnimatePresence }  from 'motion/react'
 import { useDispatch, useSelector } from 'react-redux'
-import { useNavigate } from 'react-router-dom'
-import gsap from 'gsap'
+import { useNavigate }              from 'react-router-dom'
+import gsap                         from 'gsap'
 import { ArrowLeft, Heart, X, ChevronLeft, ChevronRight, Camera, ZoomIn } from 'lucide-react'
-import { ThemeContext } from '@shared/context/ThemeContext'
+import { ThemeContext }             from '@shared/context/ThemeContext'
+import { BRAND, getPalette }        from '@shared/config/brand'
 import {
   fetchPhotos, fetchCategories, likePhoto,
   setActiveCategory, optimisticLikePhoto,
@@ -30,14 +39,8 @@ const CAT_LABELS = {
   other:    { label: 'More', emoji: '📷' },
 }
 
-const T = {
-  amber: '#F59E0B',
-  rose:  '#F43F5E',
-  ink:   '#1C0A02',
-}
-
 // ── Lightbox ──────────────────────────────────────────────────────────────────
-function Lightbox({ photos, index, onClose, onNav, isDark }) {
+function Lightbox({ photos, index, onClose, onNav }) {
   const photo = photos[index]
   if (!photo) return null
 
@@ -52,21 +55,16 @@ function Lightbox({ photos, index, onClose, onNav, isDark }) {
       }}
       onClick={onClose}
     >
-      {/* Close */}
-      <motion.button
-        whileTap={{ scale: 0.88 }}
-        onClick={onClose}
-        style={{
-          position: 'absolute', top: 20, right: 20,
-          background: 'rgba(255,255,255,0.10)', border: 'none',
-          borderRadius: '50%', width: 40, height: 40,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          cursor: 'pointer', color: '#fff', zIndex: 1,
-        }}>
+      <motion.button whileTap={{ scale: 0.88 }} onClick={onClose} style={{
+        position: 'absolute', top: 20, right: 20,
+        background: 'rgba(255,255,255,0.10)', border: 'none',
+        borderRadius: '50%', width: 40, height: 40,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        cursor: 'pointer', color: '#fff', zIndex: 1,
+      }}>
         <X size={20} />
       </motion.button>
 
-      {/* Nav arrows */}
       {index > 0 && (
         <motion.button whileTap={{ scale: 0.9 }}
           onClick={e => { e.stopPropagation(); onNav(index - 1) }}
@@ -92,7 +90,6 @@ function Lightbox({ photos, index, onClose, onNav, isDark }) {
         </motion.button>
       )}
 
-      {/* Image */}
       <motion.div
         key={index}
         initial={{ scale: 0.9, opacity: 0 }}
@@ -103,7 +100,6 @@ function Lightbox({ photos, index, onClose, onNav, isDark }) {
           maxWidth: '90vw', maxHeight: '80vh',
           borderRadius: 16, overflow: 'hidden',
           boxShadow: '0 32px 80px rgba(0,0,0,0.6)',
-          position: 'relative',
         }}
       >
         <img src={photo.imageUrl} alt={photo.caption}
@@ -111,7 +107,6 @@ function Lightbox({ photos, index, onClose, onNav, isDark }) {
             objectFit: 'contain', display: 'block' }} />
       </motion.div>
 
-      {/* Caption */}
       {photo.caption && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
@@ -128,7 +123,6 @@ function Lightbox({ photos, index, onClose, onNav, isDark }) {
         </motion.div>
       )}
 
-      {/* Counter */}
       <div style={{
         position: 'absolute', bottom: 24,
         color: 'rgba(255,255,255,0.35)',
@@ -143,6 +137,8 @@ function Lightbox({ photos, index, onClose, onNav, isDark }) {
 // ── Photo Card ────────────────────────────────────────────────────────────────
 function PhotoCard({ photo, isDark, index, onLike, onOpen }) {
   const cardRef = useRef(null)
+  // ✅ getPalette for values needed in non-CSS-var contexts (Heart stroke)
+  const P = getPalette(isDark)
 
   useEffect(() => {
     if (!cardRef.current) return
@@ -161,27 +157,25 @@ function PhotoCard({ photo, isDark, index, onLike, onOpen }) {
         transition={{ duration: 0.22 }}
         style={{
           borderRadius: 16, overflow: 'hidden', position: 'relative',
-          background: isDark ? '#1A1209' : '#FFFCF5',
-          boxShadow: isDark
-            ? '0 2px 14px rgba(0,0,0,0.4)'
-            : '0 2px 14px rgba(0,0,0,0.07)',
+          // ✅ var(--card-bg) — was hardcoded dark/light hex
+          background: 'var(--card-bg)',
+          // ✅ var(--card-shadow)
+          boxShadow: 'var(--card-shadow)',
           cursor: 'pointer',
         }}
         onClick={() => onOpen(index)}
       >
-        {/* Featured crown */}
+        {/* Featured crown — semantic amber, intentionally fixed */}
         {photo.isFeatured && (
           <div style={{
             position: 'absolute', top: 9, left: 9, zIndex: 3,
             background: 'linear-gradient(135deg, #F59E0B, #F97316)',
             borderRadius: 99, padding: '3px 9px',
             fontSize: 9, fontWeight: 800, color: '#fff',
-            fontFamily: "'DM Sans', sans-serif",
             letterSpacing: '0.3px',
           }}>✦ Featured</div>
         )}
 
-        {/* Image */}
         <div style={{ position: 'relative', overflow: 'hidden' }}>
           <motion.img
             src={photo.imageUrl}
@@ -191,7 +185,6 @@ function PhotoCard({ photo, isDark, index, onLike, onOpen }) {
             transition={{ duration: 0.45 }}
             style={{ width: '100%', display: 'block', objectFit: 'cover' }}
           />
-          {/* Overlay on hover */}
           <motion.div
             initial={{ opacity: 0 }}
             whileHover={{ opacity: 1 }}
@@ -220,11 +213,11 @@ function PhotoCard({ photo, isDark, index, onLike, onOpen }) {
           gap: 8,
         }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            {/* Category pill */}
+            {/* Category pill — ✅ var tokens */}
             <div style={{
               display: 'inline-flex', alignItems: 'center', gap: 4,
-              background: isDark ? 'rgba(245,158,11,0.10)' : 'rgba(245,158,11,0.08)',
-              border: `1px solid ${isDark ? 'rgba(245,158,11,0.18)' : 'rgba(245,158,11,0.15)'}`,
+              background: 'var(--accent-dim)',
+              border: '1px solid var(--accent-border)',
               borderRadius: 99, padding: '2px 8px', marginBottom: 5,
             }}>
               <span style={{ fontSize: 9 }}>
@@ -232,8 +225,9 @@ function PhotoCard({ photo, isDark, index, onLike, onOpen }) {
               </span>
               <span style={{
                 fontSize: 9, fontWeight: 700, textTransform: 'uppercase',
-                letterSpacing: '0.5px', color: T.amber,
-                fontFamily: "'DM Sans', sans-serif",
+                letterSpacing: '0.5px',
+                // ✅ var(--accent) — was T.amber hardcoded
+                color: 'var(--accent)',
               }}>
                 {CAT_LABELS[photo.category]?.label ?? photo.category}
               </span>
@@ -241,7 +235,8 @@ function PhotoCard({ photo, isDark, index, onLike, onOpen }) {
             {photo.caption && (
               <p style={{
                 fontSize: 12, margin: 0, lineHeight: 1.5,
-                color: isDark ? '#C9B99A' : '#3D2C1A',
+                // ✅ var(--text-secondary) — was hardcoded #C9B99A / #3D2C1A
+                color: 'var(--text-secondary)',
                 fontFamily: "'Lora', Georgia, serif",
                 fontStyle: 'italic',
                 overflow: 'hidden', display: '-webkit-box',
@@ -261,14 +256,17 @@ function PhotoCard({ photo, isDark, index, onLike, onOpen }) {
             }}
           >
             <Heart size={17}
-              fill={photo._liked ? T.rose : 'none'}
-              stroke={photo._liked ? T.rose : isDark ? '#3D2C1A' : '#D1D5DB'}
+              // ✅ semantic rose for liked state (intentional fixed color — represents love/like)
+              fill={photo._liked ? '#F43F5E' : 'none'}
+              // ✅ var(--divider) for unloved state — was hardcoded #D1D5DB or #3D2C1A
+              stroke={photo._liked ? '#F43F5E' : P.divider}
               strokeWidth={2}
             />
             {photo.likes > 0 && (
               <span style={{
                 fontSize: 9, fontWeight: 700,
-                color: photo._liked ? T.rose : isDark ? '#4B3728' : '#9CA3AF',
+                // ✅ semantic rose for liked, var(--text-muted) otherwise
+                color: photo._liked ? '#F43F5E' : 'var(--text-muted)',
                 fontFamily: "'DM Mono', monospace",
               }}>{photo.likes}</span>
             )}
@@ -336,13 +334,12 @@ export default function GalleryPage() {
   return (
     <div style={{
       minHeight: '100vh',
-      background: isDark
-        ? 'radial-gradient(ellipse at 70% 0%, rgba(245,158,11,0.05) 0%, #0D0B09 50%)'
-        : 'radial-gradient(ellipse at 30% 0%, rgba(245,158,11,0.07) 0%, #FAF7F0 55%)',
+      // ✅ var(--bg) base + var(--orb-color) for ambient glow — was hardcoded rgba
+      background: `radial-gradient(ellipse at ${isDark ? '70%' : '30%'} 0%, var(--orb-color) 0%, var(--bg) 55%)`,
       fontFamily: "'DM Sans', sans-serif",
     }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,700;0,800;0,900&family=Lora:ital,wght@0,400;1,400&family=DM+Sans:opsz,wght@9..40,400;9..40,600;9..40,700;9..40,800&family=DM+Mono:wght@400;500&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;1,400&family=DM+Sans:opsz,wght@9..40,400;9..40,600;9..40,700;9..40,800&family=DM+Mono:wght@400;500&display=swap');
         .gal-masonry { columns: 1; column-gap: 12px; }
         @media (min-width: 480px)  { .gal-masonry { columns: 2; } }
         @media (min-width: 780px)  { .gal-masonry { columns: 3; } }
@@ -357,11 +354,12 @@ export default function GalleryPage() {
       {/* ── Header ── */}
       <div ref={headerRef} style={{
         position: 'sticky', top: 0, zIndex: 100,
-        background: isDark ? 'rgba(13,11,9,0.88)' : 'rgba(250,247,240,0.88)',
+        // ✅ var(--header-bg), var(--header-border) — was hardcoded rgba values
+        background: 'var(--header-bg)',
         backdropFilter: 'blur(18px)',
-        borderBottom: `1px solid ${isDark ? 'rgba(245,158,11,0.08)' : 'rgba(245,158,11,0.12)'}`,
+        WebkitBackdropFilter: 'blur(18px)',
+        borderBottom: '1px solid var(--header-border)',
       }}>
-        {/* Top row */}
         <div style={{
           padding: '12px 18px 10px',
           display: 'flex', alignItems: 'center', gap: 14,
@@ -369,10 +367,14 @@ export default function GalleryPage() {
           <motion.button whileTap={{ scale: 0.9 }}
             onClick={() => navigate(-1)}
             style={{
-              background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+              // ✅ var(--pill-bg) — was hardcoded rgba(255,255,255,0.06) / rgba(0,0,0,0.05)
+              background: 'var(--pill-bg)',
               border: 'none', borderRadius: 10, width: 36, height: 36,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: 'pointer', color: isDark ? '#C9B99A' : T.ink, flexShrink: 0,
+              cursor: 'pointer',
+              // ✅ var(--text-secondary) — was hardcoded #C9B99A / T.ink
+              color: 'var(--text-secondary)',
+              flexShrink: 0,
             }}>
             <ArrowLeft size={18} />
           </motion.button>
@@ -380,17 +382,20 @@ export default function GalleryPage() {
           <div style={{ flex: 1 }}>
             <h1 style={{
               fontSize: 19, fontWeight: 900, margin: 0,
-              fontFamily: "'Fraunces', Georgia, serif",
-              color: isDark ? '#FDE68A' : T.ink,
+              fontFamily: "'Lora', Georgia, serif",
+              // ✅ var(--text-primary) — was hardcoded #FDE68A / T.ink
+              color: 'var(--text-primary)',
             }}>
               <Camera size={16} style={{ verticalAlign: 'middle', marginRight: 7 }} />
               Our Gallery
             </h1>
+            {/* ✅ BRAND.name — was hardcoded "Kausī Chiyā" */}
             <p style={{
               fontSize: 11, margin: '2px 0 0',
-              color: isDark ? '#7A6550' : '#9CA3AF',
-              fontFamily: "'DM Sans', sans-serif",
-            }}>Peek inside Kausī Chiyā</p>
+              color: 'var(--text-muted)',
+            }}>
+              Peek inside {BRAND.name}
+            </p>
           </div>
         </div>
 
@@ -408,16 +413,12 @@ export default function GalleryPage() {
                 onClick={() => handleCategoryChange(_id)}
                 style={{
                   flexShrink: 0, borderRadius: 99, padding: '6px 14px',
-                  border: `1.5px solid ${active
-                    ? T.amber
-                    : isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.10)'}`,
-                  background: active
-                    ? isDark ? 'rgba(245,158,11,0.14)' : 'rgba(245,158,11,0.10)'
-                    : 'transparent',
-                  color: active ? T.amber : isDark ? '#9CA3AF' : '#6B7280',
+                  // ✅ var tokens — was hardcoded T.amber, rgba values
+                  border: `1.5px solid ${active ? 'var(--accent)' : 'var(--pill-border)'}`,
+                  background: active ? 'var(--accent-dim)' : 'transparent',
+                  color: active ? 'var(--accent)' : 'var(--text-muted)',
                   fontSize: 12, fontWeight: 700, cursor: 'pointer',
                   display: 'flex', alignItems: 'center', gap: 5,
-                  fontFamily: "'DM Sans', sans-serif",
                 }}>
                 <span>{meta.emoji}</span>
                 <span>{meta.label}</span>
@@ -439,7 +440,8 @@ export default function GalleryPage() {
               <div key={i} style={{
                 breakInside: 'avoid', marginBottom: 14,
                 borderRadius: 16, overflow: 'hidden',
-                background: isDark ? '#1A1209' : '#FFFCF5',
+                // ✅ var(--pill-bg) — was hardcoded #1A1209 / #FFFCF5
+                background: 'var(--pill-bg)',
                 height: [180, 240, 160, 200, 220][i % 5],
                 animation: 'galPulse 1.8s ease-in-out infinite',
                 animationDelay: `${i * 0.09}s`,
@@ -449,16 +451,17 @@ export default function GalleryPage() {
         ) : photos.length === 0 ? (
           <div style={{
             textAlign: 'center', padding: '80px 20px',
-            color: isDark ? '#7A6550' : '#9CA3AF',
+            color: 'var(--text-muted)',
           }}>
             <Camera size={40} style={{ opacity: 0.3, marginBottom: 12 }} />
             <div style={{
               fontSize: 16, fontWeight: 700, marginBottom: 6,
-              fontFamily: "'Fraunces', Georgia, serif",
-              color: isDark ? '#FDE68A' : T.ink,
+              fontFamily: "'Lora', Georgia, serif",
+              color: 'var(--text-primary)',
             }}>No photos yet</div>
-            <div style={{ fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>
-              Our manager is busy brewing great coffee 🍵
+            {/* ✅ BRAND.emoji — was hardcoded 🍵 */}
+            <div style={{ fontSize: 13 }}>
+              Our manager is busy brewing great coffee {BRAND.emoji}
             </div>
           </div>
         ) : (
@@ -482,7 +485,9 @@ export default function GalleryPage() {
           <div style={{ textAlign: 'center', padding: '20px 0' }}>
             <div style={{
               width: 26, height: 26, borderRadius: '50%',
-              border: `2.5px solid ${T.amber}`, borderTopColor: 'transparent',
+              // ✅ var(--accent), var(--accent-dim) — was hardcoded T.amber
+              border: '2.5px solid var(--accent)',
+              borderTopColor: 'var(--accent-dim)',
               display: 'inline-block',
               animation: 'galSpin 0.7s linear infinite',
             }} />

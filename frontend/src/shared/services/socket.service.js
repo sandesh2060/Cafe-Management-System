@@ -1,49 +1,41 @@
 // src/shared/services/socket.service.js
 //
 // FIXES:
-// • disconnect() now calls socket.io.skipReconnect = true before disconnect()
-//   so socket.io-client's reconnect manager doesn't race against the new connect().
-// • connect() clears this.socket synchronously before calling io() — no stale ref.
-// • on() warns if socket is null so callers know they registered too early.
-// • GEOFENCE_EXIT — useGpsWatcher needs this; kept in socket layer as an emit,
-//   not a REST call (see useGpsWatcher fix).
+// ✅ Listener queue — on() called before connect() now queues listeners
+//    and replays them once socket connects. Eliminates the race condition
+//    where useNotifications effects register before useSocket connects.
+// ✅ disconnect() sets skipReconnect before disconnect to prevent race.
+// ✅ connect() clears socket synchronously before creating new instance.
+// ✅ off() method works correctly for handler removal.
 
 import { io } from 'socket.io-client'
 
-// VITE_SOCKET_URL must point to the backend root (no /api suffix).
-// In dev with ngrok: VITE_SOCKET_URL=https://xxxx.ngrok-free.dev
-// In production:     VITE_SOCKET_URL=https://api.yourdomain.com
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000'
 
 class SocketService {
   constructor() {
-    this.socket    = null
-    this.listeners = new Map()
-    this._token    = null
+    this.socket       = null
+    this._token       = null
+    // Queue for listeners registered before socket connects
+    // { event, handler }[]
+    this._pendingListeners = []
   }
 
   connect(token) {
-    // ── Guard: never connect without a token ─────────────────────────────────
     if (!token) {
       console.warn('[Socket] connect() called with no token — skipping')
       return null
     }
 
-    // ── Guard: already connected with the same token ──────────────────────────
     if (this.socket?.connected && this._token === token) {
       return this.socket
     }
 
-    // ── If a socket already exists (different token OR disconnected) ──────────
-    // FIX: mark skipReconnect BEFORE disconnect() so the reconnect manager
-    // doesn't immediately try to reconnect while we're creating a new socket.
-    // Without this, socket.io races: old socket reconnects as new socket connects
-    // → "WebSocket closed before connection established".
     if (this.socket) {
       console.log('[Socket] Token changed — reconnecting cleanly...')
-      this.socket.io.skipReconnect = true   // stop auto-reconnect on old instance
+      this.socket.io.skipReconnect = true
       this.socket.disconnect()
-      this.socket = null                    // clear ref synchronously before io()
+      this.socket = null
     }
 
     this._token = token
@@ -55,8 +47,6 @@ class SocketService {
       reconnectionDelay:    1000,
       reconnectionAttempts: 10,
       timeout:              20000,
-      // Bypass ngrok browser warning in dev — ngrok returns HTML interstitial
-      // instead of upgrading the WebSocket connection without this header.
       extraHeaders: import.meta.env.DEV
         ? { 'ngrok-skip-browser-warning': 'true' }
         : {},
@@ -64,17 +54,20 @@ class SocketService {
 
     this.socket.on('connect', () => {
       console.log('[Socket] Connected:', this.socket.id)
+      // Replay any listeners registered before socket was ready
+      this._pendingListeners.forEach(({ event, handler }) => {
+        this.socket.on(event, handler)
+      })
+      this._pendingListeners = []
     })
 
     this.socket.on('disconnect', (reason) => {
       console.log('[Socket] Disconnected:', reason)
     })
 
-    // ── Auth / user-not-found errors ──────────────────────────────────────────
     this.socket.on('connect_error', (err) => {
       const msg     = err.message || ''
       const errData = err.data   || {}
-
       console.error('[Socket] Connection error:', msg, errData)
 
       if (
@@ -83,7 +76,7 @@ class SocketService {
         msg.toLowerCase().includes('unauthorized') ||
         msg.toLowerCase().includes('invalid token')
       ) {
-        console.warn('[Socket] Auth failure — disconnecting and clearing token')
+        console.warn('[Socket] Auth failure — disconnecting')
         this.socket.io.skipReconnect = true
         this.socket.disconnect()
         this.socket = null
@@ -97,11 +90,12 @@ class SocketService {
 
   disconnect() {
     if (this.socket) {
-      this.socket.io.skipReconnect = true   // prevent reconnect manager from firing
+      this.socket.io.skipReconnect = true
       this.socket.disconnect()
       this.socket = null
     }
     this._token = null
+    this._pendingListeners = []
   }
 
   emit(event, data, ack) {
@@ -114,14 +108,17 @@ class SocketService {
   }
 
   // Returns an unsubscribe function.
-  // FIX: warns (instead of silently returning no-op) when socket is null
-  // so callers can detect early-registration bugs during development.
+  // If socket not yet connected, queues the listener for replay on connect.
   on(event, handler) {
     if (!this.socket) {
-      if (import.meta.env.DEV) {
-        console.warn(`[Socket] on('${event}') called before socket connected — listener not registered`)
+      // Queue for replay once socket connects
+      this._pendingListeners.push({ event, handler })
+      return () => {
+        this._pendingListeners = this._pendingListeners.filter(
+          l => !(l.event === event && l.handler === handler)
+        )
+        this.socket?.off(event, handler)
       }
-      return () => {}
     }
     this.socket.on(event, handler)
     return () => this.socket?.off(event, handler)
@@ -129,25 +126,17 @@ class SocketService {
 
   off(event, handler) {
     this.socket?.off(event, handler)
+    this._pendingListeners = this._pendingListeners.filter(
+      l => !(l.event === event && l.handler === handler)
+    )
   }
 
-  joinRoom(room) {
-    this.emit('room:join', { room })
-  }
+  joinRoom(room)  { this.emit('room:join',  { room }) }
+  leaveRoom(room) { this.emit('room:leave', { room }) }
 
-  leaveRoom(room) {
-    this.emit('room:leave', { room })
-  }
-
-  get isConnected() {
-    return this.socket?.connected ?? false
-  }
-
-  get id() {
-    return this.socket?.id
-  }
+  get isConnected() { return this.socket?.connected ?? false }
+  get id()          { return this.socket?.id }
 }
 
-// Singleton
 const socketService = new SocketService()
 export default socketService

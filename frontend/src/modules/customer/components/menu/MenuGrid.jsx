@@ -1,11 +1,20 @@
 // src/modules/customer/components/menu/MenuGrid.jsx
-// Tailwind CSS — IntersectionObserver scroll-reveal for cards
+//
+// ✅ RESPONSIVE GRID — more columns on larger screens:
+//   mobile  (<640px):   2 columns  ← UNCHANGED
+//   tablet  (640px+):   3 columns
+//   desktop (1024px+):  4 columns
+//   wide    (1280px+):  5 columns
+// ✅ Gap scales with screen size
+// ✅ All GSAP scroll-reveal logic unchanged
+// ✅ Colors/fonts from brand.js
 
 import { useEffect, useRef, useCallback } from 'react'
 import gsap from 'gsap'
+import { FONTS } from '@shared/config/brand'
 import MenuCard from './MenuCard'
 
-const BATCH_WINDOW_MS = 60  // reduced from 120 — faster flush on rapid scroll
+const BATCH_WINDOW_MS = 60
 
 export default function MenuGrid({ items }) {
   const gridRef  = useRef(null)
@@ -39,37 +48,30 @@ export default function MenuGrid({ items }) {
   useEffect(() => {
     const grid = gridRef.current
     if (!grid) return
-
     const cards = Array.from(grid.querySelectorAll('.mc-wrap'))
     if (!cards.length) return
-
     gsap.killTweensOf(cards)
     clearTimeout(timerRef.current)
     batchRef.current = []
     gsap.set(cards, { y: 28, opacity: 0, scale: 0.96 })
-
     const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach(entry => {
-          if (entry.isIntersecting) reveal(entry.target, observer)
-        })
-      },
+      (entries) => entries.forEach(entry => {
+        if (entry.isIntersecting) reveal(entry.target, observer)
+      }),
       { rootMargin: '0px 0px -32px 0px', threshold: 0.06 }
     )
-
     cards.forEach(card => observer.observe(card))
-
-    return () => {
-      observer.disconnect()
-      clearTimeout(timerRef.current)
-    }
+    return () => { observer.disconnect(); clearTimeout(timerRef.current) }
   }, [items, reveal])
 
   if (!items?.length) {
     return (
       <div className="flex flex-col items-center justify-center py-12 px-6 gap-3 opacity-55">
         <span className="text-4xl">🍃</span>
-        <p className="m-0 text-sm font-semibold text-[rgba(120,80,20,0.6)] text-center tracking-[-0.02em]">
+        <p
+          className="m-0 text-sm font-semibold text-center tracking-[-0.02em]"
+          style={{ color: 'var(--text-muted)', fontFamily: FONTS.body }}
+        >
           Nothing here yet
         </p>
       </div>
@@ -77,7 +79,24 @@ export default function MenuGrid({ items }) {
   }
 
   return (
-    <div ref={gridRef} className="grid grid-cols-2 gap-3.5">
+    <div
+      ref={gridRef}
+      className={[
+        'grid',
+        // ✅ mobile: 2 col — pixel-perfect identical to current
+        'grid-cols-2',
+        'gap-3.5',
+        // ✅ tablet (640px+): 3 col
+        'sm:grid-cols-3',
+        'sm:gap-4',
+        // ✅ desktop (1024px+): 4 col
+        'lg:grid-cols-4',
+        'lg:gap-[18px]',
+        // ✅ wide (1280px+): 5 col
+        'xl:grid-cols-5',
+        'xl:gap-5',
+      ].join(' ')}
+    >
       {items.map(item => (
         <div key={item._id} className="mc mc-wrap">
           <MenuCard item={item} />

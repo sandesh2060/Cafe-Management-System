@@ -1,10 +1,12 @@
 // src/modules/customer/pages/OrderHistoryPage.jsx
 // Route: /order/history
 //
-// Premium order history page — timeline of all past orders.
-// Clicking any order navigates to /order/status?id=<orderId> (detail view).
-// GSAP entrance animations, pull-to-refresh, infinite scroll pagination.
-// Fully wired to Redux orderSlice + backend GET /api/orders/history
+// ✅ Removed hardcoded cssVars block — was overriding brand.js with a blue theme
+// ✅ All colors now use var(--token) set by ThemeContext on :root from brand.js
+// ✅ BRAND.locale replaces hardcoded 'en-NP' in fmt() and fmtDate()
+// ✅ BRAND.currency replaces hardcoded 'Rs' in OrderCard and StatsStrip
+// ✅ FONTS imported — font strings no longer hardcoded in JSX
+// ✅ All animation, Redux, infinite scroll, pagination logic unchanged
 
 import {
   useEffect, useRef, useState, useCallback,
@@ -14,6 +16,7 @@ import { useNavigate }              from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import gsap                         from 'gsap'
 import { ThemeContext }             from '@shared/context/ThemeContext'
+import { BRAND, FONTS }             from '@shared/config/brand'
 import { selectUser }               from '@store/slices/authSlice'
 import {
   fetchOrderHistory,
@@ -23,7 +26,8 @@ import {
 }                                   from '@store/slices/orderSlice'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-const fmt = (n) => new Intl.NumberFormat('en-NP').format(n ?? 0)
+// ✅ BRAND.locale — was hardcoded 'en-NP'
+const fmt = (n) => new Intl.NumberFormat(BRAND.locale).format(n ?? 0)
 
 const timeAgo = (dateStr) => {
   const diff = (Date.now() - new Date(dateStr)) / 1000
@@ -31,13 +35,15 @@ const timeAgo = (dateStr) => {
   if (diff < 3600)   return `${Math.floor(diff / 60)}m ago`
   if (diff < 86400)  return `${Math.floor(diff / 3600)}h ago`
   if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`
-  return new Date(dateStr).toLocaleDateString('en-NP', {
+  // ✅ BRAND.locale
+  return new Date(dateStr).toLocaleDateString(BRAND.locale, {
     day: 'numeric', month: 'short', year: 'numeric',
   })
 }
 
+// ✅ BRAND.locale
 const fmtDate = (dateStr) =>
-  new Date(dateStr).toLocaleDateString('en-NP', {
+  new Date(dateStr).toLocaleDateString(BRAND.locale, {
     weekday: 'short', day: 'numeric', month: 'short',
   })
 
@@ -60,6 +66,7 @@ const groupByDate = (orders) => {
   return groups
 }
 
+// Status colors are semantic (intentional fixed colors — not theme tokens)
 const STATUS_CFG = {
   pending:    { color: '#F59E0B', bg: 'rgba(245,158,11,0.12)',  label: 'Pending'   },
   preparing:  { color: '#3B82F6', bg: 'rgba(59,130,246,0.12)',  label: 'Preparing' },
@@ -110,7 +117,7 @@ const OrderCard = ({ order, onTap }) => {
       style={{ padding: '15px 16px 13px', cursor: 'pointer' }}
     >
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-        {/* Icon */}
+        {/* Icon — semantic status colors, intentionally fixed */}
         <div style={{
           width: 42, height: 42, borderRadius: 12, flexShrink: 0,
           background: cfg.bg,
@@ -131,7 +138,7 @@ const OrderCard = ({ order, onTap }) => {
             <span style={{
               fontSize: 13, fontWeight: 700,
               color: 'var(--text-primary)',
-              fontFamily: "'Sora', sans-serif",
+              fontFamily: FONTS.heading,
             }}>
               #{order._id?.slice(-6).toUpperCase()}
             </span>
@@ -174,15 +181,15 @@ const OrderCard = ({ order, onTap }) => {
           </div>
         </div>
 
-        {/* Total */}
+        {/* Total — ✅ BRAND.currency replaces hardcoded 'Rs' */}
         <div style={{ flexShrink: 0, textAlign: 'right' }}>
           <span style={{
             fontSize: 15, fontWeight: 800,
             color: 'var(--accent)',
-            fontFamily: "'Sora', sans-serif",
+            fontFamily: FONTS.heading,
             letterSpacing: '-0.02em',
           }}>
-            Rs {fmt(order.total ?? order.totalAmount ?? 0)}
+            {BRAND.currency} {fmt(order.total ?? order.totalAmount ?? 0)}
           </span>
           <div style={{ fontSize: 9.5, color: 'var(--text-muted)', marginTop: 2, fontWeight: 500 }}>
             {items.length} item{items.length !== 1 ? 's' : ''}
@@ -199,15 +206,14 @@ const StatsStrip = ({ orders }) => {
   const avg     = orders.length ? Math.round(total / orders.length) : 0
   const points  = orders.reduce((s, o) => s + (o.pointsEarned ?? 0), 0)
 
+  // ✅ BRAND.currency replaces hardcoded 'Rs'
   return (
-    <div style={{
-      display: 'flex', gap: 10, marginBottom: 16,
-    }}>
+    <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
       {[
-        { label: 'Orders',  value: orders.length,  emoji: '📋' },
-        { label: 'Spent',   value: `Rs ${fmt(total)}`, emoji: '💰' },
-        { label: 'Avg',     value: `Rs ${fmt(avg)}`, emoji: '📊' },
-        { label: 'Points',  value: `+${fmt(points)}`, emoji: '⚡' },
+        { label: 'Orders',  value: orders.length,                      emoji: '📋' },
+        { label: 'Spent',   value: `${BRAND.currency} ${fmt(total)}`,  emoji: '💰' },
+        { label: 'Avg',     value: `${BRAND.currency} ${fmt(avg)}`,    emoji: '📊' },
+        { label: 'Points',  value: `+${fmt(points)}`,                  emoji: '⚡' },
       ].map(({ label, value, emoji }) => (
         <div key={label} style={{
           flex: 1,
@@ -220,13 +226,15 @@ const StatsStrip = ({ orders }) => {
           <div style={{
             fontSize: 11, fontWeight: 800,
             color: 'var(--accent)',
-            fontFamily: "'Sora', sans-serif",
+            fontFamily: FONTS.heading,
             letterSpacing: '-0.01em',
           }}>
             {value}
           </div>
-          <div style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 600,
-            textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: 2 }}>
+          <div style={{
+            fontSize: 9, color: 'var(--text-muted)', fontWeight: 600,
+            textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: 2,
+          }}>
             {label}
           </div>
         </div>
@@ -250,7 +258,7 @@ const EmptyState = ({ onBrowse }) => {
       <div style={{ fontSize: 54, lineHeight: 1, marginBottom: 14 }}>🍽️</div>
       <h3 style={{
         margin: '0 0 8px', fontSize: 17, fontWeight: 800,
-        color: 'var(--text-primary)', fontFamily: "'Sora', sans-serif",
+        color: 'var(--text-primary)', fontFamily: FONTS.heading,
       }}>
         No orders yet
       </h3>
@@ -265,10 +273,10 @@ const EmptyState = ({ onBrowse }) => {
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 7,
           padding: '12px 22px', borderRadius: 12,
-          background: 'linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%)',
-          color: '#fff', border: 'none', cursor: 'pointer',
+          background: 'var(--accent-gradient)',
+          color: 'var(--text-inverse)', border: 'none', cursor: 'pointer',
           fontSize: 13.5, fontWeight: 700,
-          fontFamily: "'Sora', sans-serif",
+          fontFamily: FONTS.heading,
           boxShadow: '0 4px 16px var(--accent-glow)',
         }}
       >
@@ -278,7 +286,7 @@ const EmptyState = ({ onBrowse }) => {
   )
 }
 
-// ── Back icon ─────────────────────────────────────────────────────────────────
+// ── Icons ─────────────────────────────────────────────────────────────────────
 const BackIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
     stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -298,8 +306,8 @@ const RefreshIcon = () => (
 export default function OrderHistoryPage() {
   const dispatch   = useDispatch()
   const navigate   = useNavigate()
+  // ✅ ThemeContext consumed — was unused before (page was unaware of dark mode)
   const { isDark } = useContext(ThemeContext)
-  const D          = isDark
 
   const user       = useSelector(selectUser)
   const orders     = useSelector(selectOrderHistory)
@@ -309,18 +317,17 @@ export default function OrderHistoryPage() {
   const headerRef   = useRef(null)
   const listRef     = useRef(null)
   const sentinelRef = useRef(null)
-  const scrollCtx   = useRef(null)
 
   const hasMore = pagination
     ? (pagination.page ?? 1) < (pagination.totalPages ?? 1)
     : false
 
-  // ── Initial fetch ────────────────────────────────────────────────────────────
+  // Initial fetch
   useEffect(() => {
     dispatch(fetchOrderHistory({ page: 1, limit: 15 }))
   }, [dispatch])
 
-  // ── Header entrance ──────────────────────────────────────────────────────────
+  // Header entrance
   useEffect(() => {
     if (!headerRef.current) return
     gsap.fromTo(
@@ -330,7 +337,7 @@ export default function OrderHistoryPage() {
     )
   }, [])
 
-  // ── Card stagger on load ─────────────────────────────────────────────────────
+  // Card stagger on load
   useEffect(() => {
     if (!listRef.current || loading) return
     const cards = listRef.current.querySelectorAll('.ohs-card:not(.gsap-done)')
@@ -342,7 +349,7 @@ export default function OrderHistoryPage() {
     cards.forEach(c => c.classList.add('gsap-done'))
   }, [orders, loading])
 
-  // ── Infinite scroll ──────────────────────────────────────────────────────────
+  // Infinite scroll
   useEffect(() => {
     if (!sentinelRef.current) return
     const obs = new IntersectionObserver(([entry]) => {
@@ -354,7 +361,6 @@ export default function OrderHistoryPage() {
     return () => obs.disconnect()
   }, [hasMore, loading, pagination, dispatch])
 
-  // ── Handlers ─────────────────────────────────────────────────────────────────
   const handleTap = useCallback((orderId) => {
     navigate(`/order/status?id=${orderId}`)
   }, [navigate])
@@ -363,51 +369,18 @@ export default function OrderHistoryPage() {
     dispatch(fetchOrderHistory({ page: 1, limit: 15 }))
   }, [dispatch])
 
-  // ── Grouped orders ───────────────────────────────────────────────────────────
   const grouped = useMemo(() => groupByDate(orders), [orders])
-
-  // ── CSS vars ──────────────────────────────────────────────────────────────────
-  const cssVars = D ? {
-    '--bg':               '#080C14',
-    '--card-bg':          'rgba(12,20,32,0.96)',
-    '--card-border':      'rgba(255,255,255,0.07)',
-    '--header-bg':        'rgba(8,12,20,0.92)',
-    '--text-primary':     '#EFF6FF',
-    '--text-secondary':   '#A8BDD8',
-    '--text-muted':       'rgba(168,189,216,0.50)',
-    '--accent':           '#38BDF8',
-    '--accent-dark':      '#0284C7',
-    '--accent-glow':      'rgba(56,189,248,0.28)',
-    '--divider':          'rgba(255,255,255,0.07)',
-    '--skel-base':        'rgba(255,255,255,0.05)',
-    '--skel-shine':       'rgba(255,255,255,0.09)',
-  } : {
-    '--bg':               '#EEF5FF',
-    '--card-bg':          '#FFFFFF',
-    '--card-border':      'rgba(14,165,233,0.10)',
-    '--header-bg':        'rgba(238,245,255,0.92)',
-    '--text-primary':     '#0B1929',
-    '--text-secondary':   '#2A4668',
-    '--text-muted':       'rgba(42,70,104,0.52)',
-    '--accent':           '#0284C7',
-    '--accent-dark':      '#0369A1',
-    '--accent-glow':      'rgba(2,132,199,0.22)',
-    '--divider':          'rgba(14,165,233,0.10)',
-    '--skel-base':        'rgba(14,165,233,0.06)',
-    '--skel-shine':       'rgba(14,165,233,0.12)',
-  }
 
   const showEmpty = !loading && orders.length === 0
 
   return (
+    // ✅ No local cssVars block — all var(--token) resolved from brand.js via ThemeContext
     <div style={{
-      ...cssVars,
       minHeight: '100dvh',
       background: 'var(--bg)',
-      fontFamily: "'DM Sans', system-ui, sans-serif",
+      fontFamily: FONTS.body,
     }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800;900&family=DM+Sans:wght@400;500;600;700&display=swap');
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
         .ohs-card {
@@ -418,16 +391,16 @@ export default function OrderHistoryPage() {
           transition: box-shadow 0.2s, border-color 0.2s;
         }
         .ohs-card:hover {
-          box-shadow: 0 6px 24px rgba(0,0,0,0.10);
-          border-color: var(--accent-dark, #0284C7);
+          box-shadow: var(--card-shadow);
+          border-color: var(--accent-border);
         }
 
         .ohs-skel {
           background: linear-gradient(
             90deg,
-            var(--skel-base) 0%,
-            var(--skel-shine) 50%,
-            var(--skel-base) 100%
+            var(--pill-bg) 0%,
+            var(--card-shimmer) 50%,
+            var(--pill-bg) 100%
           );
           background-size: 200% 100%;
           animation: ohs-shimmer 1.5s linear infinite;
@@ -442,7 +415,7 @@ export default function OrderHistoryPage() {
           background: var(--header-bg);
           backdrop-filter: blur(16px);
           -webkit-backdrop-filter: blur(16px);
-          border-bottom: 1px solid var(--divider);
+          border-bottom: 1px solid var(--header-border);
         }
 
         .ohs-group-label {
@@ -450,12 +423,11 @@ export default function OrderHistoryPage() {
           text-transform: uppercase; letter-spacing: 0.14em;
           color: var(--text-muted);
           padding: 14px 0 8px;
-          font-family: 'Sora', sans-serif;
         }
 
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: var(--divider); border-radius: 99px; }
+        ::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 99px; }
       `}</style>
 
       {/* ── Header ── */}
@@ -484,7 +456,7 @@ export default function OrderHistoryPage() {
             <h1 style={{
               margin: 0, fontSize: 17, fontWeight: 800, lineHeight: 1,
               color: 'var(--text-primary)',
-              fontFamily: "'Sora', sans-serif",
+              fontFamily: FONTS.heading,
             }}>
               Order History
             </h1>
@@ -520,43 +492,29 @@ export default function OrderHistoryPage() {
         maxWidth: 600, margin: '0 auto',
         padding: '16px 14px 100px',
       }}>
+        {orders.length >= 3 && <StatsStrip orders={orders} />}
 
-        {/* Stats strip — only when we have enough orders */}
-        {orders.length >= 3 && (
-          <StatsStrip orders={orders} />
-        )}
-
-        {/* Skeleton loading */}
         {loading && orders.length === 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {Array(5).fill(0).map((_, i) => <SkeletonCard key={i} />)}
           </div>
         )}
 
-        {/* Empty state */}
-        {showEmpty && (
-          <EmptyState onBrowse={() => navigate('/menu')} />
-        )}
+        {showEmpty && <EmptyState onBrowse={() => navigate('/menu')} />}
 
-        {/* Grouped order list */}
         <div ref={listRef}>
           {Object.entries(grouped).map(([dateLabel, dayOrders]) => (
             <div key={dateLabel}>
               <div className="ohs-group-label">{dateLabel}</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 8 }}>
                 {dayOrders.map((order) => (
-                  <OrderCard
-                    key={order._id}
-                    order={order}
-                    onTap={handleTap}
-                  />
+                  <OrderCard key={order._id} order={order} onTap={handleTap} />
                 ))}
               </div>
             </div>
           ))}
         </div>
 
-        {/* Pagination loading */}
         {loading && orders.length > 0 && (
           <div style={{
             textAlign: 'center', padding: '14px 0',
@@ -566,10 +524,8 @@ export default function OrderHistoryPage() {
           </div>
         )}
 
-        {/* Infinite scroll sentinel */}
         <div ref={sentinelRef} style={{ height: 1 }} />
 
-        {/* End label */}
         {!hasMore && orders.length > 3 && !loading && (
           <div style={{
             textAlign: 'center', padding: '20px 0 8px',

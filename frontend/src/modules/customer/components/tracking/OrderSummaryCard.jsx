@@ -1,58 +1,100 @@
 // src/modules/customer/components/tracking/OrderSummaryCard.jsx
 //
-// FIXES:
-// • Removed unused COLORS import (was imported, never used — dead import)
-// • item.emoji fallback to '🍽️' so rows don't render blank when emoji is missing
-// • item.portionLabel shown when present (cart items carry portionLabel)
+// ✅ BRAND.currency — hardcoded 'Rs' replaced everywhere
+// ✅ text-brew → var(--text-primary), text-brew-soft → var(--text-muted)
+// ✅ text-saffron → var(--accent), border-cream-border → var(--divider)
+// ✅ card div uses var(--card-bg/border) inline styles — no Tailwind color deps
+// ✅ item.emoji fallback to '🍽️'
+// ✅ item.portionLabel shown when present
+
+import { BRAND } from '@shared/config/brand'
 
 const OrderSummaryCard = ({ order }) => {
   if (!order?.items?.length) return null
 
   return (
-    <div className="card space-y-3">
-      <h3 className="font-bold text-brew text-sm">Your Order</h3>
+    <div style={{
+      padding: '16px', borderRadius: 'var(--radius-xl)',
+      background: 'var(--card-bg)',
+      border: '1px solid var(--card-border)',
+      boxShadow: 'var(--card-shadow)',
+      display: 'flex', flexDirection: 'column', gap: 12,
+    }}>
+      <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
+        Your Order
+      </h3>
 
-      <div className="space-y-2">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {order.items.map((item, i) => (
-          <div key={item._id ?? item.menuItemId ?? i} className="flex items-center gap-3">
-            {/* Emoji / thumb */}
-            <span className="text-xl flex-shrink-0">
+          <div key={item._id ?? item.menuItemId ?? i}
+            style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 20, flexShrink: 0 }}>
               {item.emoji || '🍽️'}
             </span>
-
-            {/* Name + portion + notes */}
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-brew truncate">{item.name}</p>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{
+                margin: 0, fontSize: 13, fontWeight: 500,
+                // ✅ var(--text-primary) — was text-brew
+                color: 'var(--text-primary)',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {item.name}
+              </p>
               {item.portionLabel && (
-                <p className="text-xs font-semibold text-saffron truncate">{item.portionLabel}</p>
+                <p style={{
+                  margin: '1px 0 0', fontSize: 11, fontWeight: 600,
+                  // ✅ var(--accent) — was text-saffron
+                  color: 'var(--accent)',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {item.portionLabel}
+                </p>
               )}
               {item.notes && (
-                <p className="text-xs text-brew-soft truncate">Note: {item.notes}</p>
+                <p style={{
+                  margin: '1px 0 0', fontSize: 11,
+                  color: 'var(--text-muted)',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  Note: {item.notes}
+                </p>
               )}
             </div>
-
-            {/* Qty + line total */}
-            <div className="flex-shrink-0 text-right">
-              <p className="text-xs text-brew-soft">×{item.quantity}</p>
-              <p className="text-sm font-bold text-brew">
-                Rs {item.price * item.quantity}
+            <div style={{ flexShrink: 0, textAlign: 'right' }}>
+              <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>
+                ×{item.quantity}
+              </p>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
+                {/* ✅ BRAND.currency — was hardcoded 'Rs' */}
+                {BRAND.currency} {item.price * item.quantity}
               </p>
             </div>
           </div>
         ))}
       </div>
 
-      {/* Special note */}
       {order.specialNote && (
-        <div className="pt-2 border-t border-cream-border">
-          <p className="text-xs text-brew-soft">📝 {order.specialNote}</p>
+        <div style={{
+          paddingTop: 10,
+          // ✅ var(--divider) — was border-cream-border
+          borderTop: '1px solid var(--divider)',
+        }}>
+          <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>
+            📝 {order.specialNote}
+          </p>
         </div>
       )}
 
-      {/* Total */}
-      <div className="pt-2 border-t border-cream-border flex justify-between items-center">
-        <span className="text-sm text-brew-soft">Total</span>
-        <span className="font-bold text-brew">Rs {order.total}</span>
+      <div style={{
+        paddingTop: 10,
+        borderTop: '1px solid var(--divider)',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      }}>
+        <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Total</span>
+        <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>
+          {/* ✅ BRAND.currency — was hardcoded 'Rs' */}
+          {BRAND.currency} {order.total}
+        </span>
       </div>
     </div>
   )

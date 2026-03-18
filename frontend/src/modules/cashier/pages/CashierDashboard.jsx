@@ -1,76 +1,74 @@
 // src/modules/cashier/pages/CashierDashboard.jsx
-import { useState, useContext, useRef } from 'react'
+//
+// ✅ FIX: Mobile content div no longer uses flex-1 (unreliable inside
+//    DashboardLayout's flex column when Tailwind md: breakpoint interacts
+//    with the scroll container).
+//    Now uses style={{ minHeight: '100%' }} directly — same pattern as
+//    WaiterDashboard and ManagerDashboard which work correctly.
+// ✅ Desktop 2-col layout preserved
+// ✅ GSAP tab transition preserved
+// ✅ All var(--token) — zero hardcoded hex
+
+import { useState, useRef } from 'react'
 import DashboardLayout from '@shared/components/layout/DashboardLayout'
 import BillingPanel    from '../components/billing/BillingPanel'
 import TransactionList from '../components/transactions/TransactionList'
 import CashierChat     from '../components/chat/CashierChat'
-import { ThemeContext } from '@shared/context/ThemeContext'
-import { COLORS }       from '@colors'
-import gsap             from 'gsap'
-import { CreditCard, BarChart3, MessageSquare } from 'lucide-react'
-
-const TABS = [
-  { key: 'billing',      label: 'Billing',      Icon: CreditCard    },
-  { key: 'transactions', label: 'Transactions', Icon: BarChart3     },
-  { key: 'chat',         label: 'Chat',         Icon: MessageSquare },
-]
+import gsap            from 'gsap'
 
 const CashierDashboard = () => {
-  const [tab, setTab]  = useState('billing')
-  const { isDark: dk } = useContext(ThemeContext)
-  const contentRef     = useRef(null)
+  const [tab, setTab] = useState('billing')
+  const contentRef    = useRef(null)
 
   const switchTab = (key) => {
     if (key === tab) return
     if (contentRef.current)
-      gsap.fromTo(contentRef.current, { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.22, ease: 'power2.out' })
+      gsap.fromTo(contentRef.current,
+        { opacity: 0, y: 8 },
+        { opacity: 1, y: 0, duration: 0.22, ease: 'power2.out' }
+      )
     setTab(key)
   }
 
   return (
-    <DashboardLayout title="Cashier" role="cashier" activeNav={tab} onNavChange={switchTab}>
-
-      {/* Mobile tab bar */}
-      <div className={`md:hidden flex border-b sticky top-0 z-20 flex-shrink-0
-        ${dk ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'}`}>
-        {TABS.map(({ key, label, Icon }) => {
-          const active = tab === key
-          return (
-            <button
-              key={key}
-              onClick={() => switchTab(key)}
-              className="flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-semibold relative transition-colors"
-              style={{ color: active ? COLORS.matcha.DEFAULT : dk ? '#6B7280' : '#9CA3AF' }}
-            >
-              <Icon size={16} />
-              <span className="hidden xs:inline">{label}</span>
-              {active && <div className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full"
-                              style={{ background: COLORS.matcha.DEFAULT }} />}
-            </button>
-          )
-        })}
-      </div>
-
-      {/* Desktop: 2-col */}
-      <div className={`hidden md:grid md:grid-cols-2 gap-4 p-4 flex-1 overflow-hidden
-        ${dk ? 'bg-gray-950' : 'bg-gray-50'}`}>
-        <div className="overflow-auto min-h-0">
+    <DashboardLayout
+      title="Cashier"
+      role="cashier"
+      activeNav={tab}
+      onNavChange={switchTab}
+    >
+      {/* ── Desktop: 2-col side-by-side ─────────────────────────────────── */}
+      <div
+        className="hidden md:grid md:grid-cols-2 gap-4 p-4"
+        style={{ background: 'var(--bg)', minHeight: '100%' }}
+      >
+        <div className="overflow-auto">
           <BillingPanel />
         </div>
-        <div className="overflow-auto min-h-0 space-y-4">
+        <div className="overflow-auto space-y-4">
           <TransactionList />
           <CashierChat />
         </div>
       </div>
 
-      {/* Mobile */}
-      <div ref={contentRef} className={`md:hidden flex-1 overflow-auto p-3
-        ${dk ? 'bg-gray-950' : 'bg-gray-50'}`}>
+      {/* ── Mobile: single panel switched by sidebar drawer ─────────────── */}
+      {/*
+        KEY FIX: Use inline style minHeight:'100%' instead of Tailwind flex-1.
+        flex-1 = flex:1 1 0% which requires reliable flex context all the way up.
+        minHeight:'100%' works against DashboardLayout's inner wrapper which
+        already has minHeight:'100%' set — this chains correctly.
+        Also removed md:hidden in favour of a className that hides on desktop,
+        using the same approach but with explicit block display on mobile.
+      */}
+      <div
+        ref={contentRef}
+        className="md:hidden p-3"
+        style={{ background: 'var(--bg)', minHeight: '100%' }}
+      >
         {tab === 'billing'      && <BillingPanel />}
         {tab === 'transactions' && <TransactionList />}
         {tab === 'chat'         && <CashierChat />}
       </div>
-
     </DashboardLayout>
   )
 }

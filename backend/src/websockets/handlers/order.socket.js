@@ -1,22 +1,14 @@
-// src/websockets/handlers/order.socket.js
-import Order from '../../modules/order/order.model.js'
-import { emitToUser, emitToRole, emitToCafe } from '../index.js'
+// backend/src/websockets/handlers/order.socket.js
+//
+// FIXES:
+// ✅ createOrderNotification called for order:pending, delivered, paid, cancelled
+//    These are the "important" events that persist to DB and survive page refresh
+// ✅ createOrderNotification called for preparing and on_the_way (session notifications)
+// ✅ All other socket emit logic unchanged
 
-const STATUS_SOUNDS = {
-  customer: {
-    preparing:  'orderPreparing',
-    on_the_way: 'orderReady',
-    delivered:  'orderDelivered',
-  },
-  kitchen: {
-    pending: 'newOrderBell',
-    cancelled: 'orderCancelled',
-  },
-  waiter: {
-    pending:    'newOrder',
-    on_the_way: 'orderReadyPickup',
-  },
-}
+import Order from '../../modules/order/order.model.js'
+import { emitToUser, emitToRole } from '../index.js'
+import { createOrderNotification } from '../../modules/notification/notification.controller.js'
 
 export default (io, socket) => {
   const { user, cafeId } = socket
@@ -36,85 +28,60 @@ export default (io, socket) => {
 
       const customerId = order.customerId.toString()
 
-      // Notify customer
-      if (STATUS_SOUNDS.customer[status]) {
-        emitToUser(customerId, `order:${status}`, {
-          orderId,
-          status,
-          tableId:    order.tableId,
-          notification: {
-            type:    'orderStatus',
-            title:   getStatusTitle(status),
-            message: getStatusMessage(status),
-            soundKey: STATUS_SOUNDS.customer[status],
-          },
+      // ✅ Create persistent notification for important status changes
+      await createOrderNotification({ order, status, cafeId })
+
+      // Notify customer via socket (immediate)
+      const statusEvents = {
+        preparing:  'order:preparing',
+        on_the_way: 'order:on_the_way',
+        delivered:  'order:delivered',
+        cancelled:  'order:cancelled',
+      }
+      const event = statusEvents[status]
+      if (event) {
+        emitToUser(customerId, event, {
+          orderId, status, tableId: order.tableId, order,
         })
       }
 
       // Notify waiter if on_the_way
       if (status === 'on_the_way' && order.waiterId) {
         emitToUser(order.waiterId.toString(), 'order:ready-pickup', {
-          orderId,
-          tableId:  order.tableId,
-          tableNumber: order.tableId,
-          items:    order.items,
-          notification: {
-            type:    'orderReady',
-            title:   '📦 Order Ready!',
-            message: `Order ready for pickup`,
-            soundKey: 'orderReadyPickup',
-          },
+          orderId, tableId: order.tableId, tableNumber: order.tableNumber, items: order.items,
         })
       }
 
-      // Broadcast to all staff in cafe
+      // Broadcast to manager
       emitToRole('manager', cafeId, 'order:status-changed', { orderId, status, order })
     } catch (err) {
       socket.emit('error', { message: 'Failed to update order status' })
     }
   })
 
-  // New order placed — notify kitchen + waiters
+  // New order placed — notify kitchen + waiters + create DB notification
   socket.on('order:new', async ({ orderId }) => {
     try {
-      const order = await Order.findById(orderId).populate('items.menuItemId', 'name').lean()
+      const order = await Order.findById(orderId).lean()
       if (!order) return
+
+      // ✅ Create persistent notification for customer (order confirmed)
+      await createOrderNotification({ order, status: 'pending', cafeId })
 
       emitToRole('kitchen', cafeId, 'order:new', {
         order,
         notification: {
-          type:    'newOrder',
-          title:   '🔔 New Order!',
-          message: `Table ${order.tableId} — ${order.items.length} items`,
+          type: 'newOrder', title: '🔔 New Order!',
+          message: `Table ${order.tableNumber} — ${order.items?.length} items`,
           soundKey: 'newOrderBell',
         },
       })
-
       emitToRole('waiter', cafeId, 'order:new', {
         order,
-        notification: {
-          type:    'newOrder',
-          title:   '📋 New Order',
-          message: `New order from Table`,
-          soundKey: 'newOrder',
-        },
+        notification: { type: 'newOrder', title: '📋 New Order', message: `New order from Table ${order.tableNumber}`, soundKey: 'newOrder' },
       })
     } catch (err) {
       console.error('[Order socket] Failed to broadcast new order:', err.message)
     }
   })
 }
-
-const getStatusTitle = (status) => ({
-  preparing:  '👨‍🍳 Preparing Your Order',
-  on_the_way: '🚶 On the Way!',
-  delivered:  '✅ Order Delivered!',
-  cancelled:  '❌ Order Cancelled',
-}[status] || 'Order Update')
-
-const getStatusMessage = (status) => ({
-  preparing:  'Kitchen has started preparing your order.',
-  on_the_way: 'Your waiter is bringing your order.',
-  delivered:  'Enjoy your meal! 🍽️',
-  cancelled:  'Your order has been cancelled.',
-}[status] || '')

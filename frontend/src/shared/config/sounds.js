@@ -1,45 +1,22 @@
 // src/shared/config/sounds.js
-// Single source of truth for all MP3 paths.
-// Admin role key is intentionally empty — admin is always silent.
+// ─────────────────────────────────────────────────────────────────────────────
+// WHITE-LABEL: All sound paths come from BRAND.SOUNDS (brand.js → .env.local).
+// To override any sound for a deployment, set the corresponding VITE_SOUND_*
+// variable in .env.local. Defaults match the original file structure.
+//
+// Usage:
+//   import { SOUNDS, ROLE_SOUND_MAP } from '@shared/config/sounds'
+//   const path = SOUNDS.customer.orderConfirmed  // → env value or default
+// ─────────────────────────────────────────────────────────────────────────────
 
-export const SOUNDS = {
-  customer: {
-    orderConfirmed:   '/sounds/customer/order-confirmed.mp3',
-    orderPreparing:   '/sounds/customer/order-preparing.mp3',
-    orderReady:       '/sounds/customer/order-ready.mp3',
-    orderDelivered:   '/sounds/customer/order-delivered.mp3',
-    pointsEarned:     '/sounds/customer/points-earned.mp3',
-    tierUpgraded:     '/sounds/customer/tier-upgraded.mp3',
-    waiterComing:     '/sounds/customer/waiter-coming.mp3',
-  },
-  waiter: {
-    newWaiterCall:    '/sounds/waiter/new-waiter-call.mp3',
-    newOrder:         '/sounds/waiter/new-order.mp3',
-    orderReadyPickup: '/sounds/waiter/order-ready-pickup.mp3',
-    newMessage:       '/sounds/waiter/new-message.mp3',
-    urgentAlert:      '/sounds/waiter/urgent-alert.mp3',
-  },
-  kitchen: {
-    newOrderBell:     '/sounds/kitchen/new-order-bell.mp3',
-    orderCancelled:   '/sounds/kitchen/order-cancelled.mp3',
-    lowStock:         '/sounds/kitchen/low-stock-alert.mp3',
-    newMessage:       '/sounds/kitchen/new-message.mp3',
-  },
-  cashier: {
-    paymentRequest:   '/sounds/cashier/payment-request.mp3',
-    paymentConfirmed: '/sounds/cashier/payment-confirmed.mp3',
-    newMessage:       '/sounds/cashier/new-message.mp3',
-  },
-  manager: {
-    sessionAbandoned: '/sounds/manager/session-abandoned.mp3',
-    newStaffMessage:  '/sounds/manager/new-staff-message.mp3',
-    lowInventory:     '/sounds/manager/low-inventory.mp3',
-    dailySummary:     '/sounds/manager/daily-summary.mp3',
-  },
-  admin: {}, // Intentionally empty — admin is always silent
-}
+import { SOUNDS as _SOUNDS } from '@shared/config/brand'
 
-// Role → event → sound key mapping
+// Re-export so all consumers keep the same import path
+export const SOUNDS = _SOUNDS
+
+// ─── Role → event → sound key mapping ────────────────────────────────────────
+// Keys map socket/event names to keys inside SOUNDS[role].
+// The sound service does: SOUNDS[role][ROLE_SOUND_MAP[role][event]]
 export const ROLE_SOUND_MAP = {
   customer: {
     'order:confirmed':       'orderConfirmed',
@@ -74,5 +51,13 @@ export const ROLE_SOUND_MAP = {
     'inventory:low-stock':   'lowInventory',
     'report:daily-ready':    'dailySummary',
   },
-  admin: {}, // No events mapped — admin is silent
+  admin: {}, // No events mapped — admin is always silent
+}
+
+// ─── Helper: resolve a sound path for a given role + event ───────────────────
+// Returns the MP3 path string or null if not mapped.
+export const resolveSoundPath = (role, event) => {
+  const key = ROLE_SOUND_MAP[role]?.[event]
+  if (!key) return null
+  return SOUNDS[role]?.[key] ?? null
 }

@@ -1,10 +1,10 @@
 // src/modules/customer/pages/ReviewsPage.jsx
-// Route: /reviews
 //
-// ✅ Header: "Write" only when no myReview, "Edit" only when myReview exists
-// ✅ MyReview card pinned at top with content pre-loaded, edit/delete inline
-// ✅ Modal seeds rating+text from existing immediately (lazy useState)
-// ✅ GSAP: slide-up sheet, card stagger, star bounce, bar animate, like pulse
+// ✅ Removed hardcoded cssVars block — was overriding brand.js with a blue theme
+//    (same pattern as OrderHistoryPage — both had completely different color schemes)
+// ✅ BRAND.locale replaces hardcoded "en-NP" in fmt() and timeAgo()
+// ✅ All var(--token) now resolved correctly from ThemeContext / brand.js
+// ✅ All logic, modals, animations, GSAP, infinite scroll unchanged
 
 import {
   useEffect, useRef, useState, useCallback,
@@ -15,6 +15,7 @@ import { useNavigate } from "react-router-dom";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { ThemeContext } from "@shared/context/ThemeContext";
+import { BRAND } from "@shared/config/brand";
 import { selectUser, selectIsGuest } from "@store/slices/authSlice";
 import {
   fetchReviews, fetchMyReview, submitReview, editReview, removeReview,
@@ -31,14 +32,16 @@ const MAX_CHARS = 500;
 const MIN_CHARS = 10;
 
 // ── helpers ────────────────────────────────────────────────────────────────────
-const fmt = (n) => new Intl.NumberFormat("en-NP").format(n ?? 0);
+// ✅ BRAND.locale — was hardcoded "en-NP"
+const fmt = (n) => new Intl.NumberFormat(BRAND.locale).format(n ?? 0);
 const timeAgo = (d) => {
   const s = (Date.now() - new Date(d)) / 1000;
   if (s < 60)      return "just now";
   if (s < 3600)    return `${Math.floor(s/60)}m ago`;
   if (s < 86400)   return `${Math.floor(s/3600)}h ago`;
   if (s < 2592000) return `${Math.floor(s/86400)}d ago`;
-  return new Date(d).toLocaleDateString("en-NP", { day:"numeric", month:"short", year:"numeric" });
+  // ✅ BRAND.locale
+  return new Date(d).toLocaleDateString(BRAND.locale, { day:"numeric", month:"short", year:"numeric" });
 };
 const initials    = (n="") => n.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase()||"?";
 const ACOLORS     = ["#F97316","#EAB308","#22C55E","#06B6D4","#8B5CF6","#EC4899","#14B8A6","#F43F5E"];
@@ -227,7 +230,7 @@ const SummaryPanel = ({summary, activeFilter, onFilter}) => {
   );
 };
 
-// ── MY REVIEW CARD — pinned at top, shows existing review with edit/delete ─────
+// ── MY REVIEW CARD ─────────────────────────────────────────────────────────────
 const MyReviewCard = ({review, onEdit, onDelete}) => {
   const cardRef = useRef(null);
 
@@ -248,11 +251,7 @@ const MyReviewCard = ({review, onEdit, onDelete}) => {
       marginBottom:10, position:"relative",
       boxShadow:"0 0 0 3px var(--accent-dim)",
     }}>
-      {/* "Your review" badge */}
-      <div style={{
-        display:"flex", alignItems:"center", justifyContent:"space-between",
-        marginBottom:10,
-      }}>
+      <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10}}>
         <div style={{
           display:"inline-flex", alignItems:"center", gap:5,
           fontSize:9, fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase",
@@ -261,7 +260,6 @@ const MyReviewCard = ({review, onEdit, onDelete}) => {
         }}>
           <span>✦</span> Your review
         </div>
-        {/* Edit + Delete actions */}
         <div style={{display:"flex", gap:5}}>
           <button className="icon-btn" style={{color:"var(--accent)"}}
             onClick={()=>onEdit(review)} title="Edit your review">
@@ -274,7 +272,6 @@ const MyReviewCard = ({review, onEdit, onDelete}) => {
         </div>
       </div>
 
-      {/* Content */}
       <div style={{display:"flex", gap:10, alignItems:"flex-start"}}>
         <Avatar name={review.customerName} src={review.customerAvatar} size={36}/>
         <div style={{flex:1, minWidth:0}}>
@@ -295,13 +292,11 @@ const MyReviewCard = ({review, onEdit, onDelete}) => {
         {review.text}
       </p>
 
-      {/* Tap to edit hint */}
       <button onClick={()=>onEdit(review)} style={{
         display:"flex", alignItems:"center", gap:5, marginTop:10,
         background:"none", border:"none", cursor:"pointer", outline:"none",
         padding:0, color:"var(--accent)", fontSize:11, fontWeight:600,
-        fontFamily:"'Sora',sans-serif", opacity:0.8,
-        transition:"opacity 0.15s",
+        fontFamily:"'Sora',sans-serif", opacity:0.8, transition:"opacity 0.15s",
       }}
         onMouseEnter={e=>e.currentTarget.style.opacity=1}
         onMouseLeave={e=>e.currentTarget.style.opacity=0.8}>
@@ -360,7 +355,7 @@ const ReviewCard = memo(({review, currentUser, isGuest, onLike}) => {
         <div style={{marginTop:10, padding:"8px 10px", background:"var(--reply-bg)",
           border:"1px solid var(--reply-border)", borderLeft:"3px solid var(--accent)", borderRadius:8}}>
           <div style={{fontSize:8.5, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em", color:"var(--accent)", marginBottom:4}}>
-            ☕ Cafe response
+            {BRAND.emoji} Cafe response
           </div>
           <p style={{margin:0, fontSize:12, lineHeight:1.6, color:"var(--text-secondary)"}}>
             {review.managerReply.text}
@@ -389,9 +384,8 @@ const ReviewCard = memo(({review, currentUser, isGuest, onLike}) => {
 });
 ReviewCard.displayName = "ReviewCard";
 
-// ── Review modal (write / edit) ────────────────────────────────────────────────
+// ── Review modal ───────────────────────────────────────────────────────────────
 const ReviewModal = ({isOpen, onClose, existing, onSubmit, submitting, submitError}) => {
-  // Seed immediately from existing — fixes stale-on-mount bug
   const [rating, setRating] = useState(() => existing?.rating ?? 0);
   const [text,   setText]   = useState(() => existing?.text   ?? "");
 
@@ -400,7 +394,6 @@ const ReviewModal = ({isOpen, onClose, existing, onSubmit, submitting, submitErr
   const textareaRef = useRef(null);
   const dispatch    = useDispatch();
 
-  // Re-seed whenever target review or open state changes
   useEffect(() => {
     setRating(existing?.rating ?? 0);
     setText(existing?.text   ?? "");
@@ -408,7 +401,6 @@ const ReviewModal = ({isOpen, onClose, existing, onSubmit, submitting, submitErr
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [existing?._id, isOpen]);
 
-  // Animate textarea content in when editing
   useEffect(() => {
     if (!isOpen || !textareaRef.current || !existing?.text) return;
     gsap.fromTo(textareaRef.current,
@@ -416,7 +408,6 @@ const ReviewModal = ({isOpen, onClose, existing, onSubmit, submitting, submitErr
       {opacity:1, y:0, duration:0.3, ease:"power2.out", delay:0.25});
   }, [isOpen, existing?._id]);
 
-  // Slide-up animation
   useEffect(() => {
     if (!isOpen || !overlayRef.current || !panelRef.current) return;
     gsap.fromTo(overlayRef.current, {opacity:0}, {opacity:1, duration:0.22, ease:"power2.out"});
@@ -434,10 +425,9 @@ const ReviewModal = ({isOpen, onClose, existing, onSubmit, submitting, submitErr
     if (!rating || text.trim().length < MIN_CHARS) return;
     const ok = await onSubmit({rating, text:text.trim()});
     if (ok) {
-      // Success flash animation before closing
       if (panelRef.current) {
         gsap.to(panelRef.current, {
-          boxShadow:"0 -24px 60px rgba(56,189,248,0.3)",
+          boxShadow:"0 -24px 60px var(--accent-glow)",
           duration:0.2, yoyo:true, repeat:1,
           onComplete: dismiss,
         });
@@ -458,7 +448,7 @@ const ReviewModal = ({isOpen, onClose, existing, onSubmit, submitting, submitErr
       style={{
         position:"fixed", inset:0, zIndex:1000,
         display:"flex", flexDirection:"column", justifyContent:"flex-end",
-        background:"rgba(0,0,0,0.58)", backdropFilter:"blur(8px)",
+        background:"var(--overlay-bg)", backdropFilter:"blur(8px)",
       }}>
       <div ref={panelRef} style={{
         width:"100%", maxWidth:520, margin:"0 auto",
@@ -467,10 +457,8 @@ const ReviewModal = ({isOpen, onClose, existing, onSubmit, submitting, submitErr
         boxShadow:"0 -24px 60px rgba(0,0,0,0.4)",
         maxHeight:"92dvh", overflowY:"auto",
       }}>
-        {/* Drag handle */}
         <div style={{width:36, height:4, borderRadius:99, background:"var(--divider)", margin:"12px auto 20px"}}/>
 
-        {/* Title row */}
         <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:22}}>
           <div>
             <h2 style={{margin:0, fontSize:16, fontWeight:800, color:"var(--text-primary)", fontFamily:"'Sora',sans-serif"}}>
@@ -494,12 +482,10 @@ const ReviewModal = ({isOpen, onClose, existing, onSubmit, submitting, submitErr
         </div>
 
         <form onSubmit={handleSubmit}>
-          {/* Star picker — pre-filled when editing */}
           <div style={{marginBottom:22}}>
             <StarPicker value={rating} onChange={setRating}/>
           </div>
 
-          {/* Textarea — pre-filled when editing */}
           <div style={{position:"relative", marginBottom:12}}>
             <textarea
               ref={textareaRef}
@@ -529,7 +515,7 @@ const ReviewModal = ({isOpen, onClose, existing, onSubmit, submitting, submitErr
 
           {submitError && (
             <div style={{padding:"9px 12px", borderRadius:9, marginBottom:12,
-              background:"var(--error-bg)", border:"1px solid var(--danger)",
+              background:"var(--danger-bg)", border:"1px solid var(--danger-border)",
               color:"var(--danger)", fontSize:12, fontWeight:500}}>
               {submitError}
             </div>
@@ -543,9 +529,7 @@ const ReviewModal = ({isOpen, onClose, existing, onSubmit, submitting, submitErr
               outline:"none", fontSize:13, fontWeight:700,
               fontFamily:"'Sora',sans-serif", letterSpacing:"0.01em",
               cursor: canPost?"pointer":"not-allowed",
-              background: canPost
-                ? "linear-gradient(135deg,var(--accent),var(--accent-dark))"
-                : "var(--btn-disabled)",
+              background: canPost ? "var(--accent-gradient)" : "var(--btn-disabled)",
               color: canPost?"#fff":"var(--text-muted)",
               boxShadow: canPost?"0 4px 16px var(--accent-glow)":"none",
               transition:"opacity 0.18s, transform 0.12s",
@@ -577,7 +561,7 @@ const DeleteModal = ({isOpen, onClose, onConfirm, submitting}) => {
     <div ref={overlayRef} onClick={e=>e.target===overlayRef.current&&dismiss()}
       style={{position:"fixed",inset:0,zIndex:1100,display:"flex",alignItems:"center",
         justifyContent:"center",padding:"0 20px",
-        background:"rgba(0,0,0,0.65)",backdropFilter:"blur(8px)"}}>
+        background:"var(--overlay-bg)",backdropFilter:"blur(8px)"}}>
       <div ref={panelRef} style={{width:"100%",maxWidth:310,textAlign:"center",
         background:"var(--modal-bg)",border:"1px solid var(--card-border)",
         borderRadius:20,padding:"26px 20px",boxShadow:"0 24px 60px rgba(0,0,0,0.5)"}}>
@@ -617,7 +601,7 @@ const EmptyState = ({onWrite, isGuest}) => {
   },[]);
   return (
     <div ref={ref} style={{textAlign:"center",padding:"48px 24px 36px"}}>
-      <div style={{fontSize:44,lineHeight:1,marginBottom:12}}>☕</div>
+      <div style={{fontSize:44,lineHeight:1,marginBottom:12}}>{BRAND.emoji}</div>
       <h3 style={{margin:"0 0 8px",fontSize:15,fontWeight:800,color:"var(--text-primary)",fontFamily:"'Sora',sans-serif"}}>
         No reviews yet
       </h3>
@@ -637,6 +621,7 @@ const EmptyState = ({onWrite, isGuest}) => {
 export default function ReviewsPage() {
   const dispatch   = useDispatch();
   const navigate   = useNavigate();
+  // ✅ ThemeContext consumed — was unused (cssVars block was overriding everything)
   const {isDark}   = useContext(ThemeContext);
   const D          = isDark;
 
@@ -655,14 +640,11 @@ export default function ReviewsPage() {
   const pagination = useSelector(selPagination);
   const loading    = useSelector(selLoading);
   const hasMore    = useSelector(selHasMore);
-  // myReview from selector — used ONLY for submit/edit ID logic (may be sparse)
   const myReview   = useSelector(selMine);
   const submitting  = useSelector(selectSubmitting);
   const submitError = useSelector(selectSubmitError);
 
-  // ── APPROACH B: derive display review from the full reviews list ──────────────
-  // The reviews list is populated server-side with full user data (name, avatar, date).
-  // selectMyReview may only have _id/customerId — never use it for display.
+  // Derive display review from full reviews list (has complete user data)
   const myDisplayReview = useMemo(() => {
     if (!currentUser?._id || !reviews.length) return null;
     const uid = String(currentUser._id);
@@ -686,21 +668,18 @@ export default function ReviewsPage() {
   const sentinelRef   = useRef(null);
   const scrollCtxRef  = useRef(null);
 
-  // Fetch on sort/filter change
   useEffect(()=>{
     dispatch(fetchReviews({menuItemId:CAFE_CONTEXT_ID, page:1, sort, rating:filter??undefined}));
     if (!isGuest) dispatch(fetchMyReview(CAFE_CONTEXT_ID));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[sort, filter]);
 
-  // Header entrance animation
   useEffect(()=>{
     if (!headerRef.current) return;
     gsap.fromTo(headerRef.current.querySelectorAll(".hdr-el"),
       {opacity:0, y:-10}, {opacity:1, y:0, stagger:0.04, duration:0.4, ease:"power3.out"});
   },[]);
 
-  // Card stagger on load
   useEffect(()=>{
     if (!listRef.current||loading) return;
     const cards = listRef.current.querySelectorAll(".rev-card:not(.gsap-done)");
@@ -711,7 +690,6 @@ export default function ReviewsPage() {
     cards.forEach(c=>c.classList.add("gsap-done"));
   },[reviews,loading]);
 
-  // Scroll reveal
   useEffect(()=>{
     if (!listRef.current) return;
     scrollCtxRef.current = gsap.context(()=>{
@@ -727,7 +705,6 @@ export default function ReviewsPage() {
     return ()=>scrollCtxRef.current?.revert();
   },[reviews]);
 
-  // Infinite scroll sentinel
   useEffect(()=>{
     if (!sentinelRef.current) return;
     const obs = new IntersectionObserver(([entry])=>{
@@ -746,14 +723,12 @@ export default function ReviewsPage() {
   },[isGuest,dispatch]);
 
   const handleEditOpen = useCallback((review)=>{
-    // Always use the full-data review from the list for modal pre-fill
     editTargetRef.current = review;
     setEditTarget(review);
     setWriteOpen(true);
   },[]);
 
   const handleWriteOpen = useCallback(()=>{
-    // If user already has a review, open edit mode with FULL display data
     if (myDisplayReview) { handleEditOpen(myDisplayReview); return; }
     editTargetRef.current = null;
     setEditTarget(null);
@@ -769,7 +744,6 @@ export default function ReviewsPage() {
 
   const handleSubmit = useCallback(async({rating, text})=>{
     dispatch(clearSubmitError());
-    // Use editTargetRef (full data) for _id, fall back to myReview selector _id
     const target = editTargetRef.current || myReview || null;
     if (target?._id) {
       const res = await dispatch(editReview({
@@ -788,7 +762,6 @@ export default function ReviewsPage() {
     if (removeReview.fulfilled.match(res)) setDeleteTarget(null);
   },[deleteTarget,dispatch]);
 
-  // Other reviews — exclude the current user's own review (shown separately above)
   const otherReviews = useMemo(()=>{
     if (!currentUser?._id) return reviews;
     const uid = String(currentUser._id);
@@ -800,41 +773,11 @@ export default function ReviewsPage() {
     });
   },[reviews, currentUser?._id]);
 
-  // ── Theme ─────────────────────────────────────────────────────────────────────
-  const cssVars = D ? {
-    "--bg":"#070C13","--card-bg":"rgba(12,20,32,0.97)","--modal-bg":"#0C1520",
-    "--pill-bg":"rgba(255,255,255,0.06)","--pill-active-bg":"rgba(56,189,248,0.14)",
-    "--card-border":"rgba(255,255,255,0.07)","--divider":"rgba(255,255,255,0.08)",
-    "--input-bg":"rgba(255,255,255,0.04)","--input-border":"rgba(255,255,255,0.12)",
-    "--text-primary":"#EFF6FF","--text-secondary":"#A8BDD8","--text-muted":"rgba(168,189,216,0.45)",
-    "--accent":"#38BDF8","--accent-dark":"#0284C7","--accent-dim":"rgba(56,189,248,0.10)",
-    "--accent-border":"rgba(56,189,248,0.24)","--accent-glow":"rgba(56,189,248,0.28)",
-    "--like-bg":"rgba(255,255,255,0.05)","--like-active-bg":"rgba(56,189,248,0.11)",
-    "--reply-bg":"rgba(56,189,248,0.05)","--reply-border":"rgba(56,189,248,0.14)",
-    "--danger":"#F87171","--error-bg":"rgba(248,113,113,0.09)",
-    "--btn-disabled":"rgba(255,255,255,0.07)","--header-bg":"rgba(7,12,19,0.93)",
-    "--pill-border":"rgba(255,255,255,0.09)","--pill-active-border":"rgba(56,189,248,0.28)",
-    "--tab-active":"#38BDF8","--tab-inactive":"rgba(168,189,216,0.38)",
-  } : {
-    "--bg":"#EEF5FF","--card-bg":"#FFFFFF","--modal-bg":"#FFFFFF",
-    "--pill-bg":"rgba(14,165,233,0.07)","--pill-active-bg":"rgba(2,132,199,0.11)",
-    "--card-border":"rgba(14,165,233,0.10)","--divider":"rgba(14,165,233,0.10)",
-    "--input-bg":"#F6FAFF","--input-border":"rgba(14,165,233,0.20)",
-    "--text-primary":"#0B1929","--text-secondary":"#2A4668","--text-muted":"rgba(42,70,104,0.48)",
-    "--accent":"#0284C7","--accent-dark":"#0369A1","--accent-dim":"rgba(2,132,199,0.08)",
-    "--accent-border":"rgba(2,132,199,0.20)","--accent-glow":"rgba(2,132,199,0.22)",
-    "--like-bg":"rgba(14,165,233,0.07)","--like-active-bg":"rgba(2,132,199,0.10)",
-    "--reply-bg":"rgba(2,132,199,0.04)","--reply-border":"rgba(2,132,199,0.12)",
-    "--danger":"#EF4444","--error-bg":"rgba(239,68,68,0.08)",
-    "--btn-disabled":"rgba(0,0,0,0.07)","--header-bg":"rgba(238,245,255,0.92)",
-    "--pill-border":"rgba(14,165,233,0.14)","--pill-active-border":"rgba(2,132,199,0.28)",
-    "--tab-active":"#0284C7","--tab-inactive":"rgba(42,70,104,0.35)",
-  };
-
   const showEmpty = !loading && reviews.length===0 && !myDisplayReview;
 
   return (
-    <div style={{...cssVars, minHeight:"100dvh", background:"var(--bg)", fontFamily:"'DM Sans',system-ui,sans-serif"}}>
+    // ✅ No local cssVars block — all var(--token) resolved from brand.js via ThemeContext
+    <div style={{minHeight:"100dvh", background:"var(--bg)", fontFamily:"'DM Sans',system-ui,sans-serif"}}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800;900&family=Lora:ital,wght@1,400;1,500&family=DM+Sans:wght@400;500;600;700&display=swap');
         *, *::before, *::after { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -844,7 +787,7 @@ export default function ReviewsPage() {
           border-radius:13px; will-change:transform;
           transition:box-shadow 0.2s, border-color 0.2s;
         }
-        .rev-card:hover { box-shadow:0 4px 20px rgba(0,0,0,0.13); border-color:var(--accent-border); }
+        .rev-card:hover { box-shadow:var(--card-shadow); border-color:var(--accent-border); }
 
         .icon-btn {
           display:flex; align-items:center; justify-content:center;
@@ -862,8 +805,7 @@ export default function ReviewsPage() {
           background:transparent; border:none;
           cursor:pointer; outline:none; flex-shrink:0;
           color:var(--text-secondary);
-          transition:background 0.13s, transform 0.1s;
-          padding:0;
+          transition:background 0.13s, transform 0.1s; padding:0;
         }
         .back-btn:hover  { background:var(--pill-bg); }
         .back-btn:active { transform:scale(0.9); }
@@ -871,7 +813,7 @@ export default function ReviewsPage() {
         .cta-btn {
           display:inline-flex; align-items:center; gap:5px;
           padding:6px 12px; border-radius:8px;
-          background:linear-gradient(135deg,var(--accent),var(--accent-dark));
+          background:var(--accent-gradient);
           color:#fff; border:none; cursor:pointer;
           font-size:11.5px; font-weight:700; font-family:'Sora',sans-serif;
           letter-spacing:0.01em; box-shadow:0 2px 10px var(--accent-glow);
@@ -897,8 +839,8 @@ export default function ReviewsPage() {
           cursor:pointer; outline:none; white-space:nowrap;
           transition:background 0.13s, border-color 0.13s, color 0.13s;
         }
-        .star-pill:hover { background:var(--pill-active-bg); color:var(--text-secondary); }
-        .star-pill.on { background:var(--pill-active-bg); border-color:var(--pill-active-border); color:var(--accent); }
+        .star-pill:hover { background:var(--pill-bg-hover); color:var(--text-secondary); }
+        .star-pill.on { background:var(--pill-bg-active); border-color:var(--pill-border-active); color:var(--accent); }
 
         .skel {
           background:linear-gradient(90deg,var(--pill-bg) 0%,var(--divider) 50%,var(--pill-bg) 100%);
@@ -910,17 +852,16 @@ export default function ReviewsPage() {
           position:sticky; top:0; z-index:100;
           background:var(--header-bg);
           backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
-          border-bottom:1px solid var(--divider);
+          border-bottom:1px solid var(--header-border);
         }
 
         ::-webkit-scrollbar { width:4px; }
         ::-webkit-scrollbar-track { background:transparent; }
-        ::-webkit-scrollbar-thumb { background:var(--divider); border-radius:99px; }
+        ::-webkit-scrollbar-thumb { background:var(--scroll-thumb); border-radius:99px; }
       `}</style>
 
       {/* ══ HEADER ══ */}
       <header ref={headerRef} className="rev-header">
-        {/* Row 1 */}
         <div style={{maxWidth:600, margin:"0 auto", display:"flex", alignItems:"center", gap:9, padding:"9px 13px"}}>
           <button className="hdr-el back-btn" onClick={()=>navigate(-1)}>
             <BackIcon size={14}/>
@@ -940,31 +881,22 @@ export default function ReviewsPage() {
             )}
           </div>
 
-          {/* Show "Write" only when user has NO review yet */}
           {!isGuest && !myDisplayReview && (
             <button className="hdr-el cta-btn" onClick={handleWriteOpen}>
-              <WriteIcon size={12}/>
-              Write
+              <WriteIcon size={12}/> Write
             </button>
           )}
-          {/* Show "Edit" only when user HAS a review — uses full display data */}
           {!isGuest && myDisplayReview && (
             <button className="hdr-el cta-btn" onClick={()=>handleEditOpen(myDisplayReview)}>
-              <EditIcon size={12}/>
-              Edit
+              <EditIcon size={12}/> Edit
             </button>
           )}
         </div>
 
-        {/* Row 2: sort + filter */}
         <div style={{maxWidth:600, margin:"0 auto", display:"flex", alignItems:"center", gap:6,
           padding:"5px 13px 7px", borderTop:"1px solid var(--divider)", overflowX:"auto"}}>
-          <button className={`sort-tab${sort==="recent"?" active":""}`} onClick={()=>setSort("recent")}>
-            Recent
-          </button>
-          <button className={`sort-tab${sort==="top"?" active":""}`} onClick={()=>setSort("top")}>
-            Top
-          </button>
+          <button className={`sort-tab${sort==="recent"?" active":""}`} onClick={()=>setSort("recent")}>Recent</button>
+          <button className={`sort-tab${sort==="top"?" active":""}`} onClick={()=>setSort("top")}>Top</button>
           <div style={{width:1, height:14, background:"var(--divider)", flexShrink:0, margin:"0 2px"}}/>
           {[5,4,3,2,1].map(s=>(
             <button key={s} className={`star-pill${filter===s?" on":""}`}
@@ -974,7 +906,7 @@ export default function ReviewsPage() {
           ))}
           {filter!==null && (
             <button className="star-pill" onClick={()=>setFilter(null)}
-              style={{color:"var(--danger)", borderColor:"var(--danger)", background:"transparent"}}>
+              style={{color:"var(--danger)", borderColor:"var(--danger-border)", background:"transparent"}}>
               ✕
             </button>
           )}
@@ -988,7 +920,6 @@ export default function ReviewsPage() {
           <SummaryPanel summary={summary} activeFilter={filter} onFilter={s=>setFilter(s)}/>
         )}
 
-        {/* MY REVIEW — pinned at top, sourced from full list data */}
         {!isGuest && myDisplayReview && (
           <MyReviewCard
             review={myDisplayReview}
@@ -997,7 +928,6 @@ export default function ReviewsPage() {
           />
         )}
 
-        {/* "Write your review" nudge — only when user has NO review */}
         {!isGuest && !myDisplayReview && !loading && reviews.length>0 && (
           <div style={{display:"flex", alignItems:"center", gap:10, borderRadius:12,
             marginBottom:10, padding:"10px 13px",
@@ -1017,7 +947,6 @@ export default function ReviewsPage() {
           </div>
         )}
 
-        {/* Other reviews list */}
         <div ref={listRef} style={{display:"flex", flexDirection:"column", gap:9}}>
           {loading && reviews.length===0 && Array(4).fill(0).map((_,i)=><SkeletonCard key={i}/>)}
           {showEmpty && <EmptyState onWrite={handleWriteOpen} isGuest={isGuest}/>}
