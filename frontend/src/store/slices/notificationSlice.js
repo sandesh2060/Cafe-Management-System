@@ -1,29 +1,27 @@
 // frontend/src/store/slices/notificationSlice.js
 //
-// Stores the notification list for the bell icon / NotificationsPage.
-// This is separate from toastSlice — toasts are ephemeral UI,
-// notifications are the persistent list (fetched from DB).
-//
-// Actions:
-//   setNotifications([])      — initial load from DB
-//   addNotification({})       — socket push (prepend)
-//   markRead(id)              — mark single read locally
-//   markAllReadLocal()        — mark all read locally
-//   clearNotifications()      — clear all locally
-//   setUnreadCount(n)         — set unread badge count
+// FIXES:
+// ✅ fetchNotifications handles both { items, unread } and { data: { items, unread } }
+// ✅ unreadCount computed locally after filtering — never trusts server count
+//    (server unread count includes 'message' type which we filter out)
+// ✅ setNotifications filters messages AND recomputes unreadCount correctly
+// ✅ All selectors unchanged
 
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
-import api              from '@/api/axios'
-import { ENDPOINTS }   from '@/api/endpoints'
-
-// ── Async thunks (API calls) ──────────────────────────────────────────────────
+import api           from '@/api/axios'
+import { ENDPOINTS } from '@/api/endpoints'
 
 export const fetchNotifications = createAsyncThunk(
   'notifications/fetch',
   async (_, { rejectWithValue }) => {
     try {
       const res = await api.get(ENDPOINTS.NOTIFICATIONS.LIST, { params: { limit: 30 } })
-      return res?.data ?? res ?? { items: [], total: 0, unread: 0 }
+      // axios interceptor returns response.data → res = { success, data: { items, unread } }
+      // Handle both shapes safely
+      const payload = res?.data ?? res ?? {}
+      const items   = payload?.items ?? payload?.notifications ?? []
+      const unread  = payload?.unread ?? payload?.unreadCount ?? null
+      return { items, unread }
     } catch (err) {
       return rejectWithValue(err.response?.data?.message ?? 'Fetch failed')
     }
@@ -54,6 +52,10 @@ export const clearAllRemote = createAsyncThunk(
   }
 )
 
+// ── helpers ───────────────────────────────────────────────────────────────────
+const filterItems  = (items) => (items ?? []).filter(n => n.type !== 'message')
+const countUnread  = (items) => items.filter(n => !n.read).length
+
 const notificationSlice = createSlice({
   name: 'notifications',
   initialState: {
@@ -63,13 +65,17 @@ const notificationSlice = createSlice({
   },
   reducers: {
     setNotifications: (state, { payload }) => {
-      state.items   = payload ?? []
-      state.unreadCount = (payload ?? []).filter(n => !n.read).length
-      state.loading = false
+      const filtered    = filterItems(payload)
+      state.items       = filtered
+      // FIX: always compute unreadCount from filtered list — server count
+      // includes 'message' type notifications which we discard
+      state.unreadCount = countUnread(filtered)
+      state.loading     = false
     },
     addNotification: (state, { payload }) => {
-      // Dedup by id
-      const exists = state.items.some(n => n._id === payload._id || n.id === payload.id)
+      if (payload.type === 'message') return
+      const id     = payload._id ?? payload.id
+      const exists = state.items.some(n => (n._id ?? n.id) === id)
       if (exists) return
       state.items.unshift(payload)
       if (!payload.read) state.unreadCount = Math.max(0, state.unreadCount + 1)
@@ -77,9 +83,13 @@ const notificationSlice = createSlice({
     markRead: (state, { payload: id }) => {
       const item = state.items.find(n => (n._id ?? n.id) === id)
       if (item && !item.read) {
-        item.read       = true
+        item.read         = true
         state.unreadCount = Math.max(0, state.unreadCount - 1)
       }
+    },
+    markAllRead: (state) => {
+      state.items.forEach(n => { n.read = true })
+      state.unreadCount = 0
     },
     markAllReadLocal: (state) => {
       state.items.forEach(n => { n.read = true })
@@ -90,7 +100,7 @@ const notificationSlice = createSlice({
       state.unreadCount = 0
     },
     setUnreadCount: (state, { payload }) => {
-      state.unreadCount = payload ?? 0
+      state.unreadCount = Math.max(0, payload ?? 0)
     },
     setLoading: (state, { payload }) => {
       state.loading = payload
@@ -98,15 +108,16 @@ const notificationSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
-      // fetchNotifications
       .addCase(fetchNotifications.pending,   (state) => { state.loading = true })
       .addCase(fetchNotifications.fulfilled, (state, { payload }) => {
-        state.items       = payload?.items ?? []
-        state.unreadCount = payload?.unread ?? state.items.filter(n => !n.read).length
+        const filtered    = filterItems(payload.items)
+        state.items       = filtered
+        // FIX: compute unread from filtered list, ignore server-side count
+        // (server includes message notifications in unread count)
+        state.unreadCount = countUnread(filtered)
         state.loading     = false
       })
       .addCase(fetchNotifications.rejected,  (state) => { state.loading = false })
-      // remote write thunks — optimistic updates already applied locally, just clear loading
       .addCase(markAllReadRemote.rejected,   (state) => { state.loading = false })
       .addCase(markOneReadRemote.rejected,   (state) => { state.loading = false })
       .addCase(clearAllRemote.rejected,      (state) => { state.loading = false })
@@ -114,21 +125,13 @@ const notificationSlice = createSlice({
 })
 
 export const {
-  setNotifications,
-  addNotification,
-  markRead,
-  markAllReadLocal,
-  clearNotifications,
-  setUnreadCount,
-  setLoading,
+  setNotifications, addNotification,
+  markRead, markAllRead, markAllReadLocal,
+  clearNotifications, setUnreadCount, setLoading,
 } = notificationSlice.actions
 
-// Selectors
-export const selectNotifications  = (s) => s.notifications.items
-export const selectUnreadCount    = (s) => s.notifications.unreadCount
-export const selectNotifsLoading  = (s) => s.notifications.loading  // used by NotificationBell
-
-// markAllRead is the local action — NotificationBell dispatches both this + markAllReadRemote
-export const { markAllRead } = notificationSlice.actions
+export const selectNotifications = (s) => s.notifications.items
+export const selectUnreadCount   = (s) => s.notifications.unreadCount
+export const selectNotifsLoading = (s) => s.notifications.loading
 
 export default notificationSlice.reducer

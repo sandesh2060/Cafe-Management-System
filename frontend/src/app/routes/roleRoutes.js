@@ -1,8 +1,9 @@
 // frontend/src/app/routes/roleRoutes.js
 //
-// Single source of truth for role → home route mapping.
-// Previously duplicated in AppRoutes.jsx, ProtectedRoute.jsx, GuestRoute.jsx.
-// All three now import from here.
+// ─── CHANGES FROM ORIGINAL ────────────────────────────────────────────────────
+// 1. Added owner → /owner home route
+// 2. Added rider → /rider home route
+// ─────────────────────────────────────────────────────────────────────────────
 
 export const ROLE_HOME = {
   customer: '/menu',
@@ -11,7 +12,8 @@ export const ROLE_HOME = {
   cashier:  '/cashier',
   manager:  '/manager',
   admin:    '/admin',
+  owner:    '/owner',      // ★ new
+  rider:    '/rider',      // ★ new
 }
 
-/** Returns the home route for a given role. Defaults to /detect. */
 export const getRoleHome = (role) => ROLE_HOME[role] ?? '/detect'

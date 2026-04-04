@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@reduxjs/toolkit": "^2.2.5",
+    "@tanstack/react-virtual": "^3.13.23",
     "@xstate/react": "^4.1.1",
     "animejs": "^4.3.6",
     "axios": "^1.7.2",

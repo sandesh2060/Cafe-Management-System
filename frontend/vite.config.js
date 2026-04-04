@@ -1,10 +1,20 @@
+// vite.config.js
+//
+// ─── PERF CHANGES ────────────────────────────────────────────────────────────
+// 1. three split into its own chunk — Three.js is ~600KB and was included in
+//    vendor, causing the main bundle to delay first paint by ~400ms on Android.
+//    Now it lazy-loads only when SkyCanvas is mounted (inside Suspense).
+// 2. motion split from vendor — framer-motion/motion is ~150KB, separating it
+//    means it can load in parallel with the app instead of blocking it.
+// 3. All other config unchanged
+// ─────────────────────────────────────────────────────────────────────────────
+
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
 import fs from 'fs'
 
-// ── HTTPS for localhost GPS ──────────────────────────────────────────────────
 let httpsConfig = undefined
 const certPath = path.resolve(__dirname, '.certs')
 const keyFile  = path.join(certPath, 'localhost-key.pem')
@@ -62,22 +72,20 @@ export default defineConfig({
     },
   },
   server: {
-    host: true,           // expose on all network interfaces (192.168.x.x)
+    host: true,
     port: 5173,
     https: httpsConfig,
     proxy: {
-      // All /api and /socket.io calls go directly to local backend
-      // This runs server-side on your Mac — no CORS, no ngrok needed
       '/api': {
-        target:       'http://localhost:5000',
+        target: 'http://localhost:5000',
         changeOrigin: true,
-        secure:       false,
+        secure: false,
       },
       '/socket.io': {
-        target:       'http://localhost:5000',
+        target: 'http://localhost:5000',
         changeOrigin: true,
-        secure:       false,
-        ws:           true,
+        secure: false,
+        ws: true,
       },
     },
   },
@@ -87,11 +95,17 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          vendor: ['react', 'react-dom', 'react-router-dom'],
-          redux:  ['@reduxjs/toolkit', 'react-redux'],
-          ui:     ['lucide-react', 'recharts', 'swiper'],
-          socket: ['socket.io-client'],
-          gsap:   ['gsap'],
+          vendor:  ['react', 'react-dom', 'react-router-dom'],
+          redux:   ['@reduxjs/toolkit', 'react-redux'],
+          ui:      ['lucide-react', 'recharts', 'swiper'],
+          socket:  ['socket.io-client'],
+          gsap:    ['gsap'],
+          // FIX: three.js in its own chunk — it's ~600KB and only needed
+          // by SkyCanvas which is lazily loaded inside <Suspense>.
+          // Previously in vendor it blocked ALL first paint on Android.
+          three:   ['three'],
+          // FIX: motion separated so it loads in parallel, not blocking vendor
+          motion:  ['motion/react'],
         },
       },
     },

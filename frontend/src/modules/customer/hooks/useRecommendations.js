@@ -1,16 +1,31 @@
 // src/modules/customer/hooks/useRecommendations.js
 //
-// FIXED: API returns { success, data: [...] } — not { recommendations: [...] }
-// Each element: { item: {...menuItem}, score, weatherTag, isFavourite, isDiscovery }
-// Weather endpoint returns flat: { condition, temp, city, ... }
+// ✅ Module-level cache — recommendations + weather survive back navigation.
+//    Cache TTL: 5 minutes. On back nav, returns instantly (loading: false).
+//    On first visit or after TTL: fetches normally.
 
-import { useState, useEffect } from 'react'
-import { useSelector }         from 'react-redux'
-import { selectIsGuest }       from '@store/slices/authSlice'
-import api                     from '@api/axios'
-import { ENDPOINTS }           from '@api/endpoints'
+import { useState, useEffect, useRef } from 'react'
+import { useSelector }                  from 'react-redux'
+import { selectIsGuest }                from '@store/slices/authSlice'
+import api                              from '@api/axios'
+import { ENDPOINTS }                    from '@api/endpoints'
 
 const FALLBACK_COORDS = { lat: 27.7172, lng: 85.3240 }
+const TTL_MS          = 5 * 60 * 1000  // 5 minutes
+
+// Module-level cache — persists across component unmount/remount (back nav)
+const cache = {
+  data:      null,   // { recommendations, weather }
+  fetchedAt: null,   // timestamp
+  cafeId:    null,
+  isGuest:   null,
+}
+
+const isCacheValid = (cafeId, isGuest) =>
+  cache.data !== null &&
+  cache.cafeId === cafeId &&
+  cache.isGuest === isGuest &&
+  Date.now() - cache.fetchedAt < TTL_MS
 
 const getGpsCoords = () =>
   new Promise((resolve) => {
@@ -23,14 +38,21 @@ const getGpsCoords = () =>
   })
 
 export const useRecommendations = (cafeId) => {
-  const [recommendations, setRecommendations] = useState([])
-  const [weather, setWeather]                 = useState(null)
-  const [loading, setLoading]                 = useState(true)
-  const [error, setError]                     = useState(null)
   const isGuest = useSelector(selectIsGuest)
+
+  // If cache is valid, start with data immediately (loading: false)
+  const cached  = isCacheValid(cafeId, isGuest)
+  const [recommendations, setRecommendations] = useState(() => cached ? cache.data.recommendations : [])
+  const [weather,          setWeather]         = useState(() => cached ? cache.data.weather         : null)
+  const [loading,          setLoading]         = useState(!cached)
+  const [error,            setError]           = useState(null)
 
   useEffect(() => {
     if (!cafeId) return
+    // Cache still valid — nothing to do, already set in useState initializer
+    if (isCacheValid(cafeId, isGuest)) return
+
+    let cancelled = false
 
     const fetchAll = async () => {
       setLoading(true)
@@ -47,30 +69,36 @@ export const useRecommendations = (cafeId) => {
           ),
         ])
 
-        setWeather(weatherData)
+        if (cancelled) return
 
-        // ✅ API returns { success, data: [{item, score, weatherTag, ...}] }
         const recs = recData.data ?? recData.recommendations ?? []
+        const mappedRecs = recs
+          .filter(r => r?.item)
+          .map(r => ({
+            ...r.item,
+            score:       r.score,
+            weatherTag:  r.weatherTag,
+            isFavourite: r.isFavourite,
+            isDiscovery: r.isDiscovery,
+          }))
 
-        setRecommendations(
-          recs
-            .filter(r => r?.item)   // guard against malformed entries
-            .map(r => ({
-              ...r.item,
-              score:       r.score,
-              weatherTag:  r.weatherTag,
-              isFavourite: r.isFavourite,
-              isDiscovery: r.isDiscovery,
-            }))
-        )
+        // Store in module-level cache
+        cache.data      = { recommendations: mappedRecs, weather: weatherData }
+        cache.fetchedAt = Date.now()
+        cache.cafeId    = cafeId
+        cache.isGuest   = isGuest
+
+        setRecommendations(mappedRecs)
+        setWeather(weatherData)
       } catch (err) {
-        setError(err.message)
+        if (!cancelled) setError(err.message)
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
 
     fetchAll()
+    return () => { cancelled = true }
   }, [cafeId, isGuest])
 
   return { recommendations, weather, loading, error }

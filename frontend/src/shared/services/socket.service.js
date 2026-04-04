@@ -1,48 +1,52 @@
 // src/shared/services/socket.service.js
-//
-// FIXES:
-// ✅ Listener queue — on() called before connect() now queues listeners
-//    and replays them once socket connects. Eliminates the race condition
-//    where useNotifications effects register before useSocket connects.
-// ✅ disconnect() sets skipReconnect before disconnect to prevent race.
-// ✅ connect() clears socket synchronously before creating new instance.
-// ✅ off() method works correctly for handler removal.
+// FIX: connect() now accepts an empty string as token (cookie auth mode).
+// Previously: `if (!token) return null` blocked cookie-auth connections.
+// Now: only block if token is explicitly null/undefined (not logged in).
+// When token is '' (empty string), connect proceeds — backend reads the
+// JWT from the httpOnly cookie in the WebSocket handshake headers.
 
 import { io } from 'socket.io-client'
+import store   from '@store/index'
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000'
 
 class SocketService {
   constructor() {
-    this.socket       = null
-    this._token       = null
-    // Queue for listeners registered before socket connects
-    // { event, handler }[]
+    this.socket            = null
+    this._token            = null
+    this._sessionId        = null
     this._pendingListeners = []
   }
 
   connect(token) {
-    if (!token) {
+    // FIX: allow empty string (cookie auth) — only block null/undefined
+    if (token === null || token === undefined) {
       console.warn('[Socket] connect() called with no token — skipping')
       return null
     }
 
-    if (this.socket?.connected && this._token === token) {
+    const sessionId = store.getState().tableSession?.session?.sessionId ?? null
+
+    if (this.socket?.connected && this._token === token && this._sessionId === sessionId) {
       return this.socket
     }
 
     if (this.socket) {
-      console.log('[Socket] Token changed — reconnecting cleanly...')
+      console.log('[Socket] Reconnecting cleanly...')
       this.socket.io.skipReconnect = true
       this.socket.disconnect()
       this.socket = null
     }
 
-    this._token = token
+    this._token     = token
+    this._sessionId = sessionId
 
     this.socket = io(SOCKET_URL, {
-      auth:                 { token },
-      transports:           ['websocket', 'polling'],
+      // Only send auth.token if it's a real token (not empty string)
+      // Backend will fall back to cookie if auth.token is absent/empty
+      auth:       token ? { token } : {},
+      query:      sessionId ? { sessionId } : {},
+      transports: ['websocket', 'polling'],
       reconnection:         true,
       reconnectionDelay:    1000,
       reconnectionAttempts: 10,
@@ -54,7 +58,6 @@ class SocketService {
 
     this.socket.on('connect', () => {
       console.log('[Socket] Connected:', this.socket.id)
-      // Replay any listeners registered before socket was ready
       this._pendingListeners.forEach(({ event, handler }) => {
         this.socket.on(event, handler)
       })
@@ -88,13 +91,23 @@ class SocketService {
     return this.socket
   }
 
+  updateSession(sessionId) {
+    if (!sessionId || sessionId === this._sessionId) return
+    this._sessionId = sessionId
+    if (this.socket?.connected) {
+      console.log('[Socket] Late-joining table room:', sessionId)
+      this.socket.emit('session:join', { sessionId })
+    }
+  }
+
   disconnect() {
     if (this.socket) {
       this.socket.io.skipReconnect = true
       this.socket.disconnect()
       this.socket = null
     }
-    this._token = null
+    this._token            = null
+    this._sessionId        = null
     this._pendingListeners = []
   }
 
@@ -104,14 +117,11 @@ class SocketService {
       return
     }
     if (ack) this.socket.emit(event, data, ack)
-    else this.socket.emit(event, data)
+    else     this.socket.emit(event, data)
   }
 
-  // Returns an unsubscribe function.
-  // If socket not yet connected, queues the listener for replay on connect.
   on(event, handler) {
     if (!this.socket) {
-      // Queue for replay once socket connects
       this._pendingListeners.push({ event, handler })
       return () => {
         this._pendingListeners = this._pendingListeners.filter(
@@ -139,4 +149,5 @@ class SocketService {
 }
 
 const socketService = new SocketService()
+export const getSocket = () => socketService.socket
 export default socketService

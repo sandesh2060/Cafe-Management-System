@@ -1,1 +1,1 @@
-// File : frontend/src/modules/table/hooks/useGpsWatcher.js
+// file : frontend/src/modules/table/hooks/useTableSession.js

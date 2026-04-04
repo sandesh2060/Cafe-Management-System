@@ -1,8 +1,11 @@
 // src/modules/customer/hooks/useMenu.js
 //
-// ✅ BRAND.cafeId — not direct import.meta.env access
-// ✅ fetch guard — only fetches if menu is empty and not loading
-// ✅ setCategory / setSearch are useCallback-wrapped for stable references
+// ─── CHANGES FROM ORIGINAL ────────────────────────────────────────────────────
+// 1. cafeId now reads from venueSlice (selectVenueCafeId) with BRAND fallback
+//    — fixes multi-tenant: different cafes get different menus
+// 2. Fetch guard uses the resolved cafeId (not hardcoded BRAND.cafeId)
+// All other logic unchanged.
+// ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useCallback }   from 'react'
 import { useDispatch, useSelector } from 'react-redux'
@@ -15,13 +18,8 @@ import {
   setActiveCategory,
   setSearchQuery,
 }                                   from '@store/slices/menuSlice'
+import { selectVenueCafeId }        from '@store/slices/venueSlice'   // ★ NEW
 import { BRAND }                    from '@shared/config/brand'
-
-const CAFE_ID = BRAND.cafeId ?? ''
-
-if (import.meta.env.DEV && !CAFE_ID) {
-  console.warn('[useMenu] VITE_CAFE_ID is not set. Menu will not load in production.')
-}
 
 export const useMenu = () => {
   const dispatch       = useDispatch()
@@ -30,12 +28,19 @@ export const useMenu = () => {
   const loading        = useSelector(selectMenuLoading)
   const activeCategory = useSelector(selectActiveCategory)
 
+  // ★ CHANGED: read cafeId dynamically from venue context
+  const venueCafeId = useSelector(selectVenueCafeId)
+  const CAFE_ID     = venueCafeId ?? BRAND.cafeId ?? ''
+
+  if (import.meta.env.DEV && !CAFE_ID) {
+    console.warn('[useMenu] No cafeId found in venueSlice or BRAND. Menu will not load.')
+  }
+
   useEffect(() => {
-    // Only fetch if menu is empty and not already in flight
     if (!loading && items.length === 0 && CAFE_ID) {
       dispatch(fetchMenu(CAFE_ID))
     }
-  }, [dispatch]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [dispatch, CAFE_ID]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const setCategory = useCallback(
     (cat) => dispatch(setActiveCategory(cat)),

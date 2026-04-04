@@ -1,14 +1,11 @@
 // src/modules/customer/components/menu/BannerSwiper.jsx
 //
-// ✅ CENTRALIZED:
-//   BRAND.currency replaces hardcoded 'Rs' in slide subtitles
-//   FONTS.brand replaces hardcoded '"Baloo 2",sans-serif'
-//   var(--accent) replaces var(--color-saffron) (old token)
-//   var(--divider) replaces var(--border-color) (old token)
-// ✅ RESPONSIVE:
-//   mobile  (<640px):  height 152px (unchanged)
-//   tablet  (640px+):  height 176px
-//   desktop (1024px+): height 200px, wider orb, bigger title
+// ─── PERF CHANGES (visuals identical) ────────────────────────────────────────
+// 1. gsapEnabled from useDeviceTier() gates Slide enter() — on low tier
+//    slide still renders fully, orb and text visible, just no GSAP float/bounce
+// 2. contain:'layout style paint' on slide root — isolates repaints
+// 3. All slide content, SVG decor, Swiper config — UNCHANGED
+// ─────────────────────────────────────────────────────────────────────────────
 
 import { useRef, useEffect, useContext, useCallback } from "react"
 import { Swiper, SwiperSlide } from "swiper/react"
@@ -16,40 +13,31 @@ import { Autoplay, Pagination, EffectCreative } from "swiper/modules"
 import gsap from "gsap"
 import { ThemeContext } from "@shared/context/ThemeContext"
 import { BRAND, FONTS } from "@shared/config/brand"
+import { useDeviceTier } from "@shared/hooks/useDeviceTier"
 import "swiper/css"
 import "swiper/css/pagination"
 import "swiper/css/effect-creative"
 
-// ✅ BRAND.currency in sub text — no hardcoded 'Rs'
 const SLIDES = [
   {
-    id: 1,
-    tag: "Monsoon Special",
-    title: "Warm\nyour soul",
-    sub: `Masala Chai · ${BRAND.currency} 80`,
-    emoji: "☕",
+    id: 1, tag: "Monsoon Special", title: "Warm\nyour soul",
+    sub: `Masala Chai · ${BRAND.currency} 80`, emoji: "☕",
     floats: ["🌧️", "🫖", "☔", "🌿"],
     lightBg: ["#3B1A08", "#7A4020", "#B5722A"],
     darkBg:  ["#180B02", "#3B1A08", "#6B3818"],
     accent: "#FF9F1C",
   },
   {
-    id: 2,
-    tag: "Loyalty Rewards",
-    title: "Every sip\ncounts",
-    sub: "Earn points · Unlock perks",
-    emoji: "⭐",
+    id: 2, tag: "Loyalty Rewards", title: "Every sip\ncounts",
+    sub: "Earn points · Unlock perks", emoji: "⭐",
     floats: ["🥇", "💎", "✨", "🎁"],
     lightBg: ["#8B2200", "#C44A1A", "#FF9F1C"],
     darkBg:  ["#3D0E00", "#8B2200", "#C44A1A"],
     accent: "#FFB84D",
   },
   {
-    id: 3,
-    tag: "Chef's Pick",
-    title: "Fresh Momos\ndaily",
-    sub: `Steamed & Fried · ${BRAND.currency} 180`,
-    emoji: "🥟",
+    id: 3, tag: "Chef's Pick", title: "Fresh Momos\ndaily",
+    sub: `Steamed & Fried · ${BRAND.currency} 180`, emoji: "🥟",
     floats: ["🌿", "🔥", "🫕", "🌶️"],
     lightBg: ["#0A3D1E", "#1E7A42", "#38C26F"],
     darkBg:  ["#041A0D", "#0A3D1E", "#1E7A42"],
@@ -57,7 +45,6 @@ const SLIDES = [
   },
 ]
 
-// ── Decorative SVG per slide ───────────────────────────────────
 const SlideDecor = ({ accent, index }) => {
   if (index === 0)
     return (
@@ -99,19 +86,22 @@ const SlideDecor = ({ accent, index }) => {
   )
 }
 
-// ── Single Slide ───────────────────────────────────────────────
 const Slide = ({ s, isDark, isActive }) => {
   const orbRef   = useRef(null)
   const linesRef = useRef(null)
   const floatRef = useRef(null)
   const tlRef    = useRef(null)
+  // FIX: read tier inside Slide
+  const { gsapEnabled } = useDeviceTier()
 
   const enter = useCallback(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return
     tlRef.current?.kill()
     tlRef.current = gsap.timeline()
     tlRef.current
-      .fromTo(orbRef.current, { scale: 0.3, opacity: 0, rotation: -30, x: -10 }, { scale: 1, opacity: 1, rotation: 0, x: 0, duration: 0.62, ease: "back.out(2.4)" })
+      .fromTo(orbRef.current,
+        { scale: 0.3, opacity: 0, rotation: -30, x: -10 },
+        { scale: 1, opacity: 1, rotation: 0, x: 0, duration: 0.62, ease: "back.out(2.4)" })
       .fromTo(
         linesRef.current?.children ? Array.from(linesRef.current.children) : [],
         { x: -28, opacity: 0 },
@@ -120,16 +110,31 @@ const Slide = ({ s, isDark, isActive }) => {
       )
     if (floatRef.current) {
       const nodes = Array.from(floatRef.current.children)
-      gsap.fromTo(nodes, { y: 20, opacity: 0, scale: 0.2, rotation: -15 }, { y: 0, opacity: 1, scale: 1, rotation: 0, duration: 0.48, stagger: 0.09, delay: 0.25, ease: "back.out(2.2)" })
+      gsap.fromTo(nodes,
+        { y: 20, opacity: 0, scale: 0.2, rotation: -15 },
+        { y: 0, opacity: 1, scale: 1, rotation: 0, duration: 0.48, stagger: 0.09, delay: 0.25, ease: "back.out(2.2)" })
       gsap.to(nodes, { y: "-=9", duration: 2.8, repeat: -1, yoyo: true, stagger: 0.6, ease: "sine.inOut", delay: 0.85 })
     }
     gsap.to(orbRef.current, { scale: 1.05, duration: 2.4, repeat: -1, yoyo: true, ease: "sine.inOut", delay: 0.9 })
   }, [])
 
+  // FIX: enter() gated — slide fully visible on low tier, just no GSAP motion
   useEffect(() => {
-    if (isActive) enter()
+    if (!isActive) return
+    if (!gsapEnabled) {
+      // On low tier: just make elements visible instantly, no animation
+      if (orbRef.current) gsap.set(orbRef.current, { opacity: 1, scale: 1 })
+      if (linesRef.current) {
+        Array.from(linesRef.current.children).forEach(el => gsap.set(el, { opacity: 1 }))
+      }
+      if (floatRef.current) {
+        Array.from(floatRef.current.children).forEach(el => gsap.set(el, { opacity: 1 }))
+      }
+      return
+    }
+    enter()
     return () => { tlRef.current?.kill() }
-  }, [isActive, enter])
+  }, [isActive, enter, gsapEnabled])
 
   const bg = isDark ? s.darkBg : s.lightBg
 
@@ -137,10 +142,10 @@ const Slide = ({ s, isDark, isActive }) => {
     <div
       className="relative overflow-hidden select-none"
       style={{
-        // ✅ RESPONSIVE height via CSS (overridden by .bs-slide classes below)
-        height: "100%",
-        borderRadius: "22px",
-        background: `linear-gradient(140deg, ${bg[0]} 0%, ${bg[1]} 50%, ${bg[2]} 100%)`,
+        height: "100%", borderRadius: "22px",
+        background: `linear-gradient(140deg,${bg[0]} 0%,${bg[1]} 50%,${bg[2]} 100%)`,
+        // FIX: contain isolates slide repaints
+        contain: "layout style paint",
       }}
     >
       <div className="absolute inset-0 pointer-events-none">
@@ -156,26 +161,19 @@ const Slide = ({ s, isDark, isActive }) => {
       </div>
 
       <div className="relative z-10 h-full flex items-center px-5 gap-5">
-        {/* Orb — responsive size */}
         <div
           ref={orbRef}
           className="flex-shrink-0 flex items-center justify-center opacity-0"
           style={{
-            // ✅ RESPONSIVE: clamp for orb size
-            width:  "clamp(68px, 12vw, 88px)",
-            height: "clamp(68px, 12vw, 88px)",
-            fontSize: "clamp(36px, 6vw, 48px)",
-            borderRadius: "clamp(18px, 3vw, 26px)",
-            background: "rgba(0,0,0,0.3)",
-            backdropFilter: "blur(14px)",
-            WebkitBackdropFilter: "blur(14px)",
+            width: "clamp(68px,12vw,88px)", height: "clamp(68px,12vw,88px)",
+            fontSize: "clamp(36px,6vw,48px)", borderRadius: "clamp(18px,3vw,26px)",
+            background: "rgba(0,0,0,0.3)", backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)",
             boxShadow: ["0 8px 28px rgba(0,0,0,0.4)", "inset 0 1px 0 rgba(255,255,255,0.22)", "inset 0 -1px 0 rgba(0,0,0,0.3)", "0 0 0 1px rgba(255,255,255,0.08)"].join(","),
           }}
         >
           {s.emoji}
         </div>
 
-        {/* Text stack */}
         <div ref={linesRef} className="flex flex-col min-w-0 gap-0">
           <span className="self-start mb-2 px-2.5 py-[3px] rounded-full opacity-0 text-[9px] font-black uppercase tracking-[0.15em]"
                 style={{ background: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.95)", border: "1px solid rgba(255,255,255,0.2)", backdropFilter: "blur(8px)" }}>
@@ -183,14 +181,7 @@ const Slide = ({ s, isDark, isActive }) => {
           </span>
           <h3
             className="font-black leading-[1.1] opacity-0 whitespace-pre-line"
-            style={{
-              // ✅ RESPONSIVE font size — clamp
-              fontSize: "clamp(18px, 4vw, 24px)",
-              color: "#fff",
-              // ✅ FONTS.brand — was hardcoded '"Baloo 2",sans-serif'
-              fontFamily: FONTS.brand,
-              textShadow: "0 2px 14px rgba(0,0,0,0.5)",
-            }}
+            style={{ fontSize: "clamp(18px,4vw,24px)", color: "#fff", fontFamily: FONTS.brand, textShadow: "0 2px 14px rgba(0,0,0,0.5)" }}
           >
             {s.title}
           </h3>
@@ -207,7 +198,6 @@ const Slide = ({ s, isDark, isActive }) => {
   )
 }
 
-// ── Root ──────────────────────────────────────────────────────
 const BannerSwiper = () => {
   const { isDark } = useContext(ThemeContext)
   const swRef = useRef(null)
@@ -215,10 +205,6 @@ const BannerSwiper = () => {
 
   return (
     <div className="relative">
-      {/* ✅ RESPONSIVE height container:
-          mobile:  152px
-          tablet:  176px (sm)
-          desktop: 200px (lg) */}
       <div className="h-[152px] sm:h-[176px] lg:h-[200px]">
         <Swiper
           onSwiper={(sw) => { swRef.current = sw }}
@@ -237,30 +223,22 @@ const BannerSwiper = () => {
         >
           {SLIDES.map((s, i) => (
             <SwiperSlide key={s.id} className="h-full">
-              {({ isActive }) => (
-                <Slide s={s} isDark={isDark} isActive={isActive} />
-              )}
+              {({ isActive }) => <Slide s={s} isDark={isDark} isActive={isActive} />}
             </SwiperSlide>
           ))}
         </Swiper>
       </div>
 
-      {/* Pill pagination */}
       <div className="bp flex items-center justify-center gap-1.5 mt-3" />
 
       <style>{`
         .bp .swiper-pagination-bullet {
-          display: inline-block; margin: 0 !important;
-          width: 6px; height: 6px; border-radius: 99px;
-          /* ✅ var(--divider) — was var(--border-color) (old alias) */
-          background: var(--divider); opacity: 1;
-          transition: all 0.4s cubic-bezier(0.34,1.56,0.64,1); cursor: pointer;
+          display:inline-block;margin:0!important;width:6px;height:6px;border-radius:99px;
+          background:var(--divider);opacity:1;
+          transition:all 0.4s cubic-bezier(0.34,1.56,0.64,1);cursor:pointer;
         }
         .bp .swiper-pagination-bullet-active {
-          width: 26px;
-          /* ✅ var(--accent) — was var(--color-saffron) (old alias) */
-          background: var(--accent);
-          box-shadow: 0 0 10px var(--accent-glow);
+          width:26px;background:var(--accent);box-shadow:0 0 10px var(--accent-glow);
         }
       `}</style>
     </div>

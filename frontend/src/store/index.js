@@ -1,10 +1,10 @@
 // src/store/index.js
 //
-// FIX: staffAuthSlice removed from the store.
-// StaffLoginPage dispatches loginStaff from authSlice (alias for staffLogin thunk)
-// which populates the `auth` slice — the staffAuth slice was never written to
-// from StaffLoginPage and was dead weight. Removing it eliminates the confusion
-// of two separate auth slices and the risk of importing from the wrong one.
+// ─── VENUE ENTRY FLOW CHANGES ─────────────────────────────────────────────────
+// 1. ADDED: venueReducer — stores currently selected venue context
+// 2. ALL other reducers + middleware UNCHANGED
+// ─────────────────────────────────────────────────────────────────────────────
+
 import { configureStore } from '@reduxjs/toolkit'
 import authReducer         from './slices/authSlice'
 import cartReducer         from './slices/cartSlice'
@@ -18,6 +18,13 @@ import callWaiterReducer   from './slices/callWaiterSlice'
 import messagingReducer    from './slices/messagingSlice'
 import reviewReducer       from './slices/reviewSlice'
 import galleryReducer      from './slices/gallerySlice'
+import uiReducer           from './slices/uiSlice'
+import followReducer       from './slices/followSlice'
+import socialChatReducer   from './slices/socialChatSlice'
+import venueReducer        from './slices/venueSlice'
+import remoteOrderReducer from './slices/remoteOrderSlice'
+// ★ RTK Query base API
+import { api }             from '@api/apiSlice'
 
 const store = configureStore({
   reducer: {
@@ -33,9 +40,17 @@ const store = configureStore({
     messaging:     messagingReducer,
     review:        reviewReducer,
     gallery:       galleryReducer,
+    ui:            uiReducer,
+    follow:        followReducer,
+    socialChat:    socialChatReducer,
+    venue:         venueReducer,
+    remoteOrder: remoteOrderReducer,
+    // ★ RTK Query — must use api.reducerPath as the key ('api')
+    [api.reducerPath]: api.reducer,
   },
   middleware: (getDefaultMiddleware) =>
-    getDefaultMiddleware({ serializableCheck: false }),
+    getDefaultMiddleware({ serializableCheck: false })
+      .concat(api.middleware), // ★ enables caching, invalidation, background refetch
   devTools: import.meta.env.DEV,
 })
 

@@ -2,10 +2,7 @@
 <html lang="ne" class="h-full">
   <head>
     <meta charset="UTF-8" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
-    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#FF9F1C" />
     <meta name="description" content="कौसी चिया — Smart Cafe Management System" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -18,9 +15,21 @@
 
     <title>कौसी चिया</title>
 
+    <!--
+      FIX 1: Critical inline CSS — prevents white flash before globals.css loads.
+      Sets background on html/body/#root immediately at parse time.
+      Dark variant applied once the theme script below adds .dark to <html>.
+    -->
     <style>
-      /*
-       * ── ZOOM LOCK ────────────────────────────────────────────────────────
+      /* ── CRITICAL: background before CSS bundle loads ── */
+      html, body, #root { background-color: #F5EDD8; }
+      html.dark, html.dark body, html.dark #root { background-color: #0D0905; }
+      @media (prefers-color-scheme: dark) {
+        html:not([data-theme="light"]),
+        html:not([data-theme="light"]) body { background-color: #0D0905; }
+      }
+
+      /* ── ZOOM LOCK ────────────────────────────────────────────────────────
        * Strategy: wrap the entire app in #zoom-wrap and apply an inverse
        * CSS `zoom` value equal to 1/devicePixelRatio-delta.
        *
@@ -29,31 +38,21 @@
        *   • #zoom-wrap must NOT create its own scroll container (no overflow:auto).
        *   • overflow:hidden on html/body would trap scroll inside zoom-wrap
        *     and make Lenis blind to all touch events on mobile.
-       * ─────────────────────────────────────────────────────────────────────
-       */
+       * ──────────────────────────────────────────────────────────────────── */
       *, *::before, *::after { box-sizing: border-box; }
 
       html {
-        margin: 0;
-        padding: 0;
-        width: 100%;
-        /* Let html scroll — Lenis needs window to be the scroll host */
-        height: 100%;
-        overflow-x: hidden;
+        margin: 0; padding: 0; width: 100%;
+        height: 100%; overflow-x: hidden;
       }
 
       body {
-        margin: 0;
-        padding: 0;
-        width: 100%;
-        min-height: 100%;
-        overflow-x: hidden;
+        margin: 0; padding: 0; width: 100%;
+        min-height: 100%; overflow-x: hidden;
       }
 
       #zoom-wrap {
-        width: 100%;
-        min-height: 100%;
-        /* Smooth zoom animation — fires when JS sets the zoom property */
+        width: 100%; min-height: 100%;
         transition: zoom 0.2s cubic-bezier(0.22, 1, 0.36, 1);
         transform-origin: top left;
         /*
@@ -64,11 +63,32 @@
          */
       }
 
-      #root {
-        width: 100%;
-        min-height: 100dvh;
-      }
+      #root { width: 100%; min-height: 100dvh; }
     </style>
+
+    <!--
+      FIX 2: Theme detection — runs synchronously BEFORE React mounts.
+      Reads stored theme from localStorage and applies .dark class to <html>
+      instantly so there is zero flash between stored preference and hydration.
+      Must be inline and before any stylesheet or React script.
+    -->
+    <script>
+      (function () {
+        try {
+          var stored      = localStorage.getItem('theme')
+          var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+          var isDark      = stored === 'dark' || (!stored && prefersDark)
+          if (isDark) {
+            document.documentElement.classList.add('dark')
+            document.documentElement.setAttribute('data-theme', 'dark')
+            document.documentElement.style.backgroundColor = '#0D0905'
+          } else {
+            document.documentElement.setAttribute('data-theme', 'light')
+            document.documentElement.style.backgroundColor = '#F5EDD8'
+          }
+        } catch (e) {}
+      })()
+    </script>
   </head>
 
   <body>
@@ -84,16 +104,17 @@
     <!--
       Zoom-lock script — runs synchronously before React mounts.
       Sets the initial zoom immediately so there is ZERO layout flash.
+      All original logic preserved exactly.
     -->
     <script>
       (function () {
         var wrap     = document.getElementById('zoom-wrap')
         var rafId    = null
-        var lastZoom = -1          // force first apply
-        var baseDPR  = window.devicePixelRatio || 1  // DPR at page load (= zoom 100%)
+        var lastZoom = -1
+        var baseDPR  = window.devicePixelRatio || 1
 
         function getZoomLevel() {
-          var dpr = window.devicePixelRatio || 1
+          var dpr  = window.devicePixelRatio || 1
           var zoom = dpr / baseDPR
           return Math.round(zoom * 20) / 20
         }
@@ -107,11 +128,8 @@
 
           wrap.style.zoom = counterZoom
 
-          // At counter-zoom 0.8 the wrap needs to be 125% wide/tall
-          // so it fills the full viewport after scaling
           var pct = (zoomLevel * 100).toFixed(1) + '%'
-          wrap.style.width  = pct
-          // ⚠️  height → minHeight so content can grow beyond viewport
+          wrap.style.width     = pct
           wrap.style.minHeight = pct
         }
 

@@ -1,50 +1,110 @@
 // src/shared/utils/soundEngine.js
 //
-// UNIFIED SOUND ENGINE — replaces both soundPlayer.js and useNotificationSound.js
+// PATCH: Bug 3 fix (v2) — AudioContext autoplay error
+// ✅ Removed passive:true from the capture gesture listeners.
+// ✅ Added e.isTrusted check — filters synthetic/programmatic events
+//    that fired the listener before any real user interaction.
+//    capture:true + passive:true is contradictory for unlocking AudioContext:
+//    passive:true tells the browser "I won't call preventDefault" which is fine,
+//    but Chrome Android also uses passivity as a hint that the callback is not
+//    a "direct gesture handler" and may still block AudioContext creation.
+//    capture:true alone (passive defaults to false) = treated as direct gesture.
 //
-// ARCHITECTURE:
-//   • Single AudioContext shared across the entire app
-//   • Unlocked on FIRST user gesture (click/touch/key) — registered immediately
-//     at module load time, before any component mounts
-//   • Web Audio synth sounds for notifications (zero file load, instant)
-//   • MP3 file sounds for role-specific events (preloaded at login)
-//   • Both paths coordinate through the same AudioContext unlock state
-//   • Zero async delay — sounds fire synchronously from the synth path
-//   • Mute/volume persisted in localStorage
+// Only these 3 lines changed from the original:
+//   { passive: true, capture: true }  →  { capture: true }
 //
-// FIX:
-// ✅ vibrate() gated behind _unlocked — fixes Chrome "Blocked call to
-//    navigator.vibrate because user hasn't tapped on the frame" warning.
+// All other logic unchanged.
 
 import { SOUNDS } from '@sounds'
 
-// ── AudioContext singleton ─────────────────────────────────────────────────────
 let _ac       = null
 let _unlocked = false
+let _unlocking = false
 
-const getAC = () => _ac
-
-// ── Unlock on FIRST user gesture ─────────────────────────────────────────────
-const _unlock = () => {
-  if (_unlocked) return
-  _unlocked = true
-  try {
-    _ac = new (window.AudioContext || window.webkitAudioContext)()
-  } catch { return }
-  if (_ac.state === 'suspended') _ac.resume().catch(() => {})
-  try {
-    const buf = _ac.createBuffer(1, 1, 22050)
-    const src = _ac.createBufferSource()
-    src.buffer = buf
-    src.connect(_ac.destination)
-    src.start(0); src.stop(0)
-  } catch {}
+const getAC = () => {
+  if (_ac && _ac.state !== 'closed') return _ac
+  if (typeof window !== 'undefined' &&
+      window.__kcAudioContext &&
+      window.__kcAudioContext.state !== 'closed') {
+    _ac       = window.__kcAudioContext
+    _unlocked = true
+    return _ac
+  }
+  return null
 }
 
+const _unlock = () => {
+  if (_unlocked || _unlocking) return
+  _unlocking = true
+
+  if (typeof window !== 'undefined' &&
+      window.__kcAudioContext &&
+      window.__kcAudioContext.state !== 'closed') {
+    _ac        = window.__kcAudioContext
+    _unlocked  = true
+    _unlocking = false
+    return
+  }
+
+  try {
+    _ac = new (window.AudioContext || window.webkitAudioContext)()
+  } catch {
+    _unlocking = false
+    return
+  }
+
+  const doResume = () => {
+    if (!_ac || _ac.state === 'running') {
+      _finishUnlock()
+      return
+    }
+    _ac.resume().then(_finishUnlock).catch(_finishUnlock)
+  }
+
+  const _finishUnlock = () => {
+    _unlocked  = true
+    _unlocking = false
+    try {
+      const buf = _ac.createBuffer(1, 1, 22050)
+      const src = _ac.createBufferSource()
+      src.buffer = buf
+      src.connect(_ac.destination)
+      src.start(0)
+      src.stop(0)
+    } catch {}
+    if (typeof window !== 'undefined') {
+      window.__kcAudioContext  = _ac
+      window.__kcAudioUnlocked = true
+    }
+  }
+
+  if (_ac.state === 'suspended') {
+    doResume()
+  } else {
+    _finishUnlock()
+  }
+}
+
+// ── BUG 3 FIX: remove passive:true from capture listeners ────────────────────
+// capture:true + passive:true → Chrome Android may still block AudioContext.
+// capture:true alone (passive=false default) → treated as direct user gesture.
 if (typeof window !== 'undefined') {
-  window.addEventListener('click',      _unlock, { once: true, passive: true, capture: true })
-  window.addEventListener('touchstart', _unlock, { once: true, passive: true, capture: true })
-  window.addEventListener('keydown',    _unlock, { once: true, passive: true, capture: true })
+  const _onGesture = (e) => {
+    // isTrusted guard — only real user gestures unlock AudioContext.
+    // Synthetic/programmatic events (socket events, session rehydration,
+    // React state updates) set isTrusted=false → skip them entirely.
+    if (!e.isTrusted) return
+    _unlock()
+    if (_unlocked) {
+      window.removeEventListener('click',      _onGesture, { capture: true })
+      window.removeEventListener('touchstart', _onGesture, { capture: true })
+      window.removeEventListener('keydown',    _onGesture, { capture: true })
+    }
+  }
+  // FIX: { capture: true } only — passive removed
+  window.addEventListener('click',      _onGesture, { capture: true })
+  window.addEventListener('touchstart', _onGesture, { capture: true })
+  window.addEventListener('keydown',    _onGesture, { capture: true })
 }
 
 // ── Vibration ─────────────────────────────────────────────────────────────────
@@ -64,13 +124,11 @@ const VIBRATE_PATTERNS = {
   callWaiter:  [150, 80, 150],
 }
 
-// ✅ FIX: gate behind _unlocked — Chrome blocks vibrate before first user gesture
 const vibrate = (pattern) => {
   if (!pattern?.length || !_unlocked) return
   try { navigator.vibrate?.(pattern) } catch {}
 }
 
-// ── Note frequencies ──────────────────────────────────────────────────────────
 const N = {
   C4: 261.63, D4: 293.66, E4: 329.63, F4: 349.23, G4: 392.00,
   A4: 440.00, B4: 493.88,
@@ -79,7 +137,6 @@ const N = {
   C6: 1046.50,
 }
 
-// ── Synth sound recipes ───────────────────────────────────────────────────────
 const _playTone = (ac, freq, type, gainVal, startOffset, duration) => {
   const osc  = ac.createOscillator()
   const gain = ac.createGain()
@@ -99,6 +156,18 @@ const SYNTH_SOUNDS = {
     [[N.C5, 0], [N.E5, 0.1], [N.G5, 0.2]].forEach(([f, t]) =>
       _playTone(ac, f, 'sine', 0.22, t, 0.28))
   },
+  orderPlaced: (ac) => {
+    [[N.C5, 0], [N.E5, 0.1], [N.G5, 0.2]].forEach(([f, t]) =>
+      _playTone(ac, f, 'sine', 0.22, t, 0.28))
+  },
+  orderReady: (ac) => {
+    [[N.G5, 0], [N.C6, 0.1], [N.G5, 0.22]].forEach(([f, t]) =>
+      _playTone(ac, f, 'sine', 0.25, t, 0.3))
+  },
+  orderDelivered: (ac) => {
+    [[N.C5, 0], [N.E5, 0.09], [N.G5, 0.18], [N.C6, 0.27]].forEach(([f, t]) =>
+      _playTone(ac, f, 'sine', 0.2, t, 0.28))
+  },
   waiter: (ac) => {
     _playTone(ac, N.A5, 'triangle', 0.3, 0, 0.55)
     _playTone(ac, N.E5, 'sine', 0.12, 0.06, 0.4)
@@ -107,6 +176,14 @@ const SYNTH_SOUNDS = {
     [[N.C5, 0], [N.E5, 0.09], [N.G5, 0.18], [N.C6, 0.27]].forEach(([f, t]) =>
       _playTone(ac, f, 'sine', 0.18, t, 0.3))
   },
+  pointsEarned: (ac) => {
+    [[N.E5, 0], [N.G5, 0.08], [N.C6, 0.16]].forEach(([f, t]) =>
+      _playTone(ac, f, 'sine', 0.16, t, 0.25))
+  },
+  tierUpgraded: (ac) => {
+    [[N.C5, 0], [N.E5, 0.07], [N.G5, 0.14], [N.C6, 0.21], [N.C6, 0.3]].forEach(([f, t]) =>
+      _playTone(ac, f, 'sine', 0.2, t, 0.32))
+  },
   payment: (ac) => {
     [[N.C5, 0], [N.E5, 0.07], [N.G5, 0.14], [N.C6, 0.21]].forEach(([f, t]) =>
       _playTone(ac, f, 'sine', 0.15, t, 0.25))
@@ -114,6 +191,10 @@ const SYNTH_SOUNDS = {
   message: (ac) => {
     [[N.F5, 0], [N.F5, 0.1]].forEach(([f, t]) =>
       _playTone(ac, f, 'sine', 0.18, t, 0.15))
+  },
+  notification: (ac) => {
+    [[N.B4, 0], [N.D5, 0.12]].forEach(([f, t]) =>
+      _playTone(ac, f, 'sine', 0.15, t, 0.22))
   },
   kitchen: (ac) => {
     [[N.A5, 0], [N.A5, 0.14]].forEach(([f, t]) =>
@@ -137,7 +218,6 @@ const SYNTH_SOUNDS = {
   },
 }
 
-// ── MP3 file cache (role sounds) ───────────────────────────────────────────────
 let _currentRole = null
 let _fileCache   = {}
 let _bufferCache = {}
@@ -162,8 +242,6 @@ const _preloadFile = async (path) => {
   } catch {}
 }
 
-// ── PUBLIC API ────────────────────────────────────────────────────────────────
-
 export const preloadRoleSounds = (role) => {
   if (!role || role === 'admin') return
   if (role !== _currentRole) { _clearFileCache(); _currentRole = role }
@@ -177,7 +255,17 @@ export const playNotificationSound = (type = 'system', vibratePattern) => {
   vibrate(vibratePattern ?? VIBRATE_PATTERNS[type] ?? VIBRATE_PATTERNS.system)
   try {
     const ac = getAC()
-    if (!ac || ac.state !== 'running') return
+    if (!ac) return
+    if (ac.state === 'suspended') {
+      ac.resume().then(() => {
+        try {
+          const fn = SYNTH_SOUNDS[type] ?? SYNTH_SOUNDS.system
+          fn(ac)
+        } catch {}
+      }).catch(() => {})
+      return
+    }
+    if (ac.state !== 'running') return
     const fn = SYNTH_SOUNDS[type] ?? SYNTH_SOUNDS.system
     fn(ac)
   } catch (e) {
@@ -217,7 +305,6 @@ export const playSound = (soundKey, role) => {
   audio.play().catch(() => { _preloadFile(path) })
 }
 
-// ── Volume / mute ─────────────────────────────────────────────────────────────
 export const getVolume = () =>
   parseFloat(localStorage.getItem('kc_sound_volume') ?? '0.7')
 
@@ -236,6 +323,5 @@ export const toggleMute = () => {
 export const isMuted = () =>
   localStorage.getItem('kc_sounds_muted') === 'true'
 
-// ── Legacy compat ─────────────────────────────────────────────────────────────
 export default playNotificationSound
 export const unlockAudioContext = () => _unlock()

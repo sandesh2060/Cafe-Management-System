@@ -1,0 +1,1 @@
+// file : frontend/src/modules/table/detection/QrDetector.js

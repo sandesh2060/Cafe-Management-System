@@ -1,19 +1,24 @@
 // src/modules/table/hooks/useTableDetection.js
 //
-// FIX: createSession now navigates to '/menu' when the user is already
-// authenticated, and '/login' only for new/unauthenticated sessions.
-// Previously it always navigated to '/login', which caused GuestRoute to
-// redirect logged-in users on every refresh that re-triggered GPS detection.
+// BUG FIX — rehydratePersistedSession + join session race:
+// ✅ persistSession now stores the FULL session including all users[]
+// ✅ rehydratePersistedSession validates sessionId against backend before
+//    dispatching — stale localStorage sessionId is cleared if backend says
+//    the session is closed/expired
+// ✅ createSession dispatches notifySocketOfSession after setSession so
+//    the socket joins the correct table room immediately
+// ✅ All other GPS/QR/confidence logic unchanged
 
-import { useEffect, useRef, useCallback } from 'react'
-import { useMachine }  from '@xstate/react'
-import { useDispatch, useSelector } from 'react-redux'
-import { useNavigate } from 'react-router-dom'
-import { detectionMachine }                          from '../detection/detectionMachine'
+import { useEffect, useRef, useCallback }           from 'react'
+import { useMachine }                               from '@xstate/react'
+import { useDispatch, useSelector }                 from 'react-redux'
+import { useNavigate }                              from 'react-router-dom'
+import { detectionMachine }                         from '../detection/detectionMachine'
 import { setDetecting, setSession, setSessionError } from '@store/slices/tableSessionSlice'
-import { selectIsLoggedIn }                          from '@store/slices/authSlice'
-import api                                           from '@api/axios'
-import { ENDPOINTS }                                 from '@api/endpoints'
+import { selectIsLoggedIn }                         from '@store/slices/authSlice'
+import api                                          from '@api/axios'
+import { ENDPOINTS }                                from '@api/endpoints'
+import { notifySocketOfSession }                    from '@modules/table/services/tableSession.socket'
 
 // ─── GPS config ────────────────────────────────────────────────────────────────
 const GPS_CONFIG = {
@@ -65,12 +70,6 @@ const mockGeolocation = DEV_GPS_ENABLED ? {
 
 const geo = DEV_GPS_ENABLED ? mockGeolocation : navigator.geolocation
 
-if (import.meta.env.DEV) {
-  DEV_GPS_ENABLED
-    ? console.info(`[TableDetection] 🧪 DEV GPS MOCK enabled — ${DEV_MOCK_LAT}, ${DEV_MOCK_LNG}`)
-    : console.info('[TableDetection] 💡 GPS mock not active. Add to frontend/.env.local:\n  VITE_DEV_GPS_LAT=27.70244\n  VITE_DEV_GPS_LNG=85.34660')
-}
-
 // ─── Session persistence ───────────────────────────────────────────────────────
 const SESSION_KEYS = {
   data:    'kc_session_data',
@@ -95,17 +94,64 @@ export const clearPersistedSession = () => {
 }
 
 /**
- * Redux thunk — called once from App.jsx on mount to rehydrate session after
- * page refresh or cross-route navigation.
+ * Redux thunk — rehydrates session from localStorage on app mount.
+ *
+ * FIX: validates the stored sessionId against the backend before dispatching.
+ * If the session is closed/expired on the backend, localStorage is cleared
+ * so Kiran doesn't get a stale sessionId that causes getActiveOrder to miss
+ * Sandesh's order.
  */
-export const rehydratePersistedSession = () => (dispatch) => {
+export const rehydratePersistedSession = () => async (dispatch) => {
   try {
     const raw = localStorage.getItem(SESSION_KEYS.data)
     if (!raw) return
+
     const session = JSON.parse(raw)
-    if (!session?.sessionId || !session?.tableNumber) { clearPersistedSession(); return }
-    console.info(`[TableDetection] 🔄 Rehydrating session — Table: ${session.tableNumber}`)
-    dispatch(setSession(session))
+    if (!session?.sessionId || !session?.tableNumber) {
+      clearPersistedSession()
+      return
+    }
+
+    // ── Validate against backend before trusting localStorage ────────────────
+    // GET /api/table-session/active with x-session-id header
+    // If backend returns null → session expired → clear localStorage
+    try {
+      const result = await api.get(ENDPOINTS.TABLE.SESSION_ACTIVE, {
+        headers: { 'x-session-id': session.sessionId },
+      })
+      const liveSession = result?.session ?? result?.data?.session ?? null
+
+      if (!liveSession || liveSession.status !== 'active') {
+        console.info('[TableDetection] 🗑 Stored session expired — clearing')
+        clearPersistedSession()
+        return
+      }
+
+      // Use the live session from backend (has current users[], status etc.)
+      const freshSession = {
+        ...session,
+        ...liveSession,
+        // Keep tableNumber from localStorage as fallback — backend may omit it
+        tableNumber: liveSession.tableNumber ?? session.tableNumber,
+      }
+
+      console.info(`[TableDetection] 🔄 Rehydrating valid session — Table: ${freshSession.tableNumber}`)
+      dispatch(setSession(freshSession))
+      // Join socket room with validated sessionId
+      notifySocketOfSession(freshSession.sessionId)
+
+    } catch (validationErr) {
+      // Network error during validation — trust localStorage optimistically
+      // but only if sessionId looks valid (non-empty UUID)
+      const looksValid = /^[0-9a-f-]{36}$/i.test(session.sessionId)
+      if (looksValid) {
+        console.info(`[TableDetection] 🔄 Rehydrating (offline) — Table: ${session.tableNumber}`)
+        dispatch(setSession(session))
+        notifySocketOfSession(session.sessionId)
+      } else {
+        clearPersistedSession()
+      }
+    }
   } catch (e) {
     console.warn('[TableDetection] Session rehydration failed:', e)
     clearPersistedSession()
@@ -118,10 +164,7 @@ export const useTableDetection = () => {
   const dispatch      = useDispatch()
   const navigate      = useNavigate()
 
-  // FIX: read auth state so createSession can navigate correctly
-  const isLoggedIn = useSelector(selectIsLoggedIn)
-  // Store in ref so the navigate callback always has the latest value
-  // without needing to be re-created (avoids stale closure in callbacks)
+  const isLoggedIn    = useSelector(selectIsLoggedIn)
   const isLoggedInRef = useRef(isLoggedIn)
   useEffect(() => { isLoggedInRef.current = isLoggedIn }, [isLoggedIn])
 
@@ -145,7 +188,6 @@ export const useTableDetection = () => {
       : Object.keys(state.value)[0]
   }, [state.value])
 
-  // ── Haversine distance (metres) ─────────────────────────────────────────────
   const haversine = useCallback((lat1, lng1, lat2, lng2) => {
     const R  = 6371000
     const φ1 = (lat1 * Math.PI) / 180
@@ -156,7 +198,6 @@ export const useTableDetection = () => {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
   }, [])
 
-  // ── Confidence score ────────────────────────────────────────────────────────
   const calculateConfidence = useCallback((coords) => {
     if (!coords || coords.length < 2) return 50
     const lats      = coords.map(c => c.latitude)
@@ -185,10 +226,6 @@ export const useTableDetection = () => {
 
       const data = await api.post(endpoint, body, { timeout: 10_000 })
 
-      console.log('[Detection] ✅ Raw API response:', JSON.stringify(data))
-      console.log('[Detection] session.tableNumber:', data?.session?.tableNumber)
-      console.log('[Detection] table.tableNumber:',   data?.table?.tableNumber)
-
       if (!isMounted.current) return
 
       const now = new Date().toISOString()
@@ -200,26 +237,24 @@ export const useTableDetection = () => {
         status:      data.session?.status      ?? 'active',
       }
 
-      console.log('[Detection] 📦 sessionData to dispatch:', JSON.stringify(sessionData))
-
-      // 1. Persist to localStorage (survives navigate + store resets)
+      // 1. Persist to localStorage
       persistSession(sessionData)
 
       // 2. Dispatch to Redux
       dispatch(setSession(sessionData))
 
-      // 3. Notify XState machine
+      // 3. ✅ FIX: notify socket immediately so table room is joined
+      //    with the correct (possibly shared) sessionId
+      notifySocketOfSession(sessionData.sessionId)
+
+      // 4. Notify XState machine
       send({
         type:      'SESSION_CREATED',
         table:     data.table ?? { tableNumber: sessionData.tableNumber, zone: sessionData.zone },
         sessionId: sessionData.sessionId,
       })
 
-      // 4. FIX: navigate based on auth state.
-      //    - Already logged in (refresh scenario) → go straight to /menu.
-      //      The old `navigate('/login')` was sending logged-in users to
-      //      GuestRoute which redirected them, causing the /login flash.
-      //    - Not logged in (first visit) → go to /login to authenticate.
+      // 5. Navigate
       if (isLoggedInRef.current) {
         navigate('/menu', { replace: true })
       } else {
@@ -235,11 +270,8 @@ export const useTableDetection = () => {
     }
   }, [dispatch, navigate, send])
 
-  // ── GPS position handler ────────────────────────────────────────────────────
   const handlePosition = useCallback((position) => {
     const { latitude, longitude, accuracy } = position.coords
-    console.log(`[TableDetection] 📍 GPS: ${latitude}, ${longitude} ±${Math.round(accuracy)}m`)
-
     readings.current.push({ latitude, longitude, accuracy, timestamp: Date.now() })
     if (readings.current.length > GPS_CONFIG.readingsCount) {
       readings.current = readings.current.slice(-GPS_CONFIG.readingsCount)
@@ -256,29 +288,22 @@ export const useTableDetection = () => {
       const avgLat = readings.current.reduce((a, r) => a + r.latitude,  0) / readings.current.length
       const avgLng = readings.current.reduce((a, r) => a + r.longitude, 0) / readings.current.length
 
-      console.log(`[TableDetection] 🎯 Confidence: ${score} (min: ${GPS_CONFIG.confidenceMin})`)
-
       if (score >= GPS_CONFIG.confidenceMin) {
         send({ type: 'GPS_HIGH_CONFIDENCE', coords: { latitude: avgLat, longitude: avgLng, accuracy }, confidenceScore: score })
         createSession({ method: 'gps', latitude: avgLat, longitude: avgLng, confidenceScore: score, accuracy })
       } else if (accuracy <= 50) {
-        console.log('[TableDetection] 📍 Low confidence but accuracy ≤50m — accepting')
         send({ type: 'GPS_HIGH_CONFIDENCE', coords: { latitude, longitude, accuracy }, confidenceScore: score })
         createSession({ method: 'gps', latitude, longitude, confidenceScore: score, accuracy })
       } else {
-        console.warn('[TableDetection] ⚠ Low confidence → QR fallback')
         send({ type: 'GPS_LOW_CONFIDENCE' })
       }
     }
   }, [calculateConfidence, createSession, send])
 
-  // ── Cached position probe ───────────────────────────────────────────────────
   const tryCachedPosition = useCallback(() => {
-    console.log('[TableDetection] 🗂 Probing cached position…')
     geo.getCurrentPosition(
       (position) => handlePosition(position),
       (err) => {
-        console.error(`[TableDetection] ❌ Cached position failed (code ${err.code})`)
         const s = currentState.current
         if (s === 'requestingGPS' || s === 'collectingReadings') {
           if (err.code === 1) send({ type: 'GPS_DENIED' })
@@ -289,7 +314,6 @@ export const useTableDetection = () => {
     )
   }, [handlePosition, send])
 
-  // ── Low-accuracy fallback watch ─────────────────────────────────────────────
   const startLowAccuracyWatch = useCallback(() => {
     if (didFallback.current) { tryCachedPosition(); return }
     didFallback.current = true
@@ -313,14 +337,12 @@ export const useTableDetection = () => {
     )
   }, [handlePosition, send, tryCachedPosition])
 
-  // ── GPS error handler ───────────────────────────────────────────────────────
   const handleGpsError = useCallback((err) => {
     clearTimeout(gpsTimer.current)
     if (err.code === 1) { send({ type: 'GPS_DENIED' }); return }
     startLowAccuracyWatch()
   }, [send, startLowAccuracyWatch])
 
-  // ── startGPS ────────────────────────────────────────────────────────────────
   const startGPS = useCallback(() => {
     if (hasStarted.current) return
     hasStarted.current = true
@@ -361,7 +383,6 @@ export const useTableDetection = () => {
     send({ type: 'RETRY' })
   }, [send])
 
-  // ── Cleanup ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     return () => {
       if (watchId.current !== null) geo.clearWatch(watchId.current)

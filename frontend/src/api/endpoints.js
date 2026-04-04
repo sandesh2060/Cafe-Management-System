@@ -1,21 +1,27 @@
-// src/api/endpoints.js
+// frontend/src/api/endpoints.js
 //
-// FIXES:
-// • TABLE.GEOFENCE_EXIT added — useGpsWatcher.js calls api.post(ENDPOINTS.TABLE.GEOFENCE_EXIT)
-// • LOYALTY.ME added as alias for MY_LOYALTY — useLoyalty.js imports ENDPOINTS.LOYALTY.ME
-//   (both kept so existing code using either name works)
+// ─── VENUE ENTRY FLOW CHANGES ─────────────────────────────────────────────────
+// 1. ADDED: CAFE section — geofence check, search, nearby, code, slug,
+//    favorites, recent, toggle favorite
+// 2. ALL other endpoints UNCHANGED
+// ─────────────────────────────────────────────────────────────────────────────
 
 export const ENDPOINTS = {
   AUTH: {
-    GOOGLE_LOGIN:     '/auth/google',
     GUEST_LOGIN:      '/auth/guest',
     LOGOUT:           '/auth/logout',
     REFRESH:          '/auth/refresh',
     ME:               '/auth/me',
-    UPDATE_PROFILE:   '/auth/me',        // PATCH — username & avatar
+    UPDATE_PROFILE:   '/auth/me',
     CHECK_USERNAME:   '/auth/check-username',
     REGISTER:         '/auth/register',
     LOGIN:            '/auth/login',
+    STAFF_LOGIN:      '/auth/staff-login',
+    FORGOT_PASSCODE:  '/auth/forgot-passcode',
+    VERIFY_OTP:       '/auth/verify-otp',
+    ADD_EMAIL:        '/auth/me/email',
+    CHANGE_PASSCODE:  '/auth/me/passcode',
+    REFERRAL:         '/auth/referral',
   },
 
   TABLE: {
@@ -25,10 +31,22 @@ export const ENDPOINTS = {
     DETECT_GPS:      '/table-session/detect/gps',
     DETECT_QR:       '/table-session/detect/qr',
     HEARTBEAT:       '/table-session/heartbeat',
-    GEOFENCE_EXIT:   '/table-session/geofence-exit',   // FIX: was missing — useGpsWatcher needs this
+    GEOFENCE_EXIT:   '/table-session/geofence-exit',
     LIST:            '/tables',
     CREATE:          '/tables',
     UPDATE:          (id) => `/tables/${id}`,
+  },
+
+  // ★ NEW — Cafe discovery / venue entry flow
+  CAFE: {
+    GEOFENCE_CHECK:  '/cafes/geofence-check',
+    SEARCH:          '/cafes/search',
+    NEARBY:          '/cafes/nearby',
+    CODE:            (code) => `/cafes/code/${code}`,
+    SLUG:            (slug) => `/cafes/slug/${slug}`,
+    FAVORITES:       '/cafes/favorites',
+    RECENT:          '/cafes/recent',
+    FAVORITE:        (cafeId) => `/cafes/${cafeId}/favorite`,
   },
 
   MENU: {
@@ -80,7 +98,7 @@ export const ENDPOINTS = {
 
   LOYALTY: {
     MY_LOYALTY:    '/loyalty/me',
-    ME:            '/loyalty/me',     // FIX: alias — useLoyalty.js uses ENDPOINTS.LOYALTY.ME
+    ME:            '/loyalty/me',
     HISTORY:       '/loyalty/history',
     CONFIG:        '/loyalty/config',
     UPDATE_CONFIG: '/loyalty/config',
@@ -134,5 +152,62 @@ export const ENDPOINTS = {
     READ_ALL: '/notifications/read-all',
     READ_ONE: (id) => `/notifications/${id}/read`,
     CLEAR:    '/notifications',
+  },
+
+  SOCIAL: {
+    CUSTOMERS:      '/social/customers',
+    FOLLOW_PENDING: '/social/follow/pending',
+    FOLLOW:         (id)    => `/social/follow/${id}`,
+    FOLLOW_ACCEPT:  (id)    => `/social/follow/${id}/accept`,
+    FOLLOW_DECLINE: (id)    => `/social/follow/${id}/decline`,
+    UNFOLLOW:       (id)    => `/social/follow/${id}`,
+    BLOCK:          (id)    => `/social/block/${id}`,
+    UNBLOCK:        (id)    => `/social/block/${id}`,
+    CHAT_LIST:      '/social/chat',
+    CHAT_THREAD:    (id)    => `/social/chat/${id}`,
+    CHAT_SEND:      (id)    => `/social/chat/${id}`,
+    REACT:          (msgId) => `/social/chat/${msgId}/react`,
+  },
+
+  OWNER: {
+    REGISTER:      '/owner/register',
+    LOGIN:         '/owner/login',
+    LOGOUT:        '/owner/logout',
+    ME:            '/owner/me',
+    CAFES:         '/owner/cafes',
+    CAFE:          (id) => `/owner/cafes/${id}`,
+    CAFE_CREATE:   '/owner/cafes',
+    CAFE_UPDATE:   (id) => `/owner/cafes/${id}`,
+    STAFF:         (cafeId) => `/owner/cafes/${cafeId}/staff`,
+    STAFF_CREATE:  (cafeId) => `/owner/cafes/${cafeId}/staff`,
+    SUBSCRIPTION:  '/owner/subscription',
+    PLANS:         '/owner/plans',
+    BILLING:       '/owner/billing',
+  },
+
+  SUPERADMIN: {
+    LOGIN:          '/superadmin/login',
+    LOGOUT:         '/superadmin/logout',
+    CONFIG:         '/superadmin/config',
+    TOGGLE_OTP:     '/superadmin/config/otp',
+    TRIAL_DAYS:     '/superadmin/config/trial-days',
+    OWNERS:         '/superadmin/owners',
+    OWNER_ACTIVE:   (id) => `/superadmin/owners/${id}/active`,
+    CACHE_FLUSH:    '/superadmin/cache/flush',
+    // ★ NEW — analytics
+    DASHBOARD:      '/superadmin/dashboard',
+    TENANTS:        '/superadmin/tenants',
+    TENANT_DETAIL:  (cafeId) => `/superadmin/tenants/${cafeId}`,
+    TENANT_PLAN:    (cafeId) => `/superadmin/tenants/${cafeId}/plan`,
+    REVENUE:        '/superadmin/revenue',
+    PLANS:          '/superadmin/plans',
+    PLAN_UPDATE:    (planId) => `/superadmin/plans/${planId}`,
+  },
+
+  ESEWA: {
+    INITIATE:  '/esewa/initiate',
+    VERIFY:    '/esewa/verify',
+    SUCCESS:   '/esewa/success',
+    FAILURE:   '/esewa/failure',
   },
 }

@@ -1,1 +1,1 @@
-// file : frontend/src/modules/table/detection/GpsDetector.js
+// file : frontend/src/modules/table/services/tableSession.service.js

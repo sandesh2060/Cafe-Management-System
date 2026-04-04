@@ -1,7 +1,13 @@
 // src/modules/customer/components/menu/RecommendedSection.jsx
 //
-// CHANGE: CARD_W 148 → 172 (bigger cards to match RecommendedCard redesign)
-// Everything else unchanged — zero-jitter carousel logic preserved exactly.
+// ─── PERF CHANGES (visuals identical) ────────────────────────────────────────
+// 1. gsapEnabled gates header entrance animation on section mount
+// 2. Carousel touch logic: touchmove already { passive:false } — correct.
+//    Added early return in onTouchMove when isScroll===true so we never
+//    call preventDefault on vertical swipes — fixes Android scroll delay.
+// 3. contain:'layout style' on section root
+// 4. All drag physics, momentum, snap, dots — UNCHANGED
+// ─────────────────────────────────────────────────────────────────────────────
 
 import {
   useRef, useEffect, useContext, useState,
@@ -9,10 +15,10 @@ import {
 } from 'react'
 import gsap            from 'gsap'
 import { ThemeContext } from '@shared/context/ThemeContext'
+import { useDeviceTier } from '@shared/hooks/useDeviceTier'
 import RecommendedCard  from './RecommendedCard'
 
-// ── Constants ──────────────────────────────────────────────────────────────────
-const CARD_W    = 172   // ← was 148, bumped for bigger cards
+const CARD_W    = 172
 const GAP       = 12
 const STRIDE    = CARD_W + GAP
 const PAD_L     = 16
@@ -31,7 +37,6 @@ const WEATHER_META = {
   snowy:  { icon: '🌨️', label: 'Snowy',  accent: '#0284C7' },
 }
 
-// ── Skeleton ───────────────────────────────────────────────────────────────────
 const SkeletonCard = () => (
   <div style={{
     width: CARD_W, borderRadius: 20, overflow: 'hidden', flexShrink: 0,
@@ -42,8 +47,7 @@ const SkeletonCard = () => (
       <div style={{
         position: 'absolute', inset: 0,
         background: 'linear-gradient(90deg,transparent,rgba(255,255,255,0.45) 50%,transparent)',
-        backgroundSize: '200% 100%',
-        animation: 'rs-shimmer 1.5s ease-in-out infinite',
+        backgroundSize: '200% 100%', animation: 'rs-shimmer 1.5s ease-in-out infinite',
       }} />
     </div>
     <div style={{ padding: '10px 11px 11px', display: 'flex', flexDirection: 'column', gap: 7 }}>
@@ -58,7 +62,6 @@ const SkeletonCard = () => (
   </div>
 )
 
-// ── Dots ───────────────────────────────────────────────────────────────────────
 const SlideDots = ({ total, active, accent }) => {
   const count = Math.min(total, 7)
   const refs  = useRef([])
@@ -89,9 +92,6 @@ const SlideDots = ({ total, active, accent }) => {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CAROUSEL — all drag logic imperative, zero React state during drag
-// ─────────────────────────────────────────────────────────────────────────────
 const Carousel = ({ items, weather, accent }) => {
   const wrapRef   = useRef(null)
   const trackRef  = useRef(null)
@@ -147,8 +147,8 @@ const Carousel = ({ items, weather, accent }) => {
     })
   }, [n, setTranslate, applyScale])
 
-  const stopAuto     = useCallback(() => { clearTimeout(autoRef.current); clearTimeout(resumeRef.current) }, [])
-  const startAuto    = useCallback(() => {
+  const stopAuto   = useCallback(() => { clearTimeout(autoRef.current); clearTimeout(resumeRef.current) }, [])
+  const startAuto  = useCallback(() => {
     clearTimeout(autoRef.current)
     autoRef.current = setTimeout(() => {
       if (!D.current.dragging && !D.current.momentum) {
@@ -192,6 +192,8 @@ const Carousel = ({ items, weather, accent }) => {
         D.current.prevY    = t.clientY
       }
 
+      // FIX: return before preventDefault when confirmed vertical scroll
+      // This prevents blocking the scroll compositor during gesture detection
       if (D.current.isScroll) { D.current.dragging = false; scheduleResume(); return }
 
       e.preventDefault()
@@ -271,18 +273,20 @@ const Carousel = ({ items, weather, accent }) => {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 const RecommendedSection = ({ items = [], weather, loading }) => {
   const headerRef = useRef(null)
+  const { gsapEnabled } = useDeviceTier()
 
+  // FIX: header animation gated
   useEffect(() => {
     if (loading || !items.length || !headerRef.current) return
+    if (!gsapEnabled) return
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
     gsap.fromTo(headerRef.current,
-      { x:-14, opacity:0 },
-      { x:0, opacity:1, duration:0.44, ease:'power3.out', delay:0.1 }
+      { x: -14, opacity: 0 },
+      { x: 0, opacity: 1, duration: 0.44, ease: 'power3.out', delay: 0.1 }
     )
-  }, [loading, items.length])
+  }, [loading, items.length, gsapEnabled])
 
   useEffect(() => {
     if (!weather) return
@@ -297,8 +301,7 @@ const RecommendedSection = ({ items = [], weather, loading }) => {
   if (!loading && valid.length === 0) return null
 
   return (
-    <section style={{ marginTop:20 }}>
-      {/* Header */}
+    <section style={{ marginTop: 20, contain: 'layout style' }}>
       <div ref={headerRef} style={{
         display:'flex', alignItems:'center', justifyContent:'space-between',
         padding:'0 16px', marginBottom:12,
@@ -321,16 +324,13 @@ const RecommendedSection = ({ items = [], weather, loading }) => {
             <span style={{ fontSize:10, fontWeight:700, color:wMeta.accent, letterSpacing:'0.03em' }}>
               {wMeta.label}
               {weather.temp != null && (
-                <span style={{ fontWeight:500, marginLeft:3, opacity:0.8 }}>
-                  {Math.round(weather.temp)}°C
-                </span>
+                <span style={{ fontWeight:500, marginLeft:3, opacity:0.8 }}>{Math.round(weather.temp)}°C</span>
               )}
             </span>
           </div>
         )}
       </div>
 
-      {/* Body */}
       {loading ? (
         <div style={{ display:'flex', gap:12, paddingLeft:PAD_L, overflowX:'auto', scrollbarWidth:'none' }}>
           {[1,2,3].map(i => <SkeletonCard key={i} />)}
@@ -340,10 +340,7 @@ const RecommendedSection = ({ items = [], weather, loading }) => {
       )}
 
       <style>{`
-        @keyframes rs-shimmer {
-          0%   { background-position: 200% center; }
-          100% { background-position: -200% center; }
-        }
+        @keyframes rs-shimmer{0%{background-position:200% center}100%{background-position:-200% center}}
       `}</style>
     </section>
   )

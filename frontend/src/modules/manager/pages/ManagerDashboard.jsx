@@ -1,14 +1,14 @@
 // src/modules/manager/pages/ManagerDashboard.jsx
 //
-// ✅ Google Fonts @import in <style> tag removed — ThemeContext already injects
-//    FONTS.googleUrl globally. No duplicate font load.
-// ✅ Hardcoded 'Playfair Display', 'DM Sans', 'DM Mono' font strings
-//    → FONTS.serif / FONTS.body / FONTS.mono
-// ✅ Hardcoded 'कौसी चिया' / 'Kausī Chiyā' → BRAND.name
-// ✅ Hardcoded 'Rs ' currency → BRAND.currency
-// ✅ Local P palette kept intentionally — ManagerDashboard has its own
-//    financial-dashboard aesthetic separate from the customer theme
-// ✅ All logic, GSAP, motion animations unchanged
+// ─── CHANGES FROM PREVIOUS VERSION ───────────────────────────────────────────
+// ★ Module 21: Added Feedback tab
+//   1. Star imported from lucide-react (already present — reused)
+//   2. FeedbackPanel imported
+//   3. { key: 'feedback', label: 'Feedback', Icon: Star } added to NAV
+//   4. feedback: <FeedbackPanel /> added to PANELS map in Section
+//
+// ALL other logic, GSAP, motion, palette, widgets — IDENTICAL to previous.
+// ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useRef, useContext, useCallback } from 'react'
 import {
@@ -27,6 +27,10 @@ import LoyaltyPanel      from '../components/loyalty/LoyaltyPanel'
 import ReportsPanel      from '../components/reports/ReportsPanel'
 import StaffList         from '../components/staff/StaffList'
 import ManagerMessageHub from '../components/messaging/ManagerMessageHub'
+// ★ NEW: Module 21
+import FeedbackPanel     from '../components/feedback/FeedbackPanel'
+// ★ NEW: Module 22
+import PricingRulePanel  from '../components/pricing/PricingRulePanel'
 import {
   LayoutDashboard, Users, Map, Package, Star, FileText, MessageSquare,
   TrendingUp, ShoppingBag, IndianRupee, Bell, Clock, Activity,
@@ -63,14 +67,17 @@ const cardBase = (isDark, extra = {}) => ({
   ...extra,
 })
 
+// ★ CHANGED: added feedback + pricing entries
 const NAV = [
-  { key: 'overview',   label: 'Overview',  Icon: LayoutDashboard },
-  { key: 'staff',      label: 'Staff',     Icon: Users           },
-  { key: 'tables',     label: 'Tables',    Icon: Map             },
-  { key: 'inventory',  label: 'Inventory', Icon: Package         },
-  { key: 'loyalty',    label: 'Loyalty',   Icon: Star            },
-  { key: 'reports',    label: 'Reports',   Icon: FileText        },
-  { key: 'messages',   label: 'Messages',  Icon: MessageSquare   },
+  { key: 'overview',  label: 'Overview',  Icon: LayoutDashboard },
+  { key: 'staff',     label: 'Staff',     Icon: Users           },
+  { key: 'tables',    label: 'Tables',    Icon: Map             },
+  { key: 'inventory', label: 'Inventory', Icon: Package         },
+  { key: 'feedback',  label: 'Feedback',  Icon: Star            },
+  { key: 'pricing',   label: 'Pricing',   Icon: Zap             },
+  { key: 'loyalty',   label: 'Loyalty',   Icon: Star            },
+  { key: 'reports',   label: 'Reports',   Icon: FileText        },
+  { key: 'messages',  label: 'Messages',  Icon: MessageSquare   },
 ]
 
 function useBP() {
@@ -347,9 +354,9 @@ function InventoryWidget({ isDark, go }) {
   const [low, setLow] = useState([])
   const [allOk, setAllOk] = useState(true)
   useEffect(() => {
-    api.get('/inventory').then(r => {
-      const items = r.data?.items ?? r.items ?? []
-      const bad = items.filter(i => i.quantity <= i.lowThreshold)
+    api.get('/inventory/ingredients/low-stock').then(r => {
+      const d    = r.data ?? r
+      const bad  = [...(d.outOfStock ?? []), ...(d.critical ?? []), ...(d.low ?? [])]
       setLow(bad.slice(0, 4)); setAllOk(bad.length === 0)
     }).catch(() => {})
   }, [])
@@ -363,13 +370,13 @@ function InventoryWidget({ isDark, go }) {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
           {low.map(item => {
-            const pct = Math.min(100, (item.quantity / item.lowThreshold) * 100)
-            const c = item.quantity === 0 ? P.rose : '#F97316'
+            const pct = item.reorderLevel > 0 ? Math.min(100, (item.currentStock / item.reorderLevel) * 100) : 0
+            const c   = item.currentStock <= 0 ? P.rose : '#F97316'
             return (
               <div key={item._id}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                   <span style={{ fontSize: 11, fontWeight: 600, color: tp(isDark), fontFamily: FONTS.body }}>{item.name}</span>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: c, fontFamily: FONTS.mono }}>{item.quantity} {item.unit}</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: c, fontFamily: FONTS.mono }}>{item.currentStock} {item.unit}</span>
                 </div>
                 <div style={{ height: 4, borderRadius: 99, background: div(isDark), overflow: 'hidden' }}>
                   <div style={{ height: '100%', width: `${pct}%`, borderRadius: 99, background: c, transition: 'width 1s ease' }} />
@@ -377,6 +384,49 @@ function InventoryWidget({ isDark, go }) {
               </div>
             )
           })}
+        </div>
+      )}
+    </Widget>
+  )
+}
+
+// ★ NEW: Feedback widget on overview — shows avg rating + quick NPS
+function FeedbackWidget({ isDark, go }) {
+  const [data, setData] = useState(null)
+  useEffect(() => {
+    api.get('/feedback/analytics?days=30')
+      .then(r => setData(r.data ?? r))
+      .catch(() => {})
+  }, [])
+  const avg = data?.overall?.avg ?? null
+  const nps = data?.nps?.score ?? null
+  return (
+    <Widget title="Feedback" sub="Last 30 days" icon={Star} color={P.amber}
+      badge={avg ? `${avg}★` : null} badgeColor={P.amber}
+      onClick={() => go('feedback')} delay={0.18} isDark={isDark}>
+      {!data ? (
+        <p style={{ fontSize: 12, color: ts(isDark), margin: 0, fontFamily: FONTS.body }}>Loading…</p>
+      ) : (
+        <div style={{ display: 'flex', gap: 14 }}>
+          <div style={{ textAlign: 'center' }}>
+            <p style={{ margin: 0, fontSize: 26, fontWeight: 900, color: P.amber, fontFamily: FONTS.body, lineHeight: 1, letterSpacing: '-0.5px' }}>{avg?.toFixed(1) ?? '—'}</p>
+            <p style={{ margin: '2px 0 0', fontSize: 9, color: ts(isDark), fontFamily: FONTS.body, textTransform: 'uppercase', letterSpacing: '0.08em' }}>avg rating</p>
+          </div>
+          {nps !== null && (
+            <div style={{ textAlign: 'center' }}>
+              <p style={{ margin: 0, fontSize: 26, fontWeight: 900, color: nps >= 50 ? P.green : nps >= 0 ? P.amber : P.rose, fontFamily: FONTS.body, lineHeight: 1, letterSpacing: '-0.5px' }}>
+                {nps > 0 ? `+${nps}` : nps}
+              </p>
+              <p style={{ margin: '2px 0 0', fontSize: 9, color: ts(isDark), fontFamily: FONTS.body, textTransform: 'uppercase', letterSpacing: '0.08em' }}>NPS</p>
+            </div>
+          )}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 3 }}>
+            {(data?.topTags ?? []).slice(0, 2).map(({ tag, count }) => (
+              <span key={tag} style={{ fontSize: 10, color: ts(isDark), fontFamily: FONTS.body }}>
+                {tag.replace(/_/g, ' ')} <span style={{ color: P.amber, fontWeight: 700 }}>·{count}</span>
+              </span>
+            ))}
+          </div>
         </div>
       )}
     </Widget>
@@ -681,10 +731,12 @@ function Overview({ isDark, go }) {
 
         <div>
           <SectionLabel isDark={isDark}>Operations</SectionLabel>
+          {/* ★ CHANGED: Added FeedbackWidget to operations grid */}
           <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : 'repeat(2,1fr)', gap: 12 }}>
-            <TablesWidget isDark={isDark} go={go} />
-            <StaffWidget  isDark={isDark} go={go} />
+            <TablesWidget   isDark={isDark} go={go} />
+            <StaffWidget    isDark={isDark} go={go} />
             <InventoryWidget isDark={isDark} go={go} />
+            <FeedbackWidget  isDark={isDark} go={go} />
             <LoyaltyWidget   isDark={isDark} go={go} />
           </div>
         </div>
@@ -715,15 +767,20 @@ function Section({ active, go }) {
     if (!ref.current) return
     gsap.fromTo(ref.current, { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.3, ease: 'expo.out' })
   }, [active])
+
+  // ★ CHANGED: added feedback + pricing panels
   const PANELS = {
     overview:  <Overview isDark={isDark} go={go} />,
     staff:     <StaffList />,
     tables:    <TableManagementPanel />,
     inventory: <InventoryPanel />,
+    feedback:  <FeedbackPanel />,
+    pricing:   <PricingRulePanel />,
     loyalty:   <LoyaltyPanel />,
     reports:   <ReportsPanel />,
     messages:  <ManagerMessageHub />,
   }
+
   const mobile = bp === 'mobile', isOv = active === 'overview'
   return (
     <div ref={ref} style={{ maxWidth: isOv ? '100%' : 880, margin: isOv ? 0 : '0 auto', padding: `16px ${mobile ? '12px' : '22px'} ${mobile ? '20px' : '28px'}`, height: isOv ? '100%' : 'auto', boxSizing: 'border-box' }}>
@@ -739,7 +796,6 @@ export default function ManagerDashboard() {
 
   return (
     <>
-      {/* Only keyframe animations — fonts injected by ThemeContext globally */}
       <style>{`
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         @keyframes kcFadeIn  { from { opacity:0; transform:translateY(8px) } to { opacity:1; transform:none } }

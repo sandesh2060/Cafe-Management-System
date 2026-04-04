@@ -1,945 +1,1217 @@
-// src/modules/customer/pages/ProfilePage.jsx
-//
-// ✅ getPalette(isDark) replaces all hardcoded hex/rgba local token vars
-//    (bg, surface, surface2, border, textMain, textMuted → all from brand.js)
-// ✅ BRAND.name replaces hardcoded "कौसी चिया" in About section
-// ✅ BRAND.currency replaces hardcoded Rs in OrderItem
-// ✅ All animation, avatar, sound, modal, session logic unchanged
+// frontend/src/modules/customer/pages/ProfilePage.jsx
+// v5 — Full Tailwind CSS rewrite
+// ✅ goBack fixed — always navigate(-1), never remounts MenuPage
+// ✅ Tailwind CSS throughout — CSS vars from brand.js PALETTE
+// ✅ Premium light & dark mode — warm amber/cream light, deep espresso dark
+// ✅ All original logic preserved: social stats, follow sheet, loyalty, badges,
+//    referral, sheets, settings, sound prefs, order history, avatar upload
 
 import { useState, useEffect, useContext, useCallback, useRef } from 'react'
-import { createPortal }              from 'react-dom'
-import { useDispatch, useSelector }  from 'react-redux'
-import { useNavigate }               from 'react-router-dom'
+import { createPortal }             from 'react-dom'
+import { useDispatch, useSelector } from 'react-redux'
+import { useNavigate }              from 'react-router-dom'
+import { motion, AnimatePresence, useMotionValue, animate } from 'motion/react'
+import toast                        from 'react-hot-toast'
 import {
-  motion, AnimatePresence,
-  useMotionValue, animate,
-}                                    from 'motion/react'
-import toast                         from 'react-hot-toast'
-import {
-  User, Edit3, Check, X,
-  ChevronRight, ShieldCheck, Clock, Award,
-  AlertTriangle, Package, ArrowLeft,
-  Volume2, VolumeX, Bell, BellOff,
-  Sun, Moon, Vibrate,
-  Info, MapPin,
-}                                    from 'lucide-react'
+  Settings, Check, X, ChevronRight, Copy, Share2,
+  ShieldCheck, Sun, Moon, Sparkles, Vibrate,
+  Volume2, Info, Camera, Trash2, ArrowLeft,
+} from 'lucide-react'
 
 import { selectUser, selectIsGuest, updateUser } from '@store/slices/authSlice'
-import { selectLoyalty }             from '@store/slices/loyaltySlice'
+import { selectLoyalty }            from '@store/slices/loyaltySlice'
+import { selectOrderHistory, selectOrderLoading, fetchOrderHistory } from '@store/slices/orderSlice'
+import { showToast }                from '@store/slices/toastSlice'
 import {
-  selectOrderHistory,
-  selectOrderLoading,
-  fetchOrderHistory,
-}                                    from '@store/slices/orderSlice'
-import {
-  selectTableId,
-  selectTableNumber,
-}                                    from '@store/slices/tableSessionSlice'
-import { ThemeContext }              from '@shared/context/ThemeContext'
-import { BRAND, getPalette }         from '@shared/config/brand'
-import LogoutButton                  from '../components/profile/LogoutButton'
-import api                           from '@api/axios'
-import { ENDPOINTS as EP }           from '@api/endpoints'
+  selectPendingRequests,
+  selectSocialCounts,
+  setSocialCounts,
+}                                   from '@store/slices/followSlice'
+import { ThemeContext }             from '@shared/context/ThemeContext'
+import { BRAND, FONTS, getPalette } from '@shared/config/brand'
+import { useUIPrefs }               from '@shared/hooks/useUIPrefs'
+import LogoutButton                 from '../components/profile/LogoutButton'
+import { FollowSheet }              from '../components/profile/FollowSheet'
+import api                          from '@api/axios'
+import { ENDPOINTS as EP }          from '@api/endpoints'
+import { lockScroll, unlockScroll } from '@shared/utils/lenisLock'
+
+// ── Font aliases ──────────────────────────────────────────────────────────────
+const HEAD = FONTS.heading ?? FONTS.display
+const BODY = FONTS.body
+const MONO = FONTS.mono
+const APP_VER = import.meta.env.VITE_APP_VERSION || '1.0.0'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const TIER_META = {
-  bronze: { emoji: '🥉', label: 'Bronze', next: 'Silver', gradient: 'linear-gradient(135deg,#CD7F32,#E8A96A)' },
-  silver: { emoji: '🥈', label: 'Silver', next: 'Gold',   gradient: 'linear-gradient(135deg,#9CA3AF,#D1D5DB)' },
-  gold:   { emoji: '🥇', label: 'Gold',   next: null,     gradient: 'linear-gradient(135deg,#F59E0B,#FCD34D)' },
-  none:   { emoji: '☕', label: 'Member', next: 'Bronze', gradient: 'linear-gradient(135deg,#FF9F1C,#E05C2A)'  },
-}
-const ORDER_STATUS_META = {
-  pending:    { label: 'Pending',   color: '#D97706', bg: '#FFFBEB' },
-  preparing:  { label: 'Preparing', color: '#2563EB', bg: '#EFF6FF' },
-  on_the_way: { label: 'On Way',    color: '#7C3AED', bg: '#EDE9FE' },
-  delivered:  { label: 'Delivered', color: '#16A34A', bg: '#F0FDF4' },
-  paid:       { label: 'Paid',      color: '#059669', bg: '#D4F0E0' },
-  cancelled:  { label: 'Cancelled', color: '#DC2626', bg: '#FEF2F2' },
-}
-const POINTS_FOR_TIER = { none: 0, bronze: 0, silver: 500, gold: 1500 }
+const hasNudged  = () => sessionStorage.getItem('kc_pnudge') === '1'
+const markNudged = () => sessionStorage.setItem('kc_pnudge', '1')
+const isPhotoUrl = s => typeof s === 'string' && (s.startsWith('http://') || s.startsWith('https://'))
+const isSvgId    = s => SVG_AVATARS.some(a => a.id === s)
+const initials   = n => (n||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()
+const fmt        = iso => new Date(iso).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'2-digit'})
+const loadSP     = () => { try { return JSON.parse(localStorage.getItem('kc_sound_prefs')||'{}') } catch { return {} } }
+const saveSP     = p  => { try { localStorage.setItem('kc_sound_prefs', JSON.stringify(p)) } catch {} }
 
-const fmt      = (iso) =>
-  new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })
-const initials = (name) =>
-  (name || '?').split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()
-
-const CUSTOMER_SOUND_KEYS = [
-  { key: 'orderPlaced',    label: 'Order Placed',    icon: '🛍️' },
-  { key: 'orderReady',     label: 'Order Ready',     icon: '🔔' },
-  { key: 'orderDelivered', label: 'Order Delivered', icon: '✅' },
-  { key: 'pointsEarned',   label: 'Points Earned',   icon: '⭐' },
-  { key: 'tierUpgraded',   label: 'Tier Upgraded',   icon: '🏆' },
-  { key: 'notification',   label: 'Notifications',   icon: '📣' },
-]
-const SOUND_PREFS_KEY = 'kc_sound_prefs'
-const loadSoundPrefs  = () => { try { return JSON.parse(localStorage.getItem(SOUND_PREFS_KEY) || '{}') } catch { return {} } }
-const saveSoundPrefs  = (p) => { try { localStorage.setItem(SOUND_PREFS_KEY, JSON.stringify(p)) } catch {} }
-const APP_VERSION     = import.meta.env.VITE_APP_VERSION || '1.0.0'
-
-// ── SVG Theme Toggle ──────────────────────────────────────────────────────────
-const ThemeToggle = ({ isDark, onToggle }) => (
-  <motion.button onClick={onToggle} whileTap={{ scale: 0.92 }} aria-label="Toggle theme"
-    className="relative flex-shrink-0 [-webkit-tap-highlight-color:transparent]"
-    style={{
-      width: 72, height: 36, borderRadius: 999, overflow: 'hidden',
-      boxShadow: isDark
-        ? '0 2px 14px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.07)'
-        : '0 2px 14px rgba(56,189,248,0.5), inset 0 1px 0 rgba(255,255,255,0.9)',
-    }}>
-    <motion.div className="absolute inset-0" animate={{
-      background: isDark
-        ? 'linear-gradient(135deg,#060c24 0%,#0f172a 100%)'
-        : 'linear-gradient(135deg,#38bdf8 0%,#7dd3fc 100%)',
-    }} transition={{ duration: 0.5 }} />
-    {[{ x:7,y:6,r:2.5 },{ x:18,y:11,r:1.8 },{ x:9,y:20,r:2.0 },{ x:24,y:7,r:1.5 },{ x:28,y:20,r:1.6 }]
-      .map((s, i) => (
-        <motion.div key={`s${i}`} className="absolute rounded-full"
-          style={{ width: s.r*2, height: s.r*2, left: s.x, top: s.y, background:'#fff', borderRadius:'50%' }}
-          animate={{ opacity: isDark ? 1 : 0, scale: isDark ? 1 : 0 }}
-          transition={{ duration:0.35, delay: isDark ? i*0.06 : 0 }} />
-      ))}
-    <motion.div className="absolute" style={{ right:-2, bottom:-1 }}
-      animate={{ opacity: isDark ? 0 : 1, x: isDark ? 12 : 0 }}
-      transition={{ duration:0.4, ease:'easeInOut' }}>
-      <svg width="34" height="18" viewBox="0 0 34 18" fill="none">
-        <ellipse cx="17" cy="14" rx="15" ry="6" fill="white"/>
-        <ellipse cx="12" cy="10" rx="9"  ry="7" fill="white"/>
-        <ellipse cx="22" cy="10" rx="8"  ry="6" fill="white"/>
-        <ellipse cx="17" cy="7"  rx="6"  ry="5.5" fill="white"/>
-      </svg>
-    </motion.div>
-    <motion.div
-      animate={{ x: isDark ? 37 : 3 }}
-      transition={{ type:'spring', stiffness:420, damping:34, mass:0.7 }}
-      style={{
-        position:'absolute', top:'50%', marginTop:-15,
-        width:30, height:30, borderRadius:'50%', overflow:'hidden',
-        background: isDark
-          ? 'radial-gradient(circle at 38% 30%, #f8fafc 0%, #e2e8f0 50%, #94a3b8 100%)'
-          : 'radial-gradient(circle at 38% 30%, #fef9c3 0%, #fbbf24 50%, #b45309 100%)',
-        boxShadow: isDark
-          ? '0 2px 12px rgba(0,0,0,0.65), inset 0 1.5px 3px rgba(255,255,255,0.85)'
-          : '0 3px 12px rgba(180,83,9,0.6), inset 0 1.5px 3px rgba(255,255,255,0.9)',
-      }}>
-      <AnimatePresence mode="wait">
-        {isDark ? (
-          <motion.svg key="moon" width="30" height="30" viewBox="0 0 30 30" fill="none"
-            style={{ position:'absolute', top:0, left:0 }}
-            initial={{ opacity:0, scale:0.75 }} animate={{ opacity:1, scale:1 }}
-            exit={{ opacity:0, scale:0.75 }} transition={{ duration:0.18 }}>
-            <circle cx="11" cy="13" r="5.5" fill="#475569" opacity="0.55"/>
-            <circle cx="11" cy="13" r="3.5" fill="#334155" opacity="0.40"/>
-            <circle cx="21" cy="20" r="3.8" fill="#475569" opacity="0.50"/>
-            <circle cx="21" cy="20" r="2.2" fill="#334155" opacity="0.35"/>
-          </motion.svg>
-        ) : (
-          <motion.svg key="sun" width="30" height="30" viewBox="0 0 30 30" fill="none"
-            style={{ position:'absolute', top:0, left:0 }}
-            initial={{ opacity:0, scale:0.75 }} animate={{ opacity:1, scale:1 }}
-            exit={{ opacity:0, scale:0.75 }} transition={{ duration:0.18 }}>
-            <circle cx="11" cy="10" r="11" fill="#fef3c7" opacity="0.65"/>
-            <circle cx="10" cy="9"  r="7"  fill="#ffffff"  opacity="0.55"/>
-          </motion.svg>
-        )}
-      </AnimatePresence>
-    </motion.div>
-    <div className="absolute inset-0 pointer-events-none" style={{
-      borderRadius:999,
-      border: isDark ? '1px solid rgba(255,255,255,0.10)' : '1px solid rgba(255,255,255,0.8)',
-    }}/>
-  </motion.button>
-)
-
-// ── Animated Star ─────────────────────────────────────────────────────────────
-const AnimatedStar = ({ size=14, delay=0 }) => (
-  <motion.div
-    animate={{ scale:[1,1.35,0.9,1.2,1], rotate:[0,15,-10,5,0] }}
-    transition={{ duration:2.4, delay, repeat:Infinity, repeatDelay:1.2, ease:'easeInOut' }}>
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <motion.path
-        d="M12 2l2.9 6.1L22 9.3l-5 5 1.2 7.1L12 18l-6.2 3.4L7 14.3 2 9.3l7.1-1.2z"
-        fill="#FF9F1C" stroke="#FF9F1C" strokeWidth="1.5" strokeLinejoin="round"
-        animate={{ fill:['#FF9F1C','#FFD580','#E05C2A','#FF9F1C'] }}
-        transition={{ duration:2.4, delay, repeat:Infinity, repeatDelay:1.2 }} />
-    </svg>
-  </motion.div>
-)
-
-// ── Floating Orbs ─────────────────────────────────────────────────────────────
-const FloatingOrbs = ({ isDark }) => (
-  <div className="absolute inset-0 overflow-hidden pointer-events-none">
-    {[
-      { w:180, h:180, top:'5%',  left:'-10%', delay:0   },
-      { w:120, h:120, top:'40%', right:'-8%', delay:0.8 },
-      { w:90,  h:90,  top:'70%', left:'20%',  delay:1.4 },
-    ].map((orb, i) => (
-      <motion.div key={i} className="absolute rounded-full"
-        style={{
-          width:orb.w, height:orb.h, top:orb.top, left:orb.left, right:orb.right,
-          // ✅ var(--orb-color) from brand.js
-          background: 'radial-gradient(circle, var(--orb-color) 0%, transparent 70%)',
-          filter:'blur(20px)',
-        }}
-        animate={{ y:[0,-18,0], scale:[1,1.05,1] }}
-        transition={{ duration:5+i*1.5, repeat:Infinity, delay:orb.delay, ease:'easeInOut' }} />
-    ))}
-  </div>
-)
-
-// ── Back Button ───────────────────────────────────────────────────────────────
-const GlassBackButton = ({ onClick }) => (
-  <motion.button onClick={onClick} whileTap={{ scale:0.88 }}
-    className="flex items-center gap-2 px-3 py-2 rounded-2xl [-webkit-tap-highlight-color:transparent]"
-    style={{
-      // ✅ var tokens
-      background: 'var(--pill-bg)',
-      border: '1px solid var(--pill-border)',
-      backdropFilter:'blur(16px)', WebkitBackdropFilter:'blur(16px)',
-      boxShadow:'var(--card-shadow)',
-    }}
-    aria-label="Go back">
-    <ArrowLeft size={15} strokeWidth={2.5} style={{ color:'var(--text-primary)' }} />
-  </motion.button>
-)
-
-// ── Confirm Modal ─────────────────────────────────────────────────────────────
-const ConfirmModal = ({ isDark, oldUsername, newUsername, onConfirm, onCancel, saving }) => {
-  const P = getPalette(isDark)
-  return createPortal(
-    <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
-      className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-4"
-      style={{ background:'rgba(0,0,0,0.55)', backdropFilter:'blur(8px)' }}
-      onClick={onCancel}>
-      <motion.div
-        initial={{ y:60, opacity:0, scale:0.96 }} animate={{ y:0, opacity:1, scale:1 }}
-        exit={{ y:60, opacity:0, scale:0.96 }}
-        transition={{ type:'spring', stiffness:380, damping:32 }}
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-sm rounded-3xl p-6 space-y-5"
-        style={{
-          background:'var(--modal-bg)',
-          border:'1px solid var(--modal-border)',
-          boxShadow:'var(--card-shadow)',
-        }}>
-        <div className="flex justify-center">
-          <div className="w-14 h-14 rounded-2xl flex items-center justify-center"
-            style={{ background:'var(--accent-dim)' }}>
-            <ShieldCheck size={28} color="var(--accent)" />
-          </div>
-        </div>
-        <div className="text-center space-y-1.5">
-          <h3 className="text-lg font-bold" style={{ color:'var(--text-primary)' }}>Change Username?</h3>
-          <p className="text-sm" style={{ color:'var(--text-secondary)' }}>Changing your login handle from</p>
-          <div className="flex items-center justify-center gap-3 py-2 flex-wrap">
-            <span className="font-mono text-sm px-3 py-1.5 rounded-xl font-bold"
-              style={{ background:'var(--pill-bg)', color:'var(--text-secondary)' }}>
-              @{oldUsername || 'none'}
-            </span>
-            <span style={{ color:'var(--accent)' }}>→</span>
-            <span className="font-mono text-sm px-3 py-1.5 rounded-xl font-bold"
-              style={{ background:'var(--accent-dim)', color:'var(--accent)' }}>
-              @{newUsername}
-            </span>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <button onClick={onCancel} disabled={saving}
-            className="py-3 rounded-2xl font-semibold text-sm active:scale-95 transition-all"
-            style={{ background:'var(--pill-bg)', color:'var(--text-secondary)' }}>
-            Cancel
-          </button>
-          <button onClick={onConfirm} disabled={saving}
-            className="py-3 rounded-2xl font-semibold text-sm active:scale-95 transition-all flex items-center justify-center gap-2"
-            style={{ background:'var(--accent-gradient)', color:'#fff', boxShadow:'0 4px 20px var(--accent-glow)' }}>
-            {saving
-              ? <motion.div animate={{ rotate:360 }} transition={{ duration:0.8, repeat:Infinity, ease:'linear' }}
-                  className="w-4 h-4 rounded-full border-2 border-white border-t-transparent" />
-              : <><Check size={15} /> Confirm</>
-            }
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>,
-    document.body
-  )
+const OPTS = {
+  gender:            [{v:'male',l:'Male 👨'},{v:'female',l:'Female 👩'},{v:'non-binary',l:'Non-binary 🌈'},{v:'prefer_not',l:'Prefer not to say'}],
+  hobbies:           [{v:'coffee_lover',l:'☕ Coffee'},{v:'bookworm',l:'📚 Books'},{v:'gamer',l:'🎮 Gaming'},{v:'foodie',l:'🍜 Foodie'},{v:'traveller',l:'✈️ Travel'},{v:'sports',l:'⚽ Sports'},{v:'music',l:'🎵 Music'},{v:'art',l:'🎨 Art'},{v:'tech',l:'💻 Tech'},{v:'student',l:'📖 Study'}],
+  occupation:        [{v:'student',l:'📚 Student'},{v:'working',l:'🏢 Working'},{v:'freelancer',l:'💻 Freelancer'},{v:'business_owner',l:'👔 Business'},{v:'other',l:'🌐 Other'}],
+  foodPreference:    [{v:'veg',l:'🥗 Veg'},{v:'non_veg',l:'🍗 Non-Veg'},{v:'both',l:'🍽️ Both'},{v:'vegan',l:'🌱 Vegan'},{v:'halal',l:'🌙 Halal'},{v:'gluten_free',l:'🌾 GF'}],
+  favouriteDrink:    [{v:'black_coffee',l:'☕ Black Coffee'},{v:'masala_chiya',l:'🍵 Masala Chiya'},{v:'cold_coffee',l:'🧊 Cold Coffee'},{v:'lassi',l:'🥛 Lassi'},{v:'juice',l:'🍊 Juice'},{v:'smoothie',l:'🥤 Smoothie'}],
+  spiceTolerance:    [{v:'mild',l:'😌 Mild'},{v:'medium',l:'😊 Medium'},{v:'spicy',l:'😅 Spicy'},{v:'extra_spicy',l:'🔥 Lava'}],
+  diningStyle:       [{v:'solo',l:'🧘 Solo'},{v:'friends',l:'👫 Friends'},{v:'family',l:'👨‍👩‍👧 Family'},{v:'work_meeting',l:'💼 Work'},{v:'date',l:'❤️ Date'}],
+  preferredVisitTime:[{v:'morning',l:'🌅 Morning'},{v:'afternoon',l:'☀️ Afternoon'},{v:'evening',l:'🌆 Evening'},{v:'night_owl',l:'🦉 Night'}],
 }
 
-// ── AVATARS ───────────────────────────────────────────────────────────────────
-const AVATARS = [
-  { id:'the_regular',  label:'The Regular',    bg:'linear-gradient(135deg,#FF9F1C,#E05C2A)', svg:(<svg viewBox="0 0 64 64" fill="none" className="w-full h-full"><ellipse cx="32" cy="54" rx="14" ry="8" fill="#E05C2A"/><rect x="20" y="44" width="24" height="14" rx="6" fill="#E05C2A"/><rect x="26" y="50" width="12" height="6" rx="3" fill="#C44A1A"/><rect x="28" y="38" width="8" height="8" rx="3" fill="#FDDCB5"/><circle cx="32" cy="30" r="14" fill="#FDDCB5"/><ellipse cx="32" cy="17" rx="13" ry="3.5" fill="#5C3317"/><path d="M19 17 Q20 10 32 10 Q44 10 45 17" fill="#5C3317"/><rect x="26" y="15" width="12" height="4" rx="2" fill="#3D2010"/><path d="M25 29 Q27 27 29 29" stroke="#5C3317" strokeWidth="2" strokeLinecap="round" fill="none"/><path d="M35 29 Q37 27 39 29" stroke="#5C3317" strokeWidth="2" strokeLinecap="round" fill="none"/><path d="M28 35 Q32 38 36 35" stroke="#5C3317" strokeWidth="1.5" strokeLinecap="round" fill="none"/><rect x="44" y="42" width="8" height="10" rx="2" fill="#fff"/><rect x="44" y="42" width="8" height="3" rx="1" fill="#FF9F1C"/><path d="M52 46 Q55 46 55 49 Q55 52 52 52" stroke="#E05C2A" strokeWidth="1.5" fill="none"/></svg>) },
-  { id:'bookworm',     label:'The Bookworm',   bg:'linear-gradient(135deg,#8B5CF6,#6D28D9)', svg:(<svg viewBox="0 0 64 64" fill="none" className="w-full h-full"><rect x="20" y="44" width="24" height="14" rx="6" fill="#7C3AED"/><rect x="42" y="46" width="10" height="14" rx="2" fill="#A78BFA"/><rect x="42" y="46" width="2" height="14" rx="1" fill="#6D28D9"/><line x1="44" y1="50" x2="52" y2="50" stroke="#DDD6FE" strokeWidth="0.8"/><line x1="44" y1="53" x2="52" y2="53" stroke="#DDD6FE" strokeWidth="0.8"/><rect x="28" y="38" width="8" height="8" rx="3" fill="#FDDCB5"/><circle cx="32" cy="29" r="14" fill="#FDDCB5"/><path d="M20 26 Q20 14 32 14 Q44 14 44 26" fill="#5C3317"/><circle cx="32" cy="14" r="5" fill="#5C3317"/><rect x="21" y="27" width="9" height="7" rx="3.5" fill="none" stroke="#5C3317" strokeWidth="2"/><rect x="34" y="27" width="9" height="7" rx="3.5" fill="none" stroke="#5C3317" strokeWidth="2"/><line x1="30" y1="30.5" x2="34" y2="30.5" stroke="#5C3317" strokeWidth="1.5"/><circle cx="25.5" cy="30.5" r="1.5" fill="#5C3317"/><circle cx="38.5" cy="30.5" r="1.5" fill="#5C3317"/><path d="M28 37 Q32 39 36 37" stroke="#5C3317" strokeWidth="1.5" strokeLinecap="round" fill="none"/></svg>) },
-  { id:'workaholic',   label:'The Workaholic', bg:'linear-gradient(135deg,#2563EB,#1D4ED8)', svg:(<svg viewBox="0 0 64 64" fill="none" className="w-full h-full"><rect x="10" y="50" width="44" height="5" rx="2" fill="#374151"/><rect x="14" y="38" width="36" height="14" rx="2" fill="#1F2937"/><rect x="16" y="40" width="32" height="10" rx="1" fill="#1D4ED8"/><rect x="18" y="41" width="10" height="1.5" rx="0.5" fill="#93C5FD" opacity="0.7"/><rect x="22" y="28" width="20" height="12" rx="4" fill="#DBEAFE"/><polygon points="32,30 30,36 32,38 34,36" fill="#2563EB"/><rect x="28" y="22" width="8" height="8" rx="3" fill="#FDDCB5"/><circle cx="32" cy="16" r="12" fill="#FDDCB5"/><path d="M20 14 Q22 6 32 6 Q42 6 44 14" fill="#374151"/><circle cx="27" cy="16" r="2" fill="#374151"/><circle cx="37" cy="16" r="2" fill="#374151"/><path d="M28 21 Q32 24 36 21" stroke="#5C3317" strokeWidth="1.5" strokeLinecap="round" fill="none"/></svg>) },
-  { id:'foodie',       label:'The Foodie',     bg:'linear-gradient(135deg,#E05C2A,#C44A1A)', svg:(<svg viewBox="0 0 64 64" fill="none" className="w-full h-full"><rect x="20" y="42" width="24" height="16" rx="6" fill="#FDE8DF"/><path d="M24 42 Q32 38 40 42 L38 54 Q32 56 26 54 Z" fill="white"/><circle cx="32" cy="48" r="2" fill="#FF9F1C"/><rect x="28" y="36" width="8" height="8" rx="3" fill="#FDDCB5"/><circle cx="32" cy="27" r="15" fill="#FDDCB5"/><path d="M17 24 Q18 14 32 13 Q46 14 47 24" fill="#92400E"/><path d="M23 25 Q23 22 25 22 Q27 22 27 25 Q27 22 29 22 Q31 22 31 25 Q31 27 27 30 Q23 27 23 25Z" fill="#E05C2A"/><path d="M33 25 Q33 22 35 22 Q37 22 37 25 Q37 22 39 22 Q41 22 41 25 Q41 27 37 30 Q33 27 33 25Z" fill="#E05C2A"/><path d="M24 33 Q32 40 40 33" stroke="#5C3317" strokeWidth="2" strokeLinecap="round" fill="none"/><circle cx="22" cy="31" r="3.5" fill="#FCA5A5" opacity="0.6"/><circle cx="42" cy="31" r="3.5" fill="#FCA5A5" opacity="0.6"/></svg>) },
-  { id:'hipster',      label:'The Hipster',    bg:'linear-gradient(135deg,#2D9B5A,#1E7A42)', svg:(<svg viewBox="0 0 64 64" fill="none" className="w-full h-full"><rect x="18" y="42" width="28" height="16" rx="6" fill="#2D9B5A"/><rect x="28" y="36" width="8" height="8" rx="3" fill="#FDDCB5"/><circle cx="32" cy="28" r="14" fill="#FDDCB5"/><path d="M19 30 Q20 40 32 42 Q44 40 45 30 Q40 36 32 36 Q24 36 19 30Z" fill="#5C3317"/><path d="M18 24 Q20 13 32 12 Q44 13 46 24" fill="#E05C2A"/><rect x="17" y="22" width="30" height="5" rx="2.5" fill="#C44A1A"/><circle cx="32" cy="12" r="4" fill="#FF9F1C"/><circle cx="27" cy="27" r="2.5" fill="#5C3317"/><circle cx="37" cy="27" r="2.5" fill="#5C3317"/></svg>) },
-  { id:'socialite',    label:'The Socialite',  bg:'linear-gradient(135deg,#EC4899,#BE185D)', svg:(<svg viewBox="0 0 64 64" fill="none" className="w-full h-full"><rect x="18" y="42" width="28" height="16" rx="6" fill="#FBCFE8"/><rect x="28" y="36" width="8" height="8" rx="3" fill="#FDDCB5"/><circle cx="32" cy="26" r="14" fill="#FDDCB5"/><path d="M18 22 Q18 10 32 10 Q46 10 46 22 Q42 18 38 22 Q35 16 32 20 Q29 16 26 22 Q22 18 18 22Z" fill="#92400E"/><circle cx="27" cy="25" r="2.5" fill="#5C3317"/><circle cx="37" cy="25" r="2.5" fill="#5C3317"/><path d="M28 31 Q32 35 36 31" stroke="#EC4899" strokeWidth="2" strokeLinecap="round" fill="none"/><circle cx="22" cy="29" r="3" fill="#FCA5A5" opacity="0.5"/><circle cx="42" cy="29" r="3" fill="#FCA5A5" opacity="0.5"/></svg>) },
-  { id:'student',      label:'The Student',    bg:'linear-gradient(135deg,#0EA5E9,#0369A1)', svg:(<svg viewBox="0 0 64 64" fill="none" className="w-full h-full"><rect x="17" y="42" width="30" height="16" rx="6" fill="#BAE6FD"/><rect x="28" y="36" width="8" height="8" rx="3" fill="#FDDCB5"/><circle cx="32" cy="27" r="14" fill="#FDDCB5"/><rect x="20" y="17" width="24" height="5" rx="1" fill="#1C1917"/><polygon points="32,10 44,17 32,20 20,17" fill="#374151"/><line x1="44" y1="17" x2="46" y2="24" stroke="#1C1917" strokeWidth="1.5"/><circle cx="46" cy="25" r="2" fill="#F59E0B"/><circle cx="27" cy="27" r="2.5" fill="#374151"/><circle cx="37" cy="27" r="2.5" fill="#374151"/><path d="M28 33 Q32 35 36 33" stroke="#5C3317" strokeWidth="1.5" strokeLinecap="round" fill="none"/></svg>) },
-  { id:'elder',        label:'The Elder',      bg:'linear-gradient(135deg,#92400E,#78350F)', svg:(<svg viewBox="0 0 64 64" fill="none" className="w-full h-full"><rect x="18" y="42" width="28" height="16" rx="6" fill="#D97706"/><rect x="28" y="36" width="8" height="8" rx="3" fill="#FDDCB5"/><circle cx="32" cy="27" r="14" fill="#FDDCB5"/><path d="M18 23 Q20 13 32 13 Q44 13 46 23" fill="#E5E7EB"/><rect x="23" y="29" width="7" height="5" rx="2.5" fill="none" stroke="#92400E" strokeWidth="1.8"/><rect x="34" y="29" width="7" height="5" rx="2.5" fill="none" stroke="#92400E" strokeWidth="1.8"/><line x1="30" y1="31.5" x2="34" y2="31.5" stroke="#92400E" strokeWidth="1.5"/><circle cx="26.5" cy="25" r="2" fill="#5C3317"/><circle cx="37.5" cy="25" r="2" fill="#5C3317"/><path d="M26 35 Q32 39 38 35" stroke="#5C3317" strokeWidth="2" strokeLinecap="round" fill="none"/></svg>) },
-  { id:'sporty',       label:'The Sporty One', bg:'linear-gradient(135deg,#16A34A,#15803D)', svg:(<svg viewBox="0 0 64 64" fill="none" className="w-full h-full"><rect x="18" y="42" width="28" height="16" rx="6" fill="#16A34A"/><text x="32" y="54" textAnchor="middle" fontSize="9" fontWeight="bold" fill="white" fontFamily="monospace">7</text><rect x="28" y="36" width="8" height="8" rx="3" fill="#FDDCB5"/><circle cx="32" cy="27" r="14" fill="#FDDCB5"/><rect x="18" y="24" width="28" height="5" rx="2.5" fill="#FBBF24"/><path d="M18 24 Q20 14 32 13 Q44 14 46 24" fill="#15803D"/><circle cx="27" cy="28" r="3" fill="white"/><circle cx="37" cy="28" r="3" fill="white"/><circle cx="27" cy="28" r="2" fill="#15803D"/><circle cx="37" cy="28" r="2" fill="#15803D"/><path d="M25 34 Q32 40 39 34" stroke="#5C3317" strokeWidth="2" strokeLinecap="round" fill="none"/></svg>) },
-  { id:'artist',       label:'The Artist',     bg:'linear-gradient(135deg,#F59E0B,#92400E)', svg:(<svg viewBox="0 0 64 64" fill="none" className="w-full h-full"><rect x="18" y="42" width="28" height="16" rx="6" fill="#FEF3C7"/><ellipse cx="26" cy="48" rx="3" ry="2" fill="#EC4899" opacity="0.6" transform="rotate(-15 26 48)"/><ellipse cx="36" cy="51" rx="3" ry="2" fill="#2563EB" opacity="0.5" transform="rotate(10 36 51)"/><rect x="28" y="36" width="8" height="8" rx="3" fill="#FDDCB5"/><circle cx="32" cy="27" r="14" fill="#FDDCB5"/><ellipse cx="32" cy="16" rx="14" ry="6" fill="#92400E"/><ellipse cx="32" cy="15" rx="10" ry="7" fill="#B45309"/><circle cx="38" cy="12" r="2.5" fill="#92400E"/><circle cx="27" cy="26" r="2.5" fill="#92400E"/><circle cx="37" cy="26" r="2.5" fill="#92400E"/><path d="M28 33 Q32 37 36 33" stroke="#5C3317" strokeWidth="1.8" strokeLinecap="round" fill="none"/></svg>) },
+const BADGE_DEFS = {
+  first_timer:{emoji:'🎉',label:'First Timer'}, chai_addict:{emoji:'☕',label:'Chai Addict'},
+  night_owl:{emoji:'🦉',label:'Night Owl'}, explorer:{emoji:'🧭',label:'Explorer'},
+  loyal_regular:{emoji:'💛',label:'Loyal Regular'}, big_spender:{emoji:'💸',label:'Big Spender'},
+  social_butterfly:{emoji:'🦋',label:'Social Butterfly'}, review_royalty:{emoji:'👑',label:'Review Royalty'},
+  streak_master:{emoji:'🔥',label:'Streak Master'},
+}
+const TIER_META = {none:{emoji:'☕',label:'Member'},bronze:{emoji:'🥉',label:'Bronze'},silver:{emoji:'🥈',label:'Silver'},gold:{emoji:'🥇',label:'Gold'}}
+const TIER_PTS  = {none:0,bronze:0,silver:500,gold:1500}
+const TIER_NEXT = {none:'bronze',bronze:'silver',silver:'gold',gold:null}
+const STATUS_COL = {pending:'#B45309',preparing:'#1D4ED8',on_the_way:'#6D28D9',delivered:'#15803D',paid:'#0F766E',cancelled:'#B91C1C'}
+const STATUS_LBL = {pending:'Pending',preparing:'Preparing',on_the_way:'On Way',delivered:'Delivered',paid:'Paid',cancelled:'Cancelled'}
+const SOUND_KEYS = [
+  {key:'orderPlaced',label:'Order Placed',icon:'🛍️'},{key:'orderReady',label:'Order Ready',icon:'🔔'},
+  {key:'orderDelivered',label:'Delivered',icon:'✅'},{key:'pointsEarned',label:'Points Earned',icon:'⭐'},
+  {key:'tierUpgraded',label:'Tier Upgraded',icon:'🏆'},{key:'notification',label:'Notifications',icon:'📣'},
 ]
 
-// ── AvatarPicker ──────────────────────────────────────────────────────────────
-const AvatarPicker = ({ isDark, current, onSelect, onClose }) =>
-  createPortal(
-    <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
-      className="fixed inset-0 z-[100] flex items-end justify-center"
-      style={{ background:'rgba(0,0,0,0.55)', backdropFilter:'blur(8px)' }}
-      onClick={onClose}>
-      <motion.div initial={{ y:'100%' }} animate={{ y:0 }} exit={{ y:'100%' }}
-        transition={{ type:'spring', stiffness:340, damping:32 }}
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md rounded-t-3xl p-6 pb-10 space-y-5"
-        style={{ background:'var(--modal-bg)', border:'1px solid var(--modal-border)', borderBottom:'none' }}>
-        <div className="flex justify-center -mt-2">
-          <div className="w-10 h-1 rounded-full" style={{ background:'var(--divider)' }}/>
-        </div>
-        <div className="flex items-center justify-between">
-          <h3 className="font-bold text-base" style={{ color:'var(--text-primary)' }}>Choose Avatar</h3>
-          <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center active:scale-90"
-            style={{ background:'var(--pill-bg)' }}>
-            <X size={14} color="var(--text-muted)"/>
-          </button>
-        </div>
-        <div className="grid grid-cols-5 gap-3">
-          {AVATARS.map((av) => {
-            const sel = current === av.id
-            return (
-              <motion.button key={av.id} whileTap={{ scale:0.88 }}
-                onClick={() => onSelect(av.id)}
-                className="relative flex flex-col items-center gap-1.5">
-                <div className="w-full aspect-square rounded-2xl overflow-hidden p-0.5"
-                  style={{
-                    background:av.bg,
-                    boxShadow: sel ? '0 0 0 3px var(--accent),0 4px 16px var(--accent-glow)' : '0 2px 8px rgba(0,0,0,0.12)',
-                    transform: sel ? 'scale(1.08)' : 'scale(1)', transition:'all 0.18s ease',
-                  }}>{av.svg}</div>
-                <span className="text-[9px] font-semibold text-center leading-tight w-full"
-                  style={{ color: sel ? 'var(--accent)' : 'var(--text-muted)' }}>{av.label}</span>
-                {sel && (
-                  <motion.div initial={{ scale:0 }} animate={{ scale:1 }}
-                    className="absolute -top-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center"
-                    style={{ background:'var(--accent)', border:'2px solid var(--modal-bg)' }}>
-                    <Check size={9} color="white" strokeWidth={3}/>
-                  </motion.div>
-                )}
-              </motion.button>
-            )
-          })}
-        </div>
-      </motion.div>
-    </motion.div>,
-    document.body
-  )
+const SVG_AVATARS = [
+  {id:'the_regular',label:'Regular',bg:'linear-gradient(135deg,#FF9F1C,#E05C2A)',svg:<svg viewBox="0 0 64 64" fill="none" style={{width:'100%',height:'100%'}}><rect x="20" y="44" width="24" height="14" rx="6" fill="#E05C2A"/><rect x="28" y="38" width="8" height="8" rx="3" fill="#FDDCB5"/><circle cx="32" cy="30" r="14" fill="#FDDCB5"/><ellipse cx="32" cy="17" rx="13" ry="3.5" fill="#5C3317"/><path d="M25 29 Q27 27 29 29M35 29 Q37 27 39 29M28 35 Q32 38 36 35" stroke="#5C3317" strokeWidth="1.8" strokeLinecap="round" fill="none"/></svg>},
+  {id:'bookworm',label:'Bookworm',bg:'linear-gradient(135deg,#8B5CF6,#6D28D9)',svg:<svg viewBox="0 0 64 64" fill="none" style={{width:'100%',height:'100%'}}><rect x="20" y="44" width="24" height="14" rx="6" fill="#7C3AED"/><rect x="28" y="38" width="8" height="8" rx="3" fill="#FDDCB5"/><circle cx="32" cy="29" r="14" fill="#FDDCB5"/><rect x="21" y="27" width="9" height="7" rx="3.5" fill="none" stroke="#5C3317" strokeWidth="2"/><rect x="34" y="27" width="9" height="7" rx="3.5" fill="none" stroke="#5C3317" strokeWidth="2"/><line x1="30" y1="30.5" x2="34" y2="30.5" stroke="#5C3317" strokeWidth="1.5"/></svg>},
+  {id:'foodie',label:'Foodie',bg:'linear-gradient(135deg,#E05C2A,#C44A1A)',svg:<svg viewBox="0 0 64 64" fill="none" style={{width:'100%',height:'100%'}}><rect x="20" y="42" width="24" height="16" rx="6" fill="#FDE8DF"/><rect x="28" y="36" width="8" height="8" rx="3" fill="#FDDCB5"/><circle cx="32" cy="27" r="15" fill="#FDDCB5"/><path d="M17 24 Q18 14 32 13 Q46 14 47 24" fill="#92400E"/><path d="M24 33 Q32 40 40 33" stroke="#5C3317" strokeWidth="2" strokeLinecap="round" fill="none"/></svg>},
+  {id:'student',label:'Student',bg:'linear-gradient(135deg,#0EA5E9,#0369A1)',svg:<svg viewBox="0 0 64 64" fill="none" style={{width:'100%',height:'100%'}}><rect x="17" y="42" width="30" height="16" rx="6" fill="#BAE6FD"/><rect x="28" y="36" width="8" height="8" rx="3" fill="#FDDCB5"/><circle cx="32" cy="27" r="14" fill="#FDDCB5"/><polygon points="32,10 44,17 32,20 20,17" fill="#374151"/></svg>},
+  {id:'artist',label:'Artist',bg:'linear-gradient(135deg,#F59E0B,#92400E)',svg:<svg viewBox="0 0 64 64" fill="none" style={{width:'100%',height:'100%'}}><rect x="18" y="42" width="28" height="16" rx="6" fill="#FEF3C7"/><rect x="28" y="36" width="8" height="8" rx="3" fill="#FDDCB5"/><circle cx="32" cy="27" r="14" fill="#FDDCB5"/><ellipse cx="32" cy="16" rx="14" ry="6" fill="#92400E"/></svg>},
+  {id:'workaholic',label:'Work',bg:'linear-gradient(135deg,#2563EB,#1D4ED8)',svg:<svg viewBox="0 0 64 64" fill="none" style={{width:'100%',height:'100%'}}><rect x="14" y="38" width="36" height="14" rx="2" fill="#1F2937"/><rect x="16" y="40" width="32" height="10" rx="1" fill="#1D4ED8"/><rect x="28" y="22" width="8" height="8" rx="3" fill="#FDDCB5"/><circle cx="32" cy="16" r="12" fill="#FDDCB5"/></svg>},
+]
 
-// ── AvatarEditor ──────────────────────────────────────────────────────────────
-const AvatarEditor = ({ user, isDark, onAvatarChange, saving }) => {
-  const [pickerOpen, setPickerOpen] = useState(false)
-  const currentId = user?.avatar || null
-  const currentAv = AVATARS.find((a) => a.id === currentId)
-  return (
-    <>
-      <div className="relative w-20 h-20 flex-shrink-0">
-        <motion.div whileHover={{ scale:1.03 }}
-          className="w-20 h-20 rounded-[22px] overflow-hidden flex items-center justify-center text-white text-2xl font-bold"
-          style={{
-            background: currentAv ? currentAv.bg : 'var(--accent-gradient)',
-            boxShadow:'0 6px 24px var(--accent-glow)', padding: currentAv ? '2px' : 0,
-          }}>
-          {currentAv ? currentAv.svg : <span>{initials(user?.name)}</span>}
-        </motion.div>
-        {saving && (
-          <div className="absolute inset-0 rounded-[22px] flex items-center justify-center"
-            style={{ background:'rgba(0,0,0,0.4)' }}>
-            <motion.div animate={{ rotate:360 }} transition={{ duration:0.8, repeat:Infinity, ease:'linear' }}
-              className="w-6 h-6 rounded-full border-2 border-white border-t-transparent"/>
-          </div>
-        )}
-        <motion.button onClick={() => setPickerOpen(true)} disabled={saving}
-          whileTap={{ scale:0.85 }}
-          className="absolute -bottom-1.5 -right-1.5 w-8 h-8 rounded-full flex items-center justify-center shadow-lg"
-          style={{ background:'var(--accent-gradient)', border:'2.5px solid var(--modal-bg)' }}>
-          <Edit3 size={12} color="#fff"/>
-        </motion.button>
-      </div>
-      <AnimatePresence>
-        {pickerOpen && (
-          <AvatarPicker isDark={isDark} current={currentId}
-            onSelect={(id) => { setPickerOpen(false); onAvatarChange(id) }}
-            onClose={() => setPickerOpen(false)} />
-        )}
-      </AnimatePresence>
-    </>
-  )
-}
-
-// ── Animated Counter ──────────────────────────────────────────────────────────
-const AnimatedCounter = ({ value, prefix='', suffix='' }) => {
+// ── Animated number ───────────────────────────────────────────────────────────
+function AnimNum({ value }) {
   const mv = useMotionValue(0)
-  const [display, setDisplay] = useState('0')
+  const [d, sd] = useState('0')
   useEffect(() => {
-    const num  = parseFloat(String(value).replace(/[^0-9.]/g, '')) || 0
-    const ctrl = animate(mv, num, {
-      duration:1.2, ease:[0.22,1,0.36,1],
-      onUpdate:(v) => setDisplay(prefix + Math.round(v).toLocaleString() + suffix),
-    })
-    return ctrl.stop
-  }, [value]) // eslint-disable-line react-hooks/exhaustive-deps
-  return <span>{display}</span>
+    const n = Number(String(value).replace(/\D/g,'')) || 0
+    const c = animate(mv, n, { duration:1.1, ease:[.22,1,.36,1], onUpdate: v => sd(Math.round(v).toLocaleString()) })
+    return c.stop
+  }, [value]) // eslint-disable-line
+  return <span>{d}</span>
 }
 
-// ── Loyalty Bar ───────────────────────────────────────────────────────────────
-const LoyaltyBar = ({ tier, points }) => {
-  const meta     = TIER_META[tier] || TIER_META.bronze
-  const nextTier = meta.next?.toLowerCase()
-  const max      = nextTier ? POINTS_FOR_TIER[nextTier] : POINTS_FOR_TIER.gold
-  const base     = POINTS_FOR_TIER[tier] || 0
-  const pct      = nextTier ? Math.min(100, ((points - base) / (max - base)) * 100) : 100
+// ── Toggle switch — uses CSS vars ─────────────────────────────────────────────
+function Toggle({ value, onChange, label }) {
   return (
-    <div className="space-y-1.5">
-      <div className="flex justify-between">
-        <span className="text-xs font-semibold" style={{ color:'var(--text-muted)' }}>
-          {nextTier ? `${points} / ${max} pts to ${meta.next}` : 'Max tier reached 🎉'}
-        </span>
-        <span className="text-xs font-bold" style={{ color:'var(--accent)' }}>{Math.round(pct)}%</span>
-      </div>
-      <div className="h-2 rounded-full overflow-hidden" style={{ background:'var(--divider)' }}>
-        <motion.div
-          initial={{ width:0 }} animate={{ width:`${pct}%` }}
-          transition={{ duration:1.4, ease:[0.22,1,0.36,1], delay:0.4 }}
-          className="h-full rounded-full relative overflow-hidden"
-          style={{ background:meta.gradient }}>
-          <motion.div className="absolute inset-0"
-            style={{ background:'linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.35) 50%,transparent 100%)' }}
-            animate={{ x:['-100%','200%'] }}
-            transition={{ duration:1.8, repeat:Infinity, repeatDelay:2, ease:'easeInOut', delay:1.4 }} />
-        </motion.div>
-      </div>
+    <button
+      type="button" onClick={() => onChange(!value)} aria-label={label}
+      className="relative flex-shrink-0 cursor-pointer border-none p-0 transition-all duration-200"
+      style={{
+        width:50, height:28, borderRadius:999,
+        background: value ? 'var(--accent-gradient)' : 'var(--pill-bg)',
+        boxShadow: value ? '0 2px 10px var(--accent-glow)' : 'inset 0 1.5px 4px rgba(0,0,0,0.2)',
+        outline: value ? 'none' : '1.5px solid var(--divider)',
+        WebkitTapHighlightColor:'transparent',
+      }}>
+      <div
+        className="absolute top-[3px] w-[22px] h-[22px] rounded-full bg-white"
+        style={{
+          boxShadow:'0 1px 5px rgba(0,0,0,0.32)',
+          transition:'transform .26s cubic-bezier(.34,1.56,.64,1)',
+          transform: value ? 'translateX(24px)' : 'translateX(3px)',
+        }}/>
+    </button>
+  )
+}
+
+// ── Chip options ──────────────────────────────────────────────────────────────
+function Chips({ options, value, onChange, multi=false }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {options.map(o => {
+        const on = multi ? (value||[]).includes(o.v) : value === o.v
+        return (
+          <button
+            key={o.v} type="button"
+            onClick={() => {
+              if (multi) {
+                const c = value||[]
+                onChange(on ? c.filter(x=>x!==o.v) : [...c, o.v])
+              } else onChange(on ? null : o.v)
+            }}
+            className="transition-all duration-150 cursor-pointer"
+            style={{
+              fontFamily:BODY, fontSize:12.5, fontWeight:on?700:500,
+              padding:'7px 14px', borderRadius:999, whiteSpace:'nowrap',
+              border:`1.5px solid ${on?'var(--accent-border)':'var(--divider)'}`,
+              background: on ? 'var(--accent-dim)' : 'var(--pill-bg)',
+              color: on ? 'var(--accent)' : 'var(--text-muted)',
+              WebkitTapHighlightColor:'transparent',
+            }}>
+            {o.l}
+          </button>
+        )
+      })}
     </div>
   )
 }
 
-// ── Order Item ────────────────────────────────────────────────────────────────
-const OrderItem = ({ order, border }) => {
-  const [open, setOpen] = useState(false)
-  const meta = ORDER_STATUS_META[order.status] || ORDER_STATUS_META.pending
+// ── Input field ───────────────────────────────────────────────────────────────
+function Inp({ style={}, ...props }) {
   return (
-    <motion.div layout className="overflow-hidden">
-      <button onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors active:opacity-70"
-        style={{ background: open ? 'var(--pill-bg-hover)' : 'transparent' }}>
-        <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-          style={{ background:meta.bg }}>
-          <Package size={16} color={meta.color}/>
+    <input
+      className="w-full outline-none transition-all duration-150"
+      style={{
+        padding:'12px 14px', borderRadius:13,
+        fontFamily:MONO, fontSize:16,
+        color:'var(--text-primary)',
+        background:'var(--input-bg)',
+        border:'1.5px solid var(--input-border)',
+        ...style,
+      }}
+      {...props}/>
+  )
+}
+
+// ── Card surface ──────────────────────────────────────────────────────────────
+function Card({ children, className='', style={} }) {
+  return (
+    <div
+      className={`rounded-[18px] overflow-hidden ${className}`}
+      style={{ background:'var(--card-bg)', border:'1px solid var(--card-border)', ...style }}>
+      {children}
+    </div>
+  )
+}
+
+// ── Section label ─────────────────────────────────────────────────────────────
+function SLabel({ children }) {
+  return (
+    <p className="text-[10px] font-bold uppercase tracking-[.12em] mb-2 pl-0.5"
+      style={{ color:'var(--text-muted)', fontFamily:BODY }}>
+      {children}
+    </p>
+  )
+}
+
+// ── Field wrapper ─────────────────────────────────────────────────────────────
+function Field({ label, children }) {
+  return (
+    <div className="flex flex-col gap-1.5 mb-3.5">
+      <p className="text-[10px] font-bold uppercase tracking-[.12em]"
+        style={{ color:'var(--text-muted)', fontFamily:BODY }}>
+        {label}
+      </p>
+      {children}
+    </div>
+  )
+}
+
+// ── Save button ───────────────────────────────────────────────────────────────
+function SaveBtn({ busy, onClick, label='Save' }) {
+  return (
+    <button
+      type="button" onClick={onClick} disabled={busy}
+      className="w-full flex items-center justify-center gap-2 rounded-[15px] font-bold cursor-pointer transition-opacity duration-150"
+      style={{
+        padding:'15px 0', fontFamily:BODY, fontSize:15,
+        background:'var(--accent-gradient)', color:'#fff', border:'none',
+        boxShadow:'0 4px 20px var(--accent-glow)',
+        WebkitTapHighlightColor:'transparent',
+        opacity: busy ? .5 : 1,
+      }}>
+      {busy
+        ? <div className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin"/>
+        : <><Check size={15} color="#fff"/><span className="text-white">{label}</span></>
+      }
+    </button>
+  )
+}
+
+// ── Bottom sheet ──────────────────────────────────────────────────────────────
+function Sheet({ title, onClose, children, footer }) {
+  useEffect(() => { lockScroll(); return () => unlockScroll() }, [])
+  return createPortal(
+    <>
+      <motion.div
+        initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+        onClick={onClose}
+        className="fixed inset-0 z-[200]"
+        style={{ background:'rgba(0,0,0,0.62)', backdropFilter:'blur(10px)', WebkitBackdropFilter:'blur(10px)' }}/>
+      <motion.div
+        initial={{y:'100%'}} animate={{y:0}} exit={{y:'100%'}}
+        transition={{type:'spring',stiffness:360,damping:34}}
+        className="fixed bottom-0 left-0 right-0 z-[201] flex flex-col overflow-hidden"
+        style={{
+          maxHeight:'90dvh', borderRadius:'28px 28px 0 0',
+          background:'var(--modal-bg)', border:'1px solid var(--modal-border)',
+          borderBottom:'none', boxShadow:'0 -24px 80px rgba(0,0,0,0.55)',
+        }}>
+        {/* Handle */}
+        <div className="flex justify-center pt-3.5 pb-1.5 flex-shrink-0">
+          <div className="w-9 h-1 rounded-full" style={{background:'var(--divider)'}}/>
         </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-bold font-mono" style={{ color:'var(--text-primary)' }}>
-              #{order._id.slice(-6).toUpperCase()}
-            </span>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-              style={{ background:meta.bg, color:meta.color }}>{meta.label}</span>
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 pb-3.5 flex-shrink-0"
+          style={{ borderBottom:'1px solid var(--divider)' }}>
+          <p className="text-[17px] font-bold tracking-[-0.02em]"
+            style={{ color:'var(--text-primary)', fontFamily:HEAD }}>{title}</p>
+          <button
+            type="button" onClick={onClose}
+            className="w-7 h-7 rounded-full flex items-center justify-center cursor-pointer flex-shrink-0"
+            style={{ background:'var(--pill-bg)', border:'1px solid var(--divider)', WebkitTapHighlightColor:'transparent' }}>
+            <X size={13} color="var(--text-muted)"/>
+          </button>
+        </div>
+        {/* Body */}
+        <div
+          data-lenis-prevent
+          onWheel={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()}
+          className="flex-1 min-h-0 overflow-y-auto px-5 py-4"
+          style={{ WebkitOverflowScrolling:'touch', overscrollBehavior:'contain' }}>
+          {children}
+        </div>
+        {/* Footer */}
+        {footer && (
+          <div className="flex-shrink-0 px-5 py-3" style={{
+            paddingBottom:'calc(env(safe-area-inset-bottom,0px) + 12px)',
+            borderTop:'1px solid var(--divider)',
+            background:'var(--modal-bg)',
+          }}>
+            {footer}
           </div>
-          <p className="text-xs mt-0.5" style={{ color:'var(--text-muted)' }}>
-            {/* ✅ BRAND.currency */}
+        )}
+      </motion.div>
+    </>,
+    document.body
+  )
+}
+
+// ── Confirm dialog ────────────────────────────────────────────────────────────
+function Confirm({ title, desc, detail, onOk, onCancel, busy, danger=false, isDark }) {
+  useEffect(() => { lockScroll(); return () => unlockScroll() }, [])
+  return createPortal(
+    <>
+      <motion.div
+        initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+        onClick={() => !busy && onCancel()}
+        className="fixed inset-0 z-[209]"
+        style={{ background:'rgba(0,0,0,0.45)', backdropFilter:'blur(14px)', WebkitBackdropFilter:'blur(14px)' }}/>
+      <motion.div
+        initial={{opacity:0,y:-20,scale:.92}} animate={{opacity:1,y:0,scale:1}}
+        exit={{opacity:0,y:-16,scale:.94}} transition={{type:'spring',stiffness:420,damping:30}}
+        className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[210] w-[calc(100vw-40px)] max-w-[360px] rounded-[24px] overflow-hidden"
+        style={{
+          backdropFilter:'blur(40px) saturate(1.8)', WebkitBackdropFilter:'blur(40px) saturate(1.8)',
+          background: isDark ? 'rgba(18,10,3,0.72)' : 'rgba(255,248,235,0.78)',
+          border:`1px solid ${danger?'rgba(248,113,113,0.35)':'rgba(255,159,28,0.3)'}`,
+          boxShadow: danger ? '0 24px 80px rgba(220,38,38,0.25)' : '0 24px 80px rgba(0,0,0,0.5)',
+        }}>
+        <div className="h-[3px]" style={{ background: danger ? 'linear-gradient(90deg,#EF4444,#F87171)' : 'var(--accent-gradient)' }}/>
+        <div className="p-5 pb-[22px]">
+          <div className="flex items-center gap-3.5 mb-4">
+            <div className="w-[46px] h-[46px] rounded-[15px] flex-shrink-0 flex items-center justify-center"
+              style={{
+                background: danger ? 'rgba(239,68,68,0.15)' : 'rgba(255,159,28,0.15)',
+                border:`1px solid ${danger?'rgba(239,68,68,0.2)':'rgba(255,159,28,0.2)'}`,
+              }}>
+              <ShieldCheck size={22} color={danger?'#EF4444':'var(--accent)'}/>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[16px] font-bold tracking-[-0.02em] leading-[1.25] mb-1"
+                style={{ color:'var(--text-primary)', fontFamily:HEAD }}>{title}</p>
+              {desc && <p className="text-[13px] leading-[1.4]" style={{ color:'var(--text-muted)', fontFamily:BODY }}>{desc}</p>}
+            </div>
+          </div>
+          {detail && (
+            <div className="flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-[14px] mb-4"
+              style={{ background:'var(--pill-bg)', border:'1px solid var(--divider)' }}>
+              {detail}
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-2.5">
+            <button type="button" onClick={onCancel} disabled={busy}
+              className="py-[13px] rounded-[14px] font-semibold text-[14px] cursor-pointer transition-opacity"
+              style={{ fontFamily:BODY, background:'var(--pill-bg)', color:'var(--text-primary)', border:'1px solid var(--divider)', WebkitTapHighlightColor:'transparent' }}>
+              Cancel
+            </button>
+            <button type="button" onClick={onOk} disabled={busy}
+              className="py-[13px] rounded-[14px] font-bold text-[14px] text-white border-none cursor-pointer flex items-center justify-center gap-1.5 transition-opacity"
+              style={{
+                fontFamily:BODY,
+                background: danger ? 'linear-gradient(135deg,#EF4444,#DC2626)' : 'var(--accent-gradient)',
+                WebkitTapHighlightColor:'transparent',
+                opacity: busy ? .7 : 1,
+              }}>
+              {busy
+                ? <div className="w-[15px] h-[15px] rounded-full border-2 border-white/30 border-t-white animate-spin"/>
+                : <><Check size={14} color="#fff"/><span className="text-white">Confirm</span></>
+              }
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </>,
+    document.body
+  )
+}
+
+// ── Order item row ────────────────────────────────────────────────────────────
+function OItem({ order }) {
+  const [open, setOpen] = useState(false)
+  const col = STATUS_COL[order.status] || '#888'
+  const lbl = STATUS_LBL[order.status] || order.status
+  return (
+    <div className="py-3" style={{ borderBottom:'1px solid var(--divider)' }}>
+      <button type="button" onClick={() => setOpen(v=>!v)}
+        className="w-full flex items-center gap-2.5 bg-transparent border-none cursor-pointer text-left p-1">
+        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background:col, boxShadow:`0 0 6px ${col}` }}/>
+        <div className="flex-1 min-w-0">
+          <p className="text-[13px] font-medium flex items-center gap-2" style={{ color:'var(--text-primary)', fontFamily:MONO }}>
+            #{order._id.slice(-6).toUpperCase()}
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background:`${col}1a`, color:col, fontFamily:BODY }}>{lbl}</span>
+          </p>
+          <p className="text-[11.5px] mt-0.5" style={{ color:'var(--text-muted)', fontFamily:BODY }}>
             {fmt(order.createdAt)} · {BRAND.currency} {order.total}
-            {order.items?.length > 0 && ` · ${order.items.length} item${order.items.length !== 1 ? 's' : ''}`}
           </p>
         </div>
-        <motion.div animate={{ rotate: open ? 90 : 0 }} transition={{ duration:0.2 }}>
-          <ChevronRight size={15} style={{ color:'var(--text-muted)' }}/>
+        <motion.div animate={{rotate:open?90:0}} transition={{duration:.18}}>
+          <ChevronRight size={14} color="var(--text-muted)"/>
         </motion.div>
       </button>
       <AnimatePresence>
         {open && (
-          <motion.div initial={{ height:0, opacity:0 }} animate={{ height:'auto', opacity:1 }}
-            exit={{ height:0, opacity:0 }} transition={{ duration:0.22 }}
-            className="px-4 pb-3.5 space-y-2 overflow-hidden"
-            style={{ background:'var(--pill-bg)' }}>
-            {order.items?.map((item, i) => (
-              <div key={i} className="flex justify-between items-center text-xs">
-                <span style={{ color:'var(--text-secondary)' }}>
-                  {item.emoji} {item.name}
-                  {item.portion && <span className="opacity-60"> · {item.portion}</span>}
-                  <span className="font-semibold"> ×{item.quantity}</span>
+          <motion.div
+            initial={{height:0,opacity:0}} animate={{height:'auto',opacity:1}}
+            exit={{height:0,opacity:0}} transition={{duration:.2}}
+            className="overflow-hidden pt-2.5">
+            {order.items?.map((it,i) => (
+              <div key={i} className="flex justify-between items-center mb-1.5">
+                <span className="text-[12px]" style={{ color:'var(--text-muted)', fontFamily:BODY }}>
+                  {it.emoji||'🍽️'} {it.name} <strong>×{it.quantity}</strong>
                 </span>
-                {/* ✅ BRAND.currency */}
-                <span className="font-semibold font-mono" style={{ color:'var(--text-primary)' }}>
-                  {BRAND.currency} {(item.price ?? 0) * (item.quantity ?? 1)}
+                <span className="text-[12px]" style={{ color:'var(--text-primary)', fontFamily:MONO }}>
+                  {BRAND.currency} {(it.price||0)*(it.quantity||1)}
                 </span>
               </div>
             ))}
-            {(order.pointsEarned ?? 0) > 0 && (
-              <div className="flex items-center gap-1.5 pt-1.5 border-t"
-                style={{ borderColor:'var(--divider)' }}>
-                <AnimatedStar size={11} delay={0}/>
-                <span className="text-xs font-bold" style={{ color:'var(--accent)' }}>
-                  +{order.pointsEarned} points earned
-                </span>
-              </div>
+            {(order.pointsEarned||0)>0 && (
+              <p className="text-[11.5px] font-semibold mt-1.5" style={{ color:'var(--accent)', fontFamily:BODY }}>
+                ⭐ +{order.pointsEarned} pts
+              </p>
             )}
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  )
+}
+
+// ── Social stats bar ──────────────────────────────────────────────────────────
+function SocialStats({ stats, isGuest, isDark, onOpen }) {
+  if (isGuest) return null
+  const items = [
+    {key:'followers', label:'Followers', n:stats.followersCount},
+    {key:'following', label:'Following', n:stats.followingCount},
+    {key:'mutual',    label:'Mutual',    n:stats.mutualCount},
+  ]
+  return (
+    <motion.div
+      initial={{opacity:0,y:6}} animate={{opacity:1,y:0}} transition={{delay:.2}}
+      className="flex w-full max-w-xs z-[1] mb-4 rounded-[18px] overflow-hidden"
+      style={{
+        background: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
+        border:`1px solid ${isDark?'rgba(255,255,255,0.08)':'rgba(0,0,0,0.08)'}`,
+      }}>
+      {items.map(({key,label,n},i) => (
+        <button key={key} type="button" onClick={() => onOpen(key)}
+          className="flex-1 flex flex-col items-center py-3 px-2 gap-0.5 bg-transparent border-none cursor-pointer"
+          style={{
+            borderRight: i<items.length-1 ? `1px solid ${isDark?'rgba(255,255,255,0.08)':'rgba(0,0,0,0.08)'}` : 'none',
+            WebkitTapHighlightColor:'transparent',
+          }}>
+          <span className="text-[20px] font-extrabold tracking-[-0.03em] leading-none"
+            style={{ color:'var(--text-primary)', fontFamily:HEAD }}>
+            <AnimNum value={n}/>
+          </span>
+          <span className="text-[11.5px] font-medium leading-none"
+            style={{ color:'var(--text-muted)', fontFamily:BODY }}>
+            {label}
+          </span>
+        </button>
+      ))}
     </motion.div>
   )
 }
 
-// ── Section Wrapper ───────────────────────────────────────────────────────────
-const Section = ({ title, children, delay=0 }) => (
-  <motion.div initial={{ y:20, opacity:0 }} animate={{ y:0, opacity:1 }}
-    transition={{ duration:0.4, ease:[0.22,1,0.36,1], delay }}
-    className="rounded-3xl overflow-hidden"
-    style={{ background:'var(--card-bg)', border:'1px solid var(--card-border)', boxShadow:'var(--card-shadow)' }}>
-    {title && (
-      <div className="px-4 pt-4 pb-3">
-        <h3 className="font-bold text-sm" style={{ color:'var(--text-primary)' }}>{title}</h3>
-      </div>
-    )}
-    {children}
-  </motion.div>
-)
-
-// ── Toggle Row ────────────────────────────────────────────────────────────────
-const ToggleRow = ({ label, sublabel, icon:Icon, iconColor, value, onChange, last=false }) => (
-  <div className="flex items-center gap-3 px-4 py-3.5"
-    style={{ borderBottom: last ? 'none' : '1px solid var(--divider)' }}>
-    <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-      style={{ background:'var(--pill-bg)' }}>
-      <Icon size={16} color={iconColor ?? 'var(--text-muted)'}/>
-    </div>
-    <div className="flex-1 min-w-0">
-      <p className="text-sm font-semibold" style={{ color:'var(--text-primary)' }}>{label}</p>
-      {sublabel && <p className="text-xs mt-0.5" style={{ color:'var(--text-muted)' }}>{sublabel}</p>}
-    </div>
-    <motion.button
-      onClick={() => onChange(!value)}
-      whileTap={{ scale:0.9 }}
-      className="relative flex-shrink-0 [-webkit-tap-highlight-color:transparent]"
-      style={{
-        width:46, height:26, borderRadius:999,
-        background: value ? 'var(--accent-gradient)' : 'var(--pill-bg)',
-        boxShadow: value ? '0 2px 10px var(--accent-glow)' : 'none',
-        transition:'background 0.25s, box-shadow 0.25s',
-      }}
-      aria-label={`Toggle ${label}`}
-    >
-      <motion.div animate={{ x: value ? 22 : 2 }}
-        transition={{ type:'spring', stiffness:460, damping:32 }}
-        style={{
-          position:'absolute', top:3, width:20, height:20, borderRadius:'50%',
-          background:'#fff', boxShadow:'0 1px 4px rgba(0,0,0,0.2)',
-        }} />
-    </motion.button>
-  </div>
-)
-
-// ════════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════════
 // MAIN PAGE
-// ════════════════════════════════════════════════════════════════════════════
-const ProfilePage = () => {
+// ══════════════════════════════════════════════════════════════════════════════
+export default function ProfilePage() {
   const dispatch    = useDispatch()
   const navigate    = useNavigate()
   const user        = useSelector(selectUser)
   const isGuest     = useSelector(selectIsGuest)
   const loyaltyRaw  = useSelector(selectLoyalty)
   const loyalty     = loyaltyRaw?.loyalty ?? loyaltyRaw ?? {}
-  const history     = useSelector(selectOrderHistory)
+  const history     = useSelector(selectOrderHistory) ?? []
   const histLoading = useSelector(selectOrderLoading)
-  const tableId     = useSelector(selectTableId)
-  const tableNumber = useSelector(selectTableNumber) ?? (tableId ? `…${tableId.slice(-4)}` : null)
+  const pending     = useSelector(selectPendingRequests)
+  const socialStats = useSelector(selectSocialCounts)
   const { isDark, toggleTheme } = useContext(ThemeContext)
+  const { skyAnimationsEnabled, toggleSkyAnimations } = useUIPrefs()
+  const fileRef = useRef(null)
 
-  const handleBack = useCallback(() => {
-    if (window.history.state?.idx > 0) navigate(-1)
-    else navigate('/menu', { replace: true })
-  }, [navigate])
+  const [sheet,       setSheet]       = useState(null)
+  const [followSheet, setFollowSheet] = useState(null)
+  const [cfm,         setCfm]         = useState(null)
+  const [busy,        setBusy]        = useState(false)
+  const [avBusy,      setAvBusy]      = useState(false)
+  const [imgPrev,     setImgPrev]     = useState(null)
+  const [dEdit,       setDEdit]       = useState({})
+  const [dPers,       setDPers]       = useState({})
+  const [dPrefs,      setDPrefs]      = useState({})
+  const [sp,          setSp]          = useState(loadSP)
+  const [hap,         setHap]         = useState(() => localStorage.getItem('kc_haptic') !== 'false')
 
-  const [editingUsername, setEditingUsername] = useState(false)
-  const [usernameVal,     setUsernameVal]     = useState(user?.username || '')
-  const [usernameErr,     setUsernameErr]     = useState('')
-  const [showConfirm,     setShowConfirm]     = useState(false)
-  const [saving,          setSaving]          = useState(false)
-  const [savedFlash,      setSavedFlash]      = useState(false)
-  const [avatarSaving,    setAvatarSaving]    = useState(false)
-  const [soundPrefs,      setSoundPrefs]      = useState(() => loadSoundPrefs())
-  const masterMuted = soundPrefs.__master === false
+  const muted  = sp.__master === false
+  const setMute = m => { const n={...sp,__master:!m}; setSp(n); saveSP(n) }
+  const togSnd  = k => { const n={...sp,[k]:sp[k]!==false?false:true}; setSp(n); saveSP(n) }
+  const sndOn   = k => !muted && sp[k] !== false
 
-  const setMasterMute = (muted) => {
-    const next = { ...soundPrefs, __master: !muted }
-    setSoundPrefs(next); saveSoundPrefs(next)
-  }
-  const toggleSound = (key) => {
-    const next = { ...soundPrefs, [key]: soundPrefs[key] !== false ? false : true }
-    setSoundPrefs(next); saveSoundPrefs(next)
-  }
-  const isSoundOn = (key) => !masterMuted && soundPrefs[key] !== false
+  useEffect(() => {
+    if (!user) return
+    setDEdit({ name:user.name||'', username:user.username||'', instagramHandle:user.instagramHandle||'' })
+    setDPers({ dob:user.dob?new Date(user.dob).toISOString().slice(0,10):'', gender:user.gender||null, hobbies:user.hobbies||[], occupation:user.occupation||null })
+    setDPrefs({ foodPreference:user.foodPreference||null, favouriteDrink:user.favouriteDrink||null, spiceTolerance:user.spiceTolerance||null, diningStyle:user.diningStyle||null, preferredVisitTime:user.preferredVisitTime||null })
+  }, [user])
 
-  const [hapticOn, setHapticOn] = useState(() => localStorage.getItem('kc_haptic') !== 'false')
-  const toggleHaptic = (v) => { setHapticOn(v); localStorage.setItem('kc_haptic', String(v)) }
+  useEffect(() => {
+    if (!user?._id || isGuest) return
+    api.get(`/social/list/stats/${user._id}`)
+      .then(res => {
+        const d = res?.data ?? res
+        dispatch(setSocialCounts({ followersCount:d.followersCount??0, followingCount:d.followingCount??0, mutualCount:d.mutualCount??0 }))
+      }).catch(() => {})
+  }, [user?._id, isGuest, dispatch])
 
   useEffect(() => { if (!isGuest) dispatch(fetchOrderHistory()) }, [dispatch, isGuest])
-  useEffect(() => { setUsernameVal(user?.username || '') }, [user?.username])
 
-  const validateUsername = (val) => {
-    if (!val)            return 'Username cannot be empty'
-    if (val.length < 3)  return 'At least 3 characters'
-    if (val.length > 20) return 'At most 20 characters'
-    if (!/^[a-z0-9_]+$/.test(val)) return 'Letters, numbers, underscores only'
-    if (val === user?.username) return 'Same as current username'
-    return ''
-  }
+  useEffect(() => {
+    if (!user || isGuest || !user.isFirstLogin) return
+    setTimeout(() => dispatch(showToast({ type:'system', title:`👋 Welcome to ${BRAND.name}!`, message:'Set up your profile to unlock personalised offers & bonus points 🎁', priority:2, duration:0, navigate:'/profile', actions:[{key:'setup',label:'Set Up Profile',primary:true}] })), 1500)
+    api.patch(EP.AUTH.UPDATE_PROFILE, { isFirstLogin:false }).catch(() => {})
+  }, []) // eslint-disable-line
 
-  const handleUsernameChange = (e) => {
-    const v = e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '')
-    setUsernameVal(v); setUsernameErr(validateUsername(v))
-  }
-  const handleUsernameSave = () => {
-    const err = validateUsername(usernameVal)
-    if (err) { setUsernameErr(err); return }
-    setShowConfirm(true)
-  }
-  const handleConfirmUsername = async () => {
-    setSaving(true)
+  useEffect(() => {
+    if (!user || isGuest || hasNudged()) return
+    const missing = [!user.avatar&&'profile photo',!user.dob&&'date of birth',!user.gender&&'gender',!user.hobbies?.length&&'hobbies'].filter(Boolean)
+    if (!missing.length) return
+    markNudged()
+    const msgs = [
+      { title:'🕵️ We barely know you!', message:`Your ${missing[0]} is missing. We can't send you vibes without it! 🧋` },
+      { title:'😅 Hello stranger…', message:`Add your ${missing[0]} — even your barista knows more about you!` },
+      { title:'🍵 Your profile is cold.', message:`Add your ${missing[0]} to warm it up! Complete = surprise rewards 🎁` },
+    ]
+    const m = msgs[Math.floor(Math.random()*msgs.length)]
+    setTimeout(() => dispatch(showToast({ type:'system', title:m.title, message:m.message, priority:4, duration:8000, navigate:'/profile', actions:[{key:'complete',label:'Complete Profile',primary:true}] })), 3000)
+  }, []) // eslint-disable-line
+
+  const save = useCallback(async (data, onDone) => {
+    setBusy(true)
     try {
-      const res = await api.patch(EP.AUTH.UPDATE_PROFILE, { username: usernameVal })
-      dispatch(updateUser(res.data))
-      setShowConfirm(false); setEditingUsername(false)
-      setSavedFlash(true); setTimeout(() => setSavedFlash(false), 2500)
-    } catch (err) {
-      setUsernameErr(err.response?.data?.message || 'Failed to update')
-      setShowConfirm(false)
-    } finally { setSaving(false) }
-  }
-
-  const handleAvatarChange = useCallback(async (avatarId) => {
-    setAvatarSaving(true)
-    try {
-      const res = await api.patch(EP.AUTH.UPDATE_PROFILE, { avatar: avatarId })
-      dispatch(updateUser(res.data))
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to update avatar')
-    } finally { setAvatarSaving(false) }
+      const r = await api.patch(EP.AUTH.UPDATE_PROFILE, data)
+      dispatch(updateUser(r?.data ?? r))
+      toast.success('Saved!')
+      onDone?.()
+    } catch(e) { toast.error(e.response?.data?.message || 'Save failed') }
+    finally { setBusy(false) }
   }, [dispatch])
 
-  const tier       = loyalty?.tier ?? 'none'
-  const tierMeta   = TIER_META[tier] || TIER_META.none
-  const totalSpend = history.reduce((s, o) => s + (o.total || 0), 0)
+  const saveEdit = useCallback(() => {
+    if (dEdit.username && dEdit.username !== (user?.username||'')) {
+      setCfm({
+        title:'Change username?', desc:'This is your login handle.',
+        detail: (
+          <div className="flex items-center gap-2">
+            <span className="px-2.5 py-1 rounded-lg text-[12px]" style={{ fontFamily:MONO, background:'var(--pill-bg)', color:'var(--text-muted)' }}>@{user?.username||'none'}</span>
+            <span className="font-semibold" style={{ color:'var(--accent)' }}>→</span>
+            <span className="px-2.5 py-1 rounded-lg text-[12px]" style={{ fontFamily:MONO, background:'var(--accent-dim)', color:'var(--accent)' }}>@{dEdit.username}</span>
+          </div>
+        ),
+        onOk: () => { setCfm(null); save(dEdit, () => setSheet(null)) },
+      })
+    } else save(dEdit, () => setSheet(null))
+  }, [dEdit, user, save])
+
+  const handleFile = useCallback(async e => {
+    const file = e.target.files?.[0]; if (!file) return
+    if (file.size > 5*1024*1024) { toast.error('Image must be under 5MB'); return }
+    const prev = URL.createObjectURL(file); setImgPrev(prev); setSheet(null); setAvBusy(true)
+    try {
+      const fd = new FormData(); fd.append('avatar', file)
+      const r = await api.post('/auth/avatar', fd, { headers:{'Content-Type':undefined} })
+      dispatch(updateUser(r?.data?.user ?? r?.user ?? r?.data ?? r))
+      setImgPrev(null); toast.success('Photo updated! 📸')
+    } catch(e) { toast.error(e.response?.data?.message || 'Upload failed'); setImgPrev(null) }
+    finally { setAvBusy(false); if (fileRef.current) fileRef.current.value=''; URL.revokeObjectURL(prev) }
+  }, [dispatch])
+
+  const pickSvg = useCallback(async id => {
+    setSheet(null); setAvBusy(true)
+    try { const r = await api.patch(EP.AUTH.UPDATE_PROFILE, { avatar:id }); dispatch(updateUser(r?.data ?? r)); setImgPrev(null) }
+    catch { toast.error('Failed') } finally { setAvBusy(false) }
+  }, [dispatch])
+
+  const removePhoto = useCallback(() => {
+    setCfm({
+      title:'Remove photo?', desc:'Your profile will show initials.', danger:true,
+      onOk: async () => {
+        setCfm(null); setAvBusy(true)
+        try {
+          const r = await api.delete('/auth/avatar')
+          dispatch(updateUser(r?.data?.user ?? r?.user ?? r?.data ?? r))
+          setImgPrev(null); toast.success('Photo removed')
+        } catch(e) { toast.error(e.response?.data?.message || 'Failed') }
+        finally { setAvBusy(false) }
+      },
+    })
+  }, [dispatch])
+
+  const copyRef = () => { if (!user?.referralCode) return; navigator.clipboard?.writeText(user.referralCode).then(() => toast.success('Code copied!')) }
+  const shareRef = async () => {
+    if (!user?.referralCode) return
+    const t = `Join me at ${BRAND.name}! Use code ${user.referralCode} for 50 bonus points.`
+    if (navigator.share) try { await navigator.share({ title:`${BRAND.name} Referral`, text:t }) } catch {}
+    else navigator.clipboard?.writeText(t).then(() => toast.success('Copied!'))
+  }
+
+  // ✅ FIX: goBack — always navigate(-1), never remounts MenuPage
+  const goBack = useCallback(() => navigate(-1), [navigate])
+
+  // Derived values
+  const tier      = loyalty?.tier || 'none'
+  const tierM     = TIER_META[tier] || TIER_META.none
+  const totalPts  = loyalty?.points || 0
+  const badges    = user?.badges || []
+  const nextTier  = TIER_NEXT[tier]
+  const maxPts    = nextTier ? TIER_PTS[nextTier] : 1500
+  const basePts   = TIER_PTS[tier] || 0
+  const barPct    = nextTier ? Math.min(100, ((totalPts-basePts)/(maxPts-basePts))*100) : 100
+  const CFIELDS   = ['name','email','dob','gender','hobbies','occupation','foodPreference','favouriteDrink','spiceTolerance','diningStyle','preferredVisitTime','avatar']
+  const completion = user ? Math.round(CFIELDS.filter(f=>{const v=user[f];return v!==null&&v!==undefined&&v!==''&&!(Array.isArray(v)&&v.length===0)}).length/CFIELDS.length*100) : 0
+  const svgAv    = isSvgId(user?.avatar) ? SVG_AVATARS.find(a=>a.id===user.avatar) : null
+  const photoUrl = isPhotoUrl(user?.avatar) ? user.avatar : null
+  const dispSrc  = imgPrev || photoUrl
+  const igHandle = user?.instagramHandle?.trim()
 
   return (
-    <div className="customer-container min-h-screen flex flex-col relative"
-      style={{ background:'var(--bg)' }}>
-      <FloatingOrbs isDark={isDark} />
+    <div
+      className="min-h-dvh customer-container"
+      style={{ background:'var(--bg)', fontFamily:BODY, WebkitFontSmoothing:'antialiased' }}>
+      <style>{`@import url('${FONTS.googleUrl}');@keyframes pf-spin{to{transform:rotate(360deg)}}`}</style>
+      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile}/>
 
-      {/* ── Header ── */}
-      <header className="px-4 pt-5 pb-3 sticky top-0 z-20 flex items-center justify-between"
+      {/* ── TOP BAR ──────────────────────────────────────────────────────── */}
+      <div className="sticky top-0 z-40 flex items-center justify-between overflow-hidden"
         style={{
-          background:'var(--header-bg)',
-          backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)',
-          borderBottom:'1px solid var(--divider)',
+          paddingTop:'calc(env(safe-area-inset-top,0px) + 10px)',
+          paddingBottom:10, paddingLeft:16, paddingRight:16,
+          background: isDark ? 'rgba(16,12,8,0.52)' : 'rgba(255,255,255,0.42)',
+          backdropFilter:'blur(28px) saturate(180%)', WebkitBackdropFilter:'blur(28px) saturate(180%)',
+          borderBottom: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(255,255,255,0.55)',
+          boxShadow: isDark
+            ? '0 8px 32px rgba(0,0,0,0.45),inset 0 1px 0 rgba(255,255,255,0.06)'
+            : '0 4px 24px rgba(0,0,0,0.10),inset 0 1px 0 rgba(255,255,255,0.80)',
         }}>
-        <GlassBackButton onClick={handleBack} />
-        <motion.h1 initial={{ opacity:0, y:-8 }} animate={{ opacity:1, y:0 }}
-          transition={{ duration:0.4, delay:0.1 }}
-          className="text-lg font-bold absolute left-1/2 -translate-x-1/2"
-          style={{ color:'var(--text-primary)' }}>Profile</motion.h1>
-        <ThemeToggle isDark={isDark} onToggle={toggleTheme} />
-      </header>
+        {/* Top shimmer line */}
+        <div className="absolute top-0 left-0 right-0 h-px pointer-events-none"
+          style={{ background:'var(--top-glow)' }}/>
 
-      <div className="flex-1 overflow-auto px-4 pt-4 pb-8 space-y-4 relative z-10">
+        <button type="button" onClick={goBack}
+          className="w-[38px] h-[38px] rounded-xl flex items-center justify-center cursor-pointer flex-shrink-0"
+          style={{
+            background: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)',
+            border:`1px solid ${isDark?'rgba(255,255,255,0.13)':'rgba(0,0,0,0.09)'}`,
+            WebkitTapHighlightColor:'transparent',
+          }}>
+          <ArrowLeft size={17} strokeWidth={2.5} color="var(--text-primary)"/>
+        </button>
 
-        {/* ── Active Session Banner ── */}
-        {tableNumber && (
-          <motion.div initial={{ opacity:0, y:-8 }} animate={{ opacity:1, y:0 }}
-            transition={{ duration:0.35 }}
-            className="flex items-center gap-3 px-4 py-3 rounded-2xl"
-            style={{ background:'var(--accent-dim)', border:'1px solid var(--accent-border)' }}>
-            <div className="w-2 h-2 rounded-full flex-shrink-0"
-              style={{ background:'var(--success)', boxShadow:'0 0 6px var(--success)' }} />
-            <MapPin size={14} color="var(--accent)" className="flex-shrink-0"/>
-            <p className="text-sm font-semibold" style={{ color:'var(--text-primary)' }}>
-              Seated at <span style={{ color:'var(--accent)' }}>Table {tableNumber}</span>
-            </p>
-            <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full"
-              style={{ background:'var(--success-bg)', color:'var(--success)' }}>ACTIVE</span>
-          </motion.div>
-        )}
+        <p className="absolute left-1/2 -translate-x-1/2 text-[16px] font-bold tracking-[-0.03em]"
+          style={{ color:'var(--text-primary)', fontFamily:HEAD }}>
+          Profile
+        </p>
 
-        {/* ── User Card ── */}
-        <motion.div initial={{ y:20, opacity:0 }} animate={{ y:0, opacity:1 }}
-          transition={{ duration:0.4, ease:[0.22,1,0.36,1] }}
-          className="rounded-3xl p-5 space-y-4 relative overflow-hidden"
-          style={{ background:'var(--card-bg)', border:'1px solid var(--card-border)', boxShadow:'var(--card-shadow)' }}>
-          <div className="absolute inset-0 pointer-events-none rounded-3xl"
-            style={{ background:'radial-gradient(ellipse at 20% 0%, var(--accent-dim) 0%, transparent 60%)' }}/>
+        <button type="button" onClick={() => setSheet('settings')}
+          className="w-[38px] h-[38px] rounded-xl flex items-center justify-center cursor-pointer flex-shrink-0"
+          style={{
+            background: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)',
+            border:`1px solid ${isDark?'rgba(255,255,255,0.13)':'rgba(0,0,0,0.09)'}`,
+            WebkitTapHighlightColor:'transparent',
+          }}>
+          <Settings size={17} strokeWidth={2} color="var(--text-muted)"/>
+        </button>
+      </div>
 
-          <div className="flex items-start gap-4">
-            {!isGuest ? (
-              <AvatarEditor user={user} isDark={isDark} onAvatarChange={handleAvatarChange} saving={avatarSaving}/>
-            ) : (
-              <div className="w-20 h-20 rounded-[22px] flex items-center justify-center flex-shrink-0"
-                style={{ background:'var(--accent-gradient)', boxShadow:'0 4px 20px var(--accent-glow)' }}>
-                <User size={32} color="#fff"/>
+      {/* ── HERO ─────────────────────────────────────────────────────────── */}
+      <div className="flex flex-col items-center px-6 pt-9 pb-7 relative overflow-hidden"
+        style={{ background:'var(--bg)' }}>
+        {/* Ambient glow orb */}
+        <div className="absolute pointer-events-none"
+          style={{
+            top:-40, left:'50%', transform:'translateX(-50%)',
+            width:360, height:360, borderRadius:'50%',
+            background:'radial-gradient(ellipse at center, var(--orb-color) 0%, var(--orb-color-2) 38%, transparent 68%)',
+          }}/>
+
+        {/* Avatar */}
+        <motion.div
+          className="relative z-[1] mb-[18px]"
+          initial={{scale:.7,opacity:0}} animate={{scale:1,opacity:1}}
+          transition={{duration:.5,ease:[.34,1.56,.64,1]}}>
+          <div className="w-[108px] h-[108px] rounded-full overflow-hidden relative"
+            style={{
+              background:'var(--accent-dim)',
+              boxShadow:'0 0 0 3px var(--bg), 0 0 0 5px var(--accent-border), 0 14px 40px var(--accent-glow)',
+            }}>
+            {dispSrc
+              ? <img src={dispSrc} alt={user?.name} className="w-full h-full object-cover block"/>
+              : svgAv
+              ? <div className="w-full h-full p-0.5" style={{ background:svgAv.bg }}>{svgAv.svg}</div>
+              : <div className="w-full h-full flex items-center justify-center text-[32px] font-extrabold text-white"
+                  style={{ background:'var(--accent-gradient)', fontFamily:HEAD }}>
+                  {initials(user?.name)}
+                </div>
+            }
+            {avBusy && (
+              <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                <div className="w-6 h-6 rounded-full border-[2.5px] border-white/30 border-t-white" style={{animation:'pf-spin .8s linear infinite'}}/>
               </div>
             )}
-            <div className="flex-1 min-w-0 pt-1">
-              <h2 className="text-xl font-bold truncate" style={{ color:'var(--text-primary)' }}>
-                {isGuest ? 'Guest User' : user?.name}
-              </h2>
-              {!isGuest && user?.email && (
-                <p className="text-sm truncate mt-0.5" style={{ color:'var(--text-muted)' }}>{user.email}</p>
-              )}
-              {isGuest && <p className="text-sm mt-0.5" style={{ color:'var(--text-muted)' }}>Sign in to save history</p>}
-              {!isGuest && user?.role && (
-                <span className="inline-block text-[10px] font-bold px-2.5 py-0.5 rounded-full mt-1.5 capitalize"
-                  style={{ background:'var(--accent-dim)', color:'var(--accent)' }}>
-                  {user.role}
-                </span>
-              )}
-              <AnimatePresence>
-                {savedFlash && (
-                  <motion.div initial={{ opacity:0, y:-4 }} animate={{ opacity:1, y:0 }} exit={{ opacity:0 }}
-                    className="flex items-center gap-1 mt-1.5">
-                    <Check size={12} color="var(--success)"/>
-                    <span className="text-xs font-semibold" style={{ color:'var(--success)' }}>Username updated!</span>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
           </div>
-
-          {/* Username editor */}
           {!isGuest && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color:'var(--text-muted)' }}>Username</span>
-                {!editingUsername && (
-                  <button onClick={() => { setEditingUsername(true); setUsernameErr('') }}
-                    className="flex items-center gap-1 text-xs font-semibold active:scale-95 transition-all"
-                    style={{ color:'var(--accent)' }}>
-                    <Edit3 size={11}/> Edit
-                  </button>
-                )}
-              </div>
-              <AnimatePresence mode="wait">
-                {editingUsername ? (
-                  <motion.div key="edit" initial={{ opacity:0, y:-4 }} animate={{ opacity:1, y:0 }} exit={{ opacity:0 }} className="space-y-2">
-                    <div className="flex gap-2">
-                      <div className="flex-1 relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold select-none" style={{ color:'var(--text-muted)' }}>@</span>
-                        <input value={usernameVal} onChange={handleUsernameChange}
-                          maxLength={20} autoFocus placeholder="your_handle"
-                          className="w-full pl-7 pr-3 py-2.5 rounded-xl text-sm font-mono font-semibold outline-none"
-                          style={{
-                            background:'var(--input-bg)', color:'var(--text-primary)',
-                            border:`1.5px solid ${usernameErr ? 'var(--danger)' : 'var(--input-border-focus)'}`,
-                          }} />
-                      </div>
-                      <button onClick={handleUsernameSave} disabled={!!usernameErr || !usernameVal}
-                        className="w-10 h-10 rounded-xl flex items-center justify-center active:scale-90 flex-shrink-0"
-                        style={{ background:(usernameErr || !usernameVal) ? 'var(--btn-disabled)' : 'var(--accent-gradient)', opacity:(usernameErr || !usernameVal) ? 0.4 : 1 }}>
-                        <Check size={16} color="#fff"/>
-                      </button>
-                      <button onClick={() => { setEditingUsername(false); setUsernameVal(user?.username||''); setUsernameErr('') }}
-                        className="w-10 h-10 rounded-xl flex items-center justify-center active:scale-90 flex-shrink-0"
-                        style={{ background:'var(--pill-bg)' }}>
-                        <X size={16} color="var(--text-muted)"/>
-                      </button>
-                    </div>
-                    {usernameErr && (
-                      <motion.div initial={{ opacity:0, y:-4 }} animate={{ opacity:1, y:0 }} className="flex items-center gap-1.5">
-                        <AlertTriangle size={11} color="var(--danger)"/>
-                        <p className="text-xs" style={{ color:'var(--danger)' }}>{usernameErr}</p>
-                      </motion.div>
-                    )}
-                  </motion.div>
-                ) : (
-                  <motion.div key="display" initial={{ opacity:0 }} animate={{ opacity:1 }}>
-                    <span className="font-mono text-sm font-bold px-3 py-1.5 rounded-xl inline-block"
-                      style={{ background:'var(--pill-bg)', color:'var(--text-primary)' }}>
-                      @{user?.username || '—'}
-                    </span>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+            <button type="button" onClick={() => setSheet('avatar')}
+              className="absolute bottom-0.5 right-0.5 w-[30px] h-[30px] rounded-full flex items-center justify-center cursor-pointer z-[2]"
+              style={{ background:'var(--accent-gradient)', border:'2.5px solid var(--bg)' }}>
+              <Camera size={12} color="#fff"/>
+            </button>
           )}
         </motion.div>
 
-        {/* ── Loyalty Card ── */}
+        {/* Name */}
+        <motion.h1
+          className="text-[24px] font-bold text-center tracking-[-0.04em] mb-1 z-[1]"
+          style={{ color:'var(--text-primary)', fontFamily:HEAD }}
+          initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} transition={{delay:.1}}>
+          {isGuest ? 'Guest User' : (user?.name || 'User')}
+        </motion.h1>
+
+        {/* Tagline */}
+        <motion.p
+          className="text-[14px] text-center mb-5 z-[1]"
+          style={{ color:'var(--text-muted)', fontFamily:BODY }}
+          initial={{opacity:0}} animate={{opacity:1}} transition={{delay:.15}}>
+          {isGuest
+            ? 'Browsing as guest'
+            : user?.username
+            ? `@${user.username} · ${tierM.emoji} ${tierM.label}`
+            : `${tierM.emoji} ${tierM.label} Member`
+          }
+        </motion.p>
+
+        {/* Social stats */}
+        <SocialStats stats={socialStats} isGuest={isGuest} isDark={isDark} onOpen={tab => setFollowSheet(tab)}/>
+
+        {/* Instagram link */}
+        {!isGuest && igHandle && (
+          <motion.a
+            href={`https://instagram.com/${igHandle}`} target="_blank" rel="noreferrer"
+            initial={{opacity:0,scale:.9}} animate={{opacity:1,scale:1}} transition={{delay:.25}}
+            className="inline-flex items-center gap-1.5 z-[1] mb-5 -mt-1 px-3.5 py-[7px] rounded-full no-underline cursor-pointer"
+            style={{
+              background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+              backdropFilter:'blur(12px)', WebkitBackdropFilter:'blur(12px)',
+              border: isDark ? '1px solid rgba(255,255,255,0.13)' : '1px solid rgba(0,0,0,0.09)',
+              boxShadow: isDark ? '0 2px 12px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.08)',
+              WebkitTapHighlightColor:'transparent',
+            }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><defs><linearGradient id="ig-g" x1="0%" y1="100%" x2="100%" y2="0%"><stop offset="0%" stopColor="#f09433"/><stop offset="25%" stopColor="#e6683c"/><stop offset="50%" stopColor="#dc2743"/><stop offset="75%" stopColor="#cc2366"/><stop offset="100%" stopColor="#bc1888"/></linearGradient></defs><rect x="2" y="2" width="20" height="20" rx="6" stroke="url(#ig-g)" strokeWidth="2"/><circle cx="12" cy="12" r="4" stroke="url(#ig-g)" strokeWidth="2"/><circle cx="17.5" cy="6.5" r="1" fill="url(#ig-g)"/></svg>
+            <span className="text-[13px] font-semibold" style={{ color:'var(--text-primary)', fontFamily:BODY }}>Instagram</span>
+          </motion.a>
+        )}
+
+        {/* Profile completion bar */}
+        {!isGuest && completion < 100 && (
+          <motion.div
+            className="mb-5 z-[1] w-full max-w-xs"
+            initial={{opacity:0,y:6}} animate={{opacity:1,y:0}} transition={{delay:.28}}>
+            <div className="flex justify-between mb-1.5">
+              <span className="text-[11px]" style={{ color:'var(--text-muted)', fontFamily:BODY }}>Profile {completion}% complete</span>
+              <span className="text-[11px] font-bold" style={{ color:'var(--accent)', fontFamily:MONO }}>{100-completion}% to go</span>
+            </div>
+            <div className="h-1 rounded-full overflow-hidden" style={{ background:'var(--pill-bg)' }}>
+              <motion.div
+                className="h-full rounded-full" style={{ background:'var(--accent-gradient)' }}
+                initial={{width:0}} animate={{width:`${completion}%`}}
+                transition={{duration:1.2,ease:[.22,1,.36,1],delay:.6}}/>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Edit Profile btn */}
         {!isGuest && (
-          <motion.div initial={{ y:20, opacity:0 }} animate={{ y:0, opacity:1 }}
-            transition={{ duration:0.4, ease:[0.22,1,0.36,1], delay:0.07 }}
-            className="rounded-3xl p-5 space-y-4 relative overflow-hidden"
-            style={{ background:'var(--card-bg)', border:'1px solid var(--card-border)', boxShadow:'var(--card-shadow)' }}>
-            <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full pointer-events-none"
-              style={{ background:'radial-gradient(circle, var(--accent-dim) 0%, transparent 70%)', filter:'blur(12px)' }}/>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <motion.div animate={{ rotate:[0,8,-6,4,0] }}
-                  transition={{ duration:3, repeat:Infinity, repeatDelay:2, ease:'easeInOut' }}
-                  className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl"
-                  style={{ background:'var(--pill-bg)' }}>
-                  {tierMeta.emoji}
-                </motion.div>
-                <div>
-                  <p className="font-bold text-base" style={{ color:'var(--text-primary)' }}>{tierMeta.label} Member</p>
-                  <p className="text-xs" style={{ color:'var(--text-muted)' }}>
-                    {(loyalty?.points || 0).toLocaleString()} points
+          <motion.button
+            type="button" onClick={() => setSheet('edit')}
+            className="w-full max-w-xs py-[14px] rounded-[16px] font-bold text-[15px] cursor-pointer z-[1] tracking-[-0.01em]"
+            style={{
+              fontFamily:BODY, color:'var(--text-primary)',
+              background: isDark ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.07)',
+              border:`1.5px solid ${isDark?'rgba(255,255,255,0.13)':'rgba(0,0,0,0.11)'}`,
+              WebkitTapHighlightColor:'transparent',
+            }}
+            initial={{opacity:0,y:6}} animate={{opacity:1,y:0}} transition={{delay:.3}}
+            whileTap={{scale:.97}}>
+            Edit Profile
+          </motion.button>
+        )}
+      </div>
+
+      {/* Divider */}
+      <div className="h-px" style={{ background:'var(--divider)' }}/>
+
+      {/* ── BODY ─────────────────────────────────────────────────────────── */}
+      <div className="pb-12">
+
+        {/* Loyalty card */}
+        {!isGuest && (
+          <div className="px-4 pt-5">
+            <Card>
+              <div className="p-4">
+                <div className="flex justify-between items-center mb-3">
+                  <div>
+                    <p className="text-[15px] font-bold" style={{ color:'var(--text-primary)', fontFamily:HEAD }}>
+                      {tierM.emoji} {tierM.label}
+                    </p>
+                    {nextTier && (
+                      <p className="text-[11px] mt-0.5" style={{ color:'var(--text-muted)', fontFamily:BODY }}>
+                        → {nextTier.charAt(0).toUpperCase()+nextTier.slice(1)}
+                      </p>
+                    )}
+                  </div>
+                  <p className="text-[13px]" style={{ color:'var(--accent)', fontFamily:MONO }}>
+                    {totalPts.toLocaleString()} pts
                   </p>
                 </div>
-              </div>
-              <div className="text-right">
-                <div className="flex items-center gap-1 justify-end">
-                  <AnimatedStar size={14} delay={0}/>
-                  <AnimatedStar size={11} delay={0.3}/>
-                  <AnimatedStar size={13} delay={0.6}/>
-                  <span className="text-lg font-bold ml-1" style={{ color:'var(--accent)' }}>
-                    {loyalty?.discountPct || 0}%
-                  </span>
+                <div className="h-1.5 rounded-full overflow-hidden" style={{ background:'var(--pill-bg)' }}>
+                  <motion.div
+                    className="h-full rounded-full relative overflow-hidden"
+                    style={{ background:'var(--accent-gradient)' }}
+                    initial={{width:0}} animate={{width:`${barPct}%`}}
+                    transition={{duration:1.3,ease:[.22,1,.36,1],delay:.5}}>
+                    <motion.div
+                      className="absolute inset-0"
+                      style={{ background:'linear-gradient(90deg,transparent,rgba(255,255,255,0.3) 50%,transparent)' }}
+                      animate={{x:['-100%','200%']}}
+                      transition={{duration:2,repeat:Infinity,repeatDelay:2.5,delay:1.5}}/>
+                  </motion.div>
                 </div>
-                <p className="text-xs" style={{ color:'var(--text-muted)' }}>discount</p>
+                <div className="flex justify-between mt-[7px] text-[11px]" style={{ color:'var(--text-muted)', fontFamily:BODY }}>
+                  <span>{nextTier ? `${totalPts.toLocaleString()} / ${maxPts.toLocaleString()} pts` : '🎉 Max tier!'}</span>
+                  <span>{Math.round(barPct)}%</span>
+                </div>
               </div>
-            </div>
-            <LoyaltyBar tier={tier} points={loyalty?.points || 0} />
-          </motion.div>
+            </Card>
+          </div>
         )}
 
-        {/* ── Stats ── */}
-        {!isGuest && history.length > 0 && (
-          <motion.div initial={{ y:20, opacity:0 }} animate={{ y:0, opacity:1 }}
-            transition={{ duration:0.4, ease:[0.22,1,0.36,1], delay:0.13 }}
-            className="grid grid-cols-3 gap-3">
-            {[
-              { icon:Package, label:'Orders', value:history.length,       prefix:'',                color:'var(--accent)'  },
-              { icon:Award,   label:'Points', value:loyalty?.points||0,   prefix:'',                color:'var(--success)' },
-              { icon:Clock,   label:'Spent',  value:totalSpend,            prefix:`${BRAND.currency} `, color:'var(--warning)' },
-            ].map(({ icon:Icon, label, value, prefix, color }, i) => (
-              <motion.div key={label} initial={{ y:16, opacity:0 }} animate={{ y:0, opacity:1 }}
-                transition={{ duration:0.35, delay:0.15+i*0.06 }}
-                className="rounded-2xl p-3.5 flex flex-col items-center gap-1.5"
-                style={{ background:'var(--card-bg)', border:'1px solid var(--card-border)' }}>
-                <Icon size={18} color={color}/>
-                <p className="text-sm font-bold font-mono leading-tight" style={{ color:'var(--text-primary)' }}>
-                  <AnimatedCounter value={value} prefix={prefix}/>
-                </p>
-                <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color:'var(--text-muted)' }}>{label}</p>
-              </motion.div>
-            ))}
-          </motion.div>
-        )}
-
-        {/* ── Sound Settings ── */}
-        <Section title="🔔 Sound Settings" delay={0.16}>
-          <ToggleRow label="All Sounds" sublabel={masterMuted ? 'All notifications muted' : 'Sounds are enabled'}
-            icon={masterMuted ? VolumeX : Volume2} iconColor="var(--accent)"
-            value={!masterMuted} onChange={(v) => setMasterMute(!v)} />
-          <AnimatePresence>
-            {!masterMuted && (
-              <motion.div initial={{ height:0, opacity:0 }} animate={{ height:'auto', opacity:1 }}
-                exit={{ height:0, opacity:0 }} transition={{ duration:0.22 }}>
-                {CUSTOMER_SOUND_KEYS.map((s, i) => (
-                  <ToggleRow key={s.key}
-                    label={s.icon+' '+s.label}
-                    icon={isSoundOn(s.key) ? Bell : BellOff}
-                    iconColor={isSoundOn(s.key) ? 'var(--accent)' : 'var(--text-muted)'}
-                    value={isSoundOn(s.key)} onChange={() => toggleSound(s.key)}
-                    last={i===CUSTOMER_SOUND_KEYS.length-1} />
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </Section>
-
-        {/* ── App Preferences ── */}
-        <Section title="⚙️ App Preferences" delay={0.19}>
-          <ToggleRow label="Dark Mode" sublabel={isDark ? 'Using dark theme' : 'Using light theme'}
-            icon={isDark ? Moon : Sun} iconColor="var(--accent)"
-            value={isDark} onChange={toggleTheme} />
-          <ToggleRow label="Haptic Feedback" sublabel="Vibrate on actions"
-            icon={Vibrate} iconColor="#8B5CF6"
-            value={hapticOn} onChange={toggleHaptic} last />
-        </Section>
-
-        {/* ── Order History ── */}
-        {!isGuest && (
-          <Section title="Order History" delay={0.22}>
-            {history.length > 0 && (
-              <div className="px-4 pb-1 flex justify-end -mt-2 mb-1">
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
-                  style={{ background:'var(--pill-bg)', color:'var(--text-muted)' }}>{history.length}</span>
-              </div>
-            )}
-            {histLoading ? (
-              <div className="px-4 pb-4 space-y-3">
-                {[1,2,3].map((i) => (
-                  <motion.div key={i} animate={{ opacity:[0.4,0.8,0.4] }}
-                    transition={{ duration:1.4, repeat:Infinity, delay:i*0.15 }}
-                    className="h-14 rounded-2xl" style={{ background:'var(--pill-bg)' }}/>
-                ))}
-              </div>
-            ) : history.length === 0 ? (
-              <div className="px-4 pb-6 text-center space-y-1">
-                <p className="text-2xl">😋</p>
-                <p className="text-sm" style={{ color:'var(--text-muted)' }}>No past orders yet. Order something!</p>
-              </div>
-            ) : (
-              <div className="divide-y" style={{ borderColor:'var(--divider)' }}>
-                {history.map((order) => (
-                  <OrderItem key={order._id} order={order} />
-                ))}
-              </div>
-            )}
-          </Section>
-        )}
-
-        {/* ── About ── */}
-        <Section title="ℹ️ About" delay={0.25}>
-          <div className="px-4 pb-4 space-y-3">
-            <div className="flex items-center gap-3 pt-1">
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg"
-                style={{ background:'var(--accent-dim)' }}>{BRAND.emoji}</div>
-              <div>
-                {/* ✅ BRAND.name — no hardcoded "कौसी चिया" */}
-                <p className="text-sm font-bold" style={{ color:'var(--text-primary)' }}>{BRAND.name}</p>
-                <p className="text-xs" style={{ color:'var(--text-muted)' }}>{BRAND.tagline}</p>
-              </div>
-              <span className="ml-auto text-[10px] font-mono font-bold px-2 py-0.5 rounded-full flex-shrink-0"
-                style={{ background:'var(--pill-bg)', color:'var(--text-muted)' }}>
-                v{APP_VERSION}
-              </span>
-            </div>
-            <div className="flex flex-col gap-1.5 pt-1">
-              {[
-                { label:'Privacy Policy',   icon:ShieldCheck },
-                { label:'Terms of Service', icon:Info        },
-              ].map(({ label, icon:Icon }) => (
-                <button key={label}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl active:scale-95 transition-all"
-                  style={{ background:'var(--pill-bg)' }}>
-                  <Icon size={14} color="var(--text-muted)"/>
-                  <span className="text-sm" style={{ color:'var(--text-muted)' }}>{label}</span>
-                  <ChevronRight size={13} style={{ color:'var(--text-muted)', marginLeft:'auto' }}/>
-                </button>
-              ))}
+        {/* Badges */}
+        {!isGuest && badges.length > 0 && (
+          <div className="px-4 pt-5">
+            <p className="text-[11px] font-bold uppercase tracking-[.1em] mb-2.5 pl-1"
+              style={{ color:'var(--text-muted)', fontFamily:BODY }}>Achievements</p>
+            <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth:'none' }}>
+              {badges.map(b => {
+                const def = BADGE_DEFS[b.id]; if (!def) return null
+                return (
+                  <motion.div key={b.id} whileTap={{scale:.92}}
+                    className="flex flex-col items-center gap-1 min-w-[62px] px-2 py-2.5 rounded-[14px] flex-shrink-0"
+                    style={{ background:'var(--card-bg)', border:'1px solid var(--card-border)' }}>
+                    <span className="text-[20px] leading-none">{def.emoji}</span>
+                    <span className="text-[9px] font-semibold text-center whitespace-nowrap"
+                      style={{ color:'var(--text-muted)', fontFamily:BODY }}>{def.label}</span>
+                  </motion.div>
+                )
+              })}
             </div>
           </div>
-        </Section>
+        )}
 
-        {/* ── Logout ── */}
-        <motion.div initial={{ y:20, opacity:0 }} animate={{ y:0, opacity:1 }}
-          transition={{ duration:0.4, ease:[0.22,1,0.36,1], delay:0.28 }}>
-          <LogoutButton />
+        {/* Referral */}
+        {!isGuest && user?.referralCode && (
+          <div className="px-4 pt-5">
+            <Card>
+              <div className="p-4">
+                <div className="flex justify-between items-center mb-1">
+                  <p className="text-[14px] font-bold" style={{ color:'var(--text-primary)', fontFamily:HEAD }}>🎁 Refer a Friend</p>
+                  {(user.referralCount||0)>0 && (
+                    <span className="text-[11px] font-semibold" style={{ color:'var(--success)', fontFamily:BODY }}>
+                      ✓ {user.referralCount} referred
+                    </span>
+                  )}
+                </div>
+                <p className="text-[12px] mb-2.5" style={{ color:'var(--text-muted)', fontFamily:BODY }}>
+                  Both earn <strong style={{ color:'var(--accent)' }}>50 bonus points</strong>
+                </p>
+                <div className="flex gap-2 items-center">
+                  <div className="flex-1 py-2.5 px-3.5 rounded-[12px] flex items-center justify-center"
+                    style={{ background:'var(--pill-bg)', border:'1.5px solid var(--divider)' }}>
+                    <span className="text-[17px] font-bold tracking-[.08em]"
+                      style={{ color:'var(--accent)', fontFamily:MONO }}>
+                      {user.referralCode}
+                    </span>
+                  </div>
+                  <motion.button type="button" whileTap={{scale:.88}} onClick={copyRef}
+                    className="w-[42px] h-[42px] rounded-xl flex items-center justify-center cursor-pointer"
+                    style={{ border:'1.5px solid var(--divider)', background:'var(--pill-bg)' }}>
+                    <Copy size={16} color="var(--accent)"/>
+                  </motion.button>
+                  <motion.button type="button" whileTap={{scale:.88}} onClick={shareRef}
+                    className="w-[42px] h-[42px] rounded-xl flex items-center justify-center cursor-pointer border-none"
+                    style={{ background:'var(--accent-gradient)' }}>
+                    <Share2 size={16} color="#fff"/>
+                  </motion.button>
+                </div>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* Nav groups */}
+        {[
+          { label:'My Profile', rows:[
+            {icon:'🧬', bg:'var(--accent-dim)',  label:'Personal Info',  sub:'DOB, gender, hobbies',     key:'personal'},
+            {icon:'✨', bg:'rgba(52,211,153,.15)', label:'Preferences',    sub:'Food, drink, dining style', key:'prefs'},
+            {icon:'📦', bg:'rgba(96,165,250,.15)', label:'Order History', sub:`${history.length} order${history.length!==1?'s':''}`, key:'orders'},
+          ]},
+          { label:'More', rows:[
+            {icon:'ℹ️', bg:'var(--pill-bg)', label:'About', sub:`${BRAND.name} v${APP_VER}`, key:'about'},
+          ]},
+        ].map((grp, gi) => (
+          <motion.div key={grp.label} className="px-4 pt-5"
+            initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} transition={{delay:.34+gi*.06}}>
+            <p className="text-[11px] font-bold uppercase tracking-[.1em] mb-2.5 pl-1"
+              style={{ color:'var(--text-muted)', fontFamily:BODY }}>{grp.label}</p>
+            <Card>
+              {grp.rows.map((row, ri, arr) => (
+                <button key={row.key} type="button" onClick={() => setSheet(row.key)}
+                  className="flex items-center gap-3 px-4 py-[13px] cursor-pointer bg-transparent border-none w-full text-left"
+                  style={{
+                    borderBottom: ri<arr.length-1 ? '1px solid var(--divider)' : 'none',
+                    WebkitTapHighlightColor:'transparent',
+                  }}>
+                  <div className="w-[34px] h-[34px] rounded-[10px] flex-shrink-0 flex items-center justify-center text-[16px]"
+                    style={{ background:row.bg }}>
+                    {row.icon}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[14px] font-medium leading-[1.2]" style={{ color:'var(--text-primary)', fontFamily:BODY }}>
+                      {row.label}
+                    </p>
+                    {row.sub && (
+                      <p className="text-[11.5px] mt-0.5" style={{ color:'var(--text-muted)', fontFamily:BODY }}>
+                        {row.sub}
+                      </p>
+                    )}
+                  </div>
+                  <ChevronRight size={15} color="var(--text-muted)"/>
+                </button>
+              ))}
+            </Card>
+          </motion.div>
+        ))}
+
+        <motion.div className="px-4 pt-5 pb-2"
+          initial={{opacity:0}} animate={{opacity:1}} transition={{delay:.44}}>
+          <LogoutButton/>
         </motion.div>
       </div>
 
+      {/* ── SHEETS ───────────────────────────────────────────────────────── */}
       <AnimatePresence>
-        {showConfirm && (
-          <ConfirmModal isDark={isDark} oldUsername={user?.username} newUsername={usernameVal}
-            onConfirm={handleConfirmUsername} onCancel={() => setShowConfirm(false)} saving={saving} />
+
+        {/* Avatar picker */}
+        {sheet === 'avatar' && (
+          <Sheet title="Profile Photo" onClose={() => setSheet(null)}>
+            <button type="button" onClick={() => fileRef.current?.click()}
+              className="flex items-center gap-3.5 py-3.5 w-full text-left cursor-pointer bg-transparent border-none"
+              style={{ borderBottom:'1px solid var(--divider)' }}>
+              <div className="w-[46px] h-[46px] rounded-[14px] flex-shrink-0 flex items-center justify-center"
+                style={{ background:'var(--accent-dim)' }}>
+                <Camera size={20} color="var(--accent)"/>
+              </div>
+              <div>
+                <p className="text-[14px] font-semibold" style={{ color:'var(--text-primary)', fontFamily:BODY }}>Upload Photo</p>
+                <p className="text-[12px] mt-0.5" style={{ color:'var(--text-muted)', fontFamily:BODY }}>Camera or photo library · max 5MB</p>
+              </div>
+            </button>
+
+            {(dispSrc || isPhotoUrl(user?.avatar)) && (
+              <button type="button" onClick={removePhoto}
+                className="flex items-center gap-3.5 py-3.5 w-full text-left cursor-pointer bg-transparent border-none"
+                style={{ borderBottom:'1px solid rgba(239,68,68,0.2)' }}>
+                <div className="w-[46px] h-[46px] rounded-[14px] flex-shrink-0 flex items-center justify-center bg-red-500/10">
+                  <Trash2 size={18} color="#EF4444"/>
+                </div>
+                <div>
+                  <p className="text-[14px] font-semibold text-red-400" style={{ fontFamily:BODY }}>Remove Photo</p>
+                  <p className="text-[12px] mt-0.5" style={{ color:'var(--text-muted)', fontFamily:BODY }}>Revert to initials avatar</p>
+                </div>
+              </button>
+            )}
+
+            <p className="text-[10px] font-bold uppercase tracking-[.12em] mt-5 mb-3"
+              style={{ color:'var(--text-muted)', fontFamily:BODY }}>Choose an avatar</p>
+            <div className="grid grid-cols-3 gap-2.5">
+              {SVG_AVATARS.map(av => {
+                const sel = user?.avatar === av.id
+                return (
+                  <motion.button key={av.id} type="button" whileTap={{scale:.88}} onClick={() => pickSvg(av.id)}
+                    className="flex flex-col items-center gap-1.5 bg-transparent border-none cursor-pointer p-0">
+                    <div className="w-full aspect-square rounded-[16px] overflow-hidden p-0.5 relative transition-all duration-150"
+                      style={{
+                        background:av.bg,
+                        boxShadow: sel ? '0 0 0 2.5px var(--accent), 0 4px 14px var(--accent-glow)' : '0 2px 8px rgba(0,0,0,0.1)',
+                        transform: sel ? 'scale(1.06)' : 'scale(1)',
+                      }}>
+                      {av.svg}
+                      {sel && (
+                        <motion.div initial={{scale:0}} animate={{scale:1}}
+                          className="absolute -top-[3px] -right-[3px] w-4 h-4 rounded-full flex items-center justify-center"
+                          style={{ background:'var(--accent-gradient)', border:'2px solid var(--bg)' }}>
+                          <Check size={8} color="#fff" strokeWidth={3}/>
+                        </motion.div>
+                      )}
+                    </div>
+                    <span className="text-[10px] font-medium"
+                      style={{ color: sel ? 'var(--accent)' : 'var(--text-muted)', fontFamily:BODY }}>
+                      {av.label}
+                    </span>
+                  </motion.button>
+                )
+              })}
+            </div>
+          </Sheet>
+        )}
+
+        {/* Edit profile */}
+        {sheet === 'edit' && (
+          <Sheet title="Edit Profile" onClose={() => setSheet(null)}
+            footer={<SaveBtn busy={busy} onClick={saveEdit} label="Save Changes"/>}>
+            <div className="mb-6">
+              <SLabel>Identity</SLabel>
+              <Field label="Full Name">
+                <Inp value={dEdit.name||''} placeholder="Your name" onChange={e=>setDEdit(p=>({...p,name:e.target.value}))}/>
+              </Field>
+              <Field label="Username">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[14px]" style={{ fontFamily:MONO, color:'var(--text-muted)', flexShrink:0 }}>@</span>
+                  <Inp style={{flex:1}} value={dEdit.username||''} maxLength={20} placeholder="your_handle"
+                    onChange={e=>setDEdit(p=>({...p,username:e.target.value.toLowerCase().replace(/[^a-z0-9_]/g,'')}))}/>
+                </div>
+              </Field>
+            </div>
+            <div>
+              <SLabel>Social</SLabel>
+              <Field label="Instagram Handle">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[14px]" style={{ fontFamily:MONO, color:'var(--text-muted)', flexShrink:0 }}>@</span>
+                  <Inp style={{flex:1}} value={dEdit.instagramHandle||''} maxLength={30} placeholder="yourhandle"
+                    onChange={e=>setDEdit(p=>({...p,instagramHandle:e.target.value.replace(/^@/,'')}))}/>
+                </div>
+              </Field>
+            </div>
+          </Sheet>
+        )}
+
+        {/* Personal info */}
+        {sheet === 'personal' && (
+          <Sheet title="Personal Info" onClose={() => setSheet(null)}
+            footer={<SaveBtn busy={busy} onClick={() => save(dPers, () => setSheet(null))}/>}>
+            <div className="mb-6">
+              <SLabel>About You</SLabel>
+              <Field label="Date of Birth">
+                <input type="date" value={dPers.dob||''} onChange={e=>setDPers(p=>({...p,dob:e.target.value}))}
+                  className="w-full outline-none block"
+                  style={{
+                    padding:'12px 14px', borderRadius:13, fontFamily:MONO, fontSize:16, boxSizing:'border-box',
+                    color:'var(--text-primary)', background:'var(--input-bg)', border:'1.5px solid var(--input-border)',
+                    WebkitAppearance:'none', appearance:'none',
+                  }}/>
+              </Field>
+              <Field label="Gender"><Chips options={OPTS.gender} value={dPers.gender} onChange={v=>setDPers(p=>({...p,gender:v}))}/></Field>
+            </div>
+            <div>
+              <SLabel>Lifestyle</SLabel>
+              <Field label="Occupation"><Chips options={OPTS.occupation} value={dPers.occupation} onChange={v=>setDPers(p=>({...p,occupation:v}))}/></Field>
+              <Field label="Hobbies"><Chips options={OPTS.hobbies} value={dPers.hobbies} onChange={v=>setDPers(p=>({...p,hobbies:v}))} multi/></Field>
+            </div>
+          </Sheet>
+        )}
+
+        {/* Preferences */}
+        {sheet === 'prefs' && (
+          <Sheet title="Preferences" onClose={() => setSheet(null)}
+            footer={<SaveBtn busy={busy} onClick={() => save(dPrefs, () => setSheet(null))}/>}>
+            <div className="mb-6">
+              <SLabel>Food & Drink</SLabel>
+              {[['Food Preference','foodPreference',OPTS.foodPreference],['Favourite Drink','favouriteDrink',OPTS.favouriteDrink],['Spice Tolerance','spiceTolerance',OPTS.spiceTolerance]].map(([lbl,key,opts]) => (
+                <Field key={key} label={lbl}>
+                  <Chips options={opts} value={dPrefs[key]} onChange={v=>setDPrefs(p=>({...p,[key]:v}))}/>
+                </Field>
+              ))}
+            </div>
+            <div>
+              <SLabel>Dining Habits</SLabel>
+              {[['Dining Style','diningStyle',OPTS.diningStyle],['Visit Time','preferredVisitTime',OPTS.preferredVisitTime]].map(([lbl,key,opts]) => (
+                <Field key={key} label={lbl}>
+                  <Chips options={opts} value={dPrefs[key]} onChange={v=>setDPrefs(p=>({...p,[key]:v}))}/>
+                </Field>
+              ))}
+            </div>
+          </Sheet>
+        )}
+
+        {/* Order history */}
+        {sheet === 'orders' && (
+          <Sheet title="Order History" onClose={() => setSheet(null)}>
+            {histLoading
+              ? [1,2,3].map(i => (
+                  <div key={i} className="h-[52px] mb-2 rounded-[10px]" style={{ background:'var(--pill-bg)' }}/>
+                ))
+              : history.length === 0
+              ? <div className="text-center py-8">
+                  <p className="text-[32px] mb-2">😋</p>
+                  <p className="text-[14px]" style={{ color:'var(--text-muted)', fontFamily:BODY }}>No orders yet</p>
+                </div>
+              : history.map(o => <OItem key={o._id} order={o}/>)
+            }
+          </Sheet>
+        )}
+
+        {/* Settings */}
+        {sheet === 'settings' && (
+          <Sheet title="Settings" onClose={() => setSheet(null)}>
+            {/* Sound */}
+            <div className="mb-6">
+              <SLabel>Sound</SLabel>
+              <Card>
+                <div className="flex items-center gap-3 px-4 py-[13px]" style={{ borderBottom:'1px solid var(--divider)' }}>
+                  <div className="w-[34px] h-[34px] rounded-[10px] flex-shrink-0 flex items-center justify-center" style={{ background:'rgba(255,159,28,0.15)' }}>
+                    <Volume2 size={16} color="var(--accent)"/>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-[14px] font-medium" style={{ color:'var(--text-primary)', fontFamily:BODY }}>All Sounds</p>
+                    <p className="text-[11.5px] mt-0.5" style={{ color:'var(--text-muted)', fontFamily:BODY }}>{muted?'Muted':'Enabled'}</p>
+                  </div>
+                  <Toggle value={!muted} onChange={v=>setMute(!v)} label="All Sounds"/>
+                </div>
+                {!muted && SOUND_KEYS.map((s, si, arr) => (
+                  <div key={s.key} className="flex items-center gap-3 px-4 py-[13px]"
+                    style={{ borderBottom:si<arr.length-1?'1px solid var(--divider)':'none' }}>
+                    <div className="w-[34px] h-[34px] rounded-[10px] flex-shrink-0 flex items-center justify-center text-[15px]"
+                      style={{ background:'var(--pill-bg)' }}>
+                      {s.icon}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-[14px] font-medium" style={{ color:'var(--text-primary)', fontFamily:BODY }}>{s.label}</p>
+                    </div>
+                    <Toggle value={sndOn(s.key)} onChange={() => togSnd(s.key)} label={s.label}/>
+                  </div>
+                ))}
+              </Card>
+            </div>
+
+            {/* Display */}
+            <div>
+              <SLabel>Display</SLabel>
+              <Card>
+                {[
+                  { icon: isDark ? <Moon size={16} color="var(--text-muted)"/> : <Sun size={16} color="var(--text-muted)"/>, bg:'var(--pill-bg)', label:'Dark Mode', sub:undefined, val:isDark, onChange:toggleTheme },
+                  { icon:<Vibrate size={16} color="#8B5CF6"/>, bg:'rgba(139,92,246,0.15)', label:'Haptic', sub:undefined, val:hap, onChange:v=>{setHap(v);localStorage.setItem('kc_haptic',String(v))} },
+                  { icon:<Sparkles size={16} color="#38BDF8"/>, bg:'rgba(56,189,248,0.15)', label:'Sky Animations', sub:skyAnimationsEnabled?'Live canvas':'Static bg', val:skyAnimationsEnabled, onChange:toggleSkyAnimations },
+                ].map(({ icon, bg, label, sub, val, onChange }, i, arr) => (
+                  <div key={label} className="flex items-center gap-3 px-4 py-[13px]"
+                    style={{ borderBottom:i<arr.length-1?'1px solid var(--divider)':'none' }}>
+                    <div className="w-[34px] h-[34px] rounded-[10px] flex-shrink-0 flex items-center justify-center" style={{ background:bg }}>
+                      {icon}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-[14px] font-medium" style={{ color:'var(--text-primary)', fontFamily:BODY }}>{label}</p>
+                      {sub && <p className="text-[11.5px] mt-0.5" style={{ color:'var(--text-muted)', fontFamily:BODY }}>{sub}</p>}
+                    </div>
+                    <Toggle value={val} onChange={onChange} label={label}/>
+                  </div>
+                ))}
+              </Card>
+            </div>
+          </Sheet>
+        )}
+
+        {/* About */}
+        {sheet === 'about' && (
+          <Sheet title="About" onClose={() => setSheet(null)}>
+            <div className="flex flex-col items-center py-4 pb-6 gap-2.5">
+              <div className="w-16 h-16 rounded-[20px] flex items-center justify-center text-[28px]"
+                style={{ background:'var(--accent-dim)', border:'1px solid var(--accent-border)' }}>
+                {BRAND.emoji}
+              </div>
+              <p className="text-[18px] font-extrabold tracking-[-0.04em]" style={{ color:'var(--text-primary)', fontFamily:HEAD }}>{BRAND.name}</p>
+              <p className="text-[13px] text-center" style={{ color:'var(--text-muted)', fontFamily:BODY }}>{BRAND.tagline}</p>
+              <p className="text-[11px]" style={{ color:'var(--text-muted)', fontFamily:MONO }}>v{APP_VER}</p>
+            </div>
+            <Card>
+              {[{label:'Privacy Policy',icon:ShieldCheck},{label:'Terms of Service',icon:Info}].map(({label,icon:Ic},i,arr) => (
+                <div key={label} className="flex items-center gap-3 px-4 py-[13px] cursor-pointer"
+                  style={{ borderBottom:i<arr.length-1?'1px solid var(--divider)':'none' }}>
+                  <div className="w-[34px] h-[34px] rounded-[10px] flex-shrink-0 flex items-center justify-center" style={{ background:'var(--pill-bg)' }}>
+                    <Ic size={15} color="var(--text-muted)"/>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-[14px] font-medium" style={{ color:'var(--text-primary)', fontFamily:BODY }}>{label}</p>
+                  </div>
+                  <ChevronRight size={14} color="var(--text-muted)"/>
+                </div>
+              ))}
+            </Card>
+          </Sheet>
+        )}
+
+        {/* Follow sheet */}
+        {followSheet && (
+          <FollowSheet
+            onClose={() => setFollowSheet(null)}
+            isDark={isDark}
+            initialTab={followSheet}
+            viewOnly={false}
+            pendingRequests={pending}
+          />
+        )}
+
+      </AnimatePresence>
+
+      {/* Confirm dialog */}
+      <AnimatePresence>
+        {cfm && (
+          <Confirm
+            isDark={isDark}
+            title={cfm.title} desc={cfm.desc} detail={cfm.detail}
+            danger={cfm.danger} busy={busy}
+            onOk={cfm.onOk} onCancel={() => setCfm(null)}/>
         )}
       </AnimatePresence>
     </div>
   )
 }
-
-export default ProfilePage

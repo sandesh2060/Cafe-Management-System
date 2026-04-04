@@ -1,38 +1,44 @@
 // frontend/src/shared/services/notification.service.js
 //
-// REST client for the notification API.
-// Persistent notifications (order, loyalty) are stored in MongoDB.
-// Temp notifications (weather, welcome) are toast-only — not saved.
-//
-// Usage:
-//   import notificationService from '@shared/services/notification.service'
-//   const { items, unread } = await notificationService.getAll()
-//   await notificationService.markRead(id)
-//   await notificationService.markAllRead()
-//   await notificationService.clearAll()
+// FIX: getAll() now filters type === 'message' before returning
+//      and recomputes unread count from the filtered list.
+//      This prevents the badge showing server's raw unread count
+//      (which includes message notifications) while the panel shows
+//      a filtered (smaller) list — causing the "6 badge, 0 items" bug.
 
-import api       from '@/api/axios'
+import api           from '@/api/axios'
 import { ENDPOINTS } from '@/api/endpoints'
+
+// Filter out chat message notifications — handled by chat UI, not bell
+const filterNotifs = (items) =>
+  (items ?? []).filter(n => n.type !== 'message')
 
 const notificationService = {
   // GET /notifications — returns { items, total, unread }
+  // items and unread are BOTH filtered (no message type)
   getAll: async ({ limit = 30, skip = 0 } = {}) => {
     const res = await api.get(ENDPOINTS.NOTIFICATIONS.LIST, { params: { limit, skip } })
-    // axios.js interceptor returns response.data directly, so res IS the payload
-    return res?.data ?? res ?? { items: [], total: 0, unread: 0 }
+    // axios interceptor returns response.data → res = { success, data: { items, unread } }
+    const payload  = res?.data ?? res ?? {}
+    const rawItems = payload?.items ?? payload?.notifications ?? []
+    const filtered = filterNotifs(rawItems)
+    return {
+      items:  filtered,
+      total:  filtered.length,
+      // FIX: recompute unread from filtered list — not from server's count
+      // which includes message notifications
+      unread: filtered.filter(n => !n.read).length,
+    }
   },
 
-  // PATCH /notifications/read-all
   markAllRead: async () => {
     await api.patch(ENDPOINTS.NOTIFICATIONS.READ_ALL)
   },
 
-  // PATCH /notifications/:id/read
   markRead: async (id) => {
     await api.patch(ENDPOINTS.NOTIFICATIONS.READ_ONE(id))
   },
 
-  // DELETE /notifications — clear all for current user
   clearAll: async () => {
     await api.delete(ENDPOINTS.NOTIFICATIONS.CLEAR)
   },

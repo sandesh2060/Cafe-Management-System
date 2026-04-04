@@ -1,818 +1,611 @@
-// src/modules/customer/pages/LoginPage.jsx
-//
-// ✅ ALL colors from brand.js — var(--token) in styles, getPalette() for SVG
-// ✅ REDESIGNED: Refined luxury-minimal — warm amber cafe aesthetic
-// ✅ GSAP: Staggered entrance, input focus ring, button press, success burst
-// ✅ SVG: Animated steam paths, decorative corner accent, shimmer ring
-// ✅ Auth logic 100% unchanged
+// frontend/src/modules/customer/pages/LoginPage.jsx
+// ─── NEXARA — Premium Login ───────────────────────────────────────────────────
+// Mobile-first, pixel-perfect. No emoji — SVG icons only.
+// Desktop: split layout. Mobile: stacked hero + card.
+// GSAP cinematic entrance. All auth logic identical.
 
-import { useEffect, useRef, useState, useContext, useCallback } from 'react'
-import { useDispatch, useSelector }                              from 'react-redux'
-import { useNavigate }                                          from 'react-router-dom'
+import { useEffect, useRef, useState, useCallback } from 'react'
+import { useDispatch, useSelector } from 'react-redux'
+import { useNavigate } from 'react-router-dom'
 import {
-  checkUsername, registerWithUsername, loginWithUsername,
-  loginAsGuest, selectAuthLoading, selectAuthError, clearError,
+  checkUsername, loginUser, registerUser,
+  guestLogin, forgotPasscode, verifyOtp,
+  selectAuthLoading, selectAuthError, selectBlockState,
+  clearError, clearBlockState,
 } from '@store/slices/authSlice'
-import { selectTableNumber, selectSession } from '@store/slices/tableSessionSlice'
-import { persistSession }                  from '@modules/table/hooks/tableSession.utils'
-import { ThemeContext }                    from '@shared/context/ThemeContext'
-import { preloadSounds }                   from '@shared/utils/soundPlayer'
-import { BRAND, FONTS, getPalette }        from '@shared/config/brand'
+import { selectTableNumber, selectSession, fetchActiveSession } from '@store/slices/tableSessionSlice'
+import { selectVenueCafeId, selectVenueMode, selectVenueName } from '@store/slices/venueSlice'
+import { persistSession } from '@modules/table/hooks/tableSession.utils'
+import { preloadSounds } from '@shared/utils/soundPlayer'
+import { BRAND, FONTS } from '@shared/config/brand'
 import gsap from 'gsap'
 
-const BG_IMG = 'https://res.cloudinary.com/dszy3sf5c/image/upload/v1771077596/friends_brc5cy.png'
-const CAFE_ID = BRAND.cafeId ?? 'demo'
+/* ═══ BG VARIANTS ══════════════════════════════════════════════════════════ */
+const BGS = [
+  { a:'radial-gradient(ellipse at 40% 55%,#0d4a3a 0%,#062b22 40%,#020f0a 100%)',b:'radial-gradient(ellipse at 70% 30%,rgba(0,80,55,0.55) 0%,transparent 60%)',c:'radial-gradient(ellipse at 20% 80%,rgba(0,60,45,0.4) 0%,transparent 50%)'},
+  { a:'radial-gradient(ellipse at 38% 58%,#0e5236 0%,#072e1e 40%,#020e08 100%)',b:'radial-gradient(ellipse at 72% 28%,rgba(8,90,50,0.52) 0%,transparent 58%)',c:'radial-gradient(ellipse at 18% 78%,rgba(5,65,38,0.38) 0%,transparent 52%)'},
+  { a:'radial-gradient(ellipse at 45% 50%,#0a4040 0%,#052828 40%,#010d0d 100%)',b:'radial-gradient(ellipse at 65% 25%,rgba(0,70,70,0.5) 0%,transparent 60%)',c:'radial-gradient(ellipse at 25% 75%,rgba(0,55,55,0.4) 0%,transparent 55%)'},
+]
+const BG = BGS[Math.floor(Math.random() * BGS.length)]
 
-if (import.meta.env.DEV && !BRAND.cafeId) {
-  console.warn('[LoginPage] VITE_CAFE_ID not set — using "demo".')
-}
+/* ═══ SVG ICONS (no emoji anywhere) ════════════════════════════════════════ */
+const SvgWave = () => (
+  <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+    <path d="M6 22c2-3 4-5 6-5s4 4 6 4 4-6 6-6 3 2 4 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <circle cx="8" cy="10" r="2" fill="currentColor" opacity="0.4"/>
+    <circle cx="24" cy="8" r="1.5" fill="currentColor" opacity="0.3"/>
+    <path d="M14 6l2-2 2 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.5"/>
+  </svg>
+)
+const SvgLock = () => (
+  <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+    <rect x="6" y="12" width="16" height="12" rx="3" stroke="currentColor" strokeWidth="1.8"/>
+    <path d="M10 12V9a4 4 0 018 0v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+    <circle cx="14" cy="18.5" r="1.5" fill="currentColor"/>
+  </svg>
+)
+const SvgCheck = () => (
+  <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+    <circle cx="14" cy="14" r="10" stroke="currentColor" strokeWidth="1.8"/>
+    <path d="M9 14.5l3.5 3.5 6.5-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+)
+const IArrow=()=><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4.5 12.5 8 9 11.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+const IUser=()=><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5.5" r="2.5" stroke="currentColor" strokeWidth="1.5"/><path d="M2.5 13.5C2.5 11 5 9 8 9s5.5 2 5.5 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+const IShield=()=><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1.5L12 3.5V7.5C12 10 9.5 12 7 13 4.5 12 2 10 2 7.5V3.5Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/><path d="M5 7l1.5 1.5 3-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+const IStar=()=><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1.5l1.6 3.8H13l-3.2 2.6 1.1 4.1L7 9.6 3.1 12l1.1-4.1L1 5.3h4.4L7 1.5z" fill="#0a6640"/></svg>
+const IBack=()=><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+const IEye=({open})=>open?<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M1.5 8C3 4.5 5 3 8 3s5 1.5 6.5 5c-1.5 3.5-3.5 5-6.5 5S3 11.5 1.5 8z" stroke="currentColor" strokeWidth="1.4"/><circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.4"/></svg>:<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 2l12 12M6.5 6.7A2 2 0 009.3 9.5M4.5 4.7C2.8 5.8 1.9 6.9 1.5 8c1.5 3.5 3.5 5 6.5 5 1.4 0 2.6-.4 3.6-1M6 3.2C6.6 3.1 7.3 3 8 3c3 0 5 1.5 6.5 5-.4.9-.9 1.7-1.5 2.3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>
+const ILock=()=><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="3" y="6" width="8" height="6" rx="1.5" stroke="currentColor" strokeWidth="1.3"/><path d="M5 6V4.5a2 2 0 014 0V6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+const IX=()=><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+const Spin=({sz=14,dk=false})=><span className="inline-block shrink-0 animate-spin" style={{width:sz,height:sz,borderRadius:'50%',border:`2px solid ${dk?'rgba(5,45,30,.2)':'rgba(255,255,255,.25)'}`,borderTopColor:dk?'#0a3d28':'#fff'}}/>
 
-// ── Animated Cup SVG ──────────────────────────────────────────────────────────
-// Uses getPalette() for raw hex values — SVG fills can't use CSS vars directly
-const CupSVG = ({ isDark }) => {
-  const P = getPalette(isDark)
+/* ═══ PIN DOTS ═════════════════════════════════════════════════════════════ */
+const PinDots = ({ length }) => (
+  <div className="flex items-center justify-center gap-3.5 my-5">
+    {[0,1,2,3].map(i => (
+      <div key={i} className="transition-all duration-200 ease-out" style={{
+        width: length > i ? 15 : 12,
+        height: length > i ? 15 : 12,
+        borderRadius: '50%',
+        background: length > i ? '#059669' : 'transparent',
+        border: length > i ? '2px solid #059669' : '2px solid rgba(10,50,36,.18)',
+        boxShadow: length > i ? '0 0 12px rgba(5,150,105,.4)' : 'none',
+      }} />
+    ))}
+  </div>
+)
+
+/* ═══ PIN KEYPAD ══════════════════════════════════════════════════════════ */
+const KEYS = ['1','2','3','4','5','6','7','8','9','','0','del']
+const PinKeypad = ({ onKey, disabled }) => (
+  <div className="grid grid-cols-3 gap-2 w-full max-w-[250px] mx-auto">
+    {KEYS.map((k, i) => {
+      if (k === '') return <div key={i} />
+      const isDel = k === 'del'
+      return (
+        <button key={i} type="button"
+          onClick={() => !disabled && onKey(isDel ? '⌫' : k)}
+          disabled={disabled}
+          className="flex items-center justify-center rounded-2xl font-semibold
+                     transition-all duration-100 active:scale-90 disabled:opacity-30"
+          style={{
+            height: 52, fontSize: isDel ? 0 : 21,
+            fontFamily: FONTS.body,
+            color: isDel ? 'rgba(220,60,60,.6)' : '#0d2e1f',
+            background: isDel ? 'rgba(220,38,38,.06)' : 'rgba(10,50,36,.05)',
+            border: `1.5px solid ${isDel ? 'rgba(220,38,38,.1)' : 'rgba(10,50,36,.08)'}`,
+          }}>
+          {isDel ? (
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <path d="M7 5l-4 5 4 5h10V5H7z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+              <path d="M10 8l4 4M14 8l-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          ) : k}
+        </button>
+      )
+    })}
+  </div>
+)
+
+/* ═══ BLOCK TIMER ════════════════════════════════════════════════════════ */
+const BlockTimer = ({ seconds, onExpired }) => {
+  const [left, setLeft] = useState(seconds)
+  useEffect(() => {
+    const t = setInterval(() => setLeft(p => { if (p <= 1) { clearInterval(t); onExpired?.(); return 0 } return p - 1 }), 1000)
+    return () => clearInterval(t)
+  }, [seconds, onExpired])
+  const m = Math.floor(left / 60), s = left % 60
   return (
-    <svg width="78" height="68" viewBox="0 0 78 68" fill="none">
-      <defs>
-        <linearGradient id="lp-cup-body" x1="12" y1="26" x2="62" y2="62" gradientUnits="userSpaceOnUse">
-          <stop offset="0%"   stopColor={isDark ? '#D4882A' : '#C47820'}/>
-          <stop offset="100%" stopColor={isDark ? '#7B4010' : '#8B5018'}/>
-        </linearGradient>
-        <linearGradient id="lp-cup-rim" x1="12" y1="20" x2="62" y2="28" gradientUnits="userSpaceOnUse">
-          <stop offset="0%"   stopColor="#FFD580"/>
-          <stop offset="50%"  stopColor={P.accent}/>
-          <stop offset="100%" stopColor={P.accentDark}/>
-        </linearGradient>
-        <linearGradient id="lp-tea" x1="12" y1="26" x2="62" y2="32" gradientUnits="userSpaceOnUse">
-          <stop offset="0%"   stopColor={isDark ? '#6A3A08' : '#5A2A06'}/>
-          <stop offset="60%"  stopColor={isDark ? '#A86018' : '#8A5012'}/>
-          <stop offset="100%" stopColor={isDark ? '#4A2808' : '#3A1806'}/>
-        </linearGradient>
-        <linearGradient id="lp-saucer" x1="8" y1="58" x2="70" y2="66" gradientUnits="userSpaceOnUse">
-          <stop offset="0%"   stopColor={isDark ? '#9B6020' : '#B07028'}/>
-          <stop offset="50%"  stopColor={isDark ? '#C48030' : '#D09030'}/>
-          <stop offset="100%" stopColor={isDark ? '#6B4010' : '#8B5018'}/>
-        </linearGradient>
-      </defs>
-      {/* Shadow */}
-      <ellipse cx="39" cy="66" rx="26" ry="3.5" fill={P.accentDim}/>
-      {/* Saucer */}
-      <ellipse cx="39" cy="62" rx="23" ry="3.5" fill="url(#lp-saucer)"/>
-      {/* Cup body */}
-      <path d="M12 26 L18 58 Q18 62 39 62 Q60 62 60 58 L66 26 Z" fill="url(#lp-cup-body)"/>
-      {/* Inner sheen */}
-      <path d="M16 26 L21 55 Q21 59 39 59 Q57 59 57 55 L62 26 Z" fill={isDark ? 'rgba(220,150,60,0.1)' : 'rgba(220,150,60,0.07)'}/>
-      {/* Tea surface */}
-      <ellipse cx="39" cy="28" rx="24" ry="4" fill="url(#lp-tea)"/>
-      {/* Rim */}
-      <ellipse cx="39" cy="25.5" rx="24" ry="4.5" fill="url(#lp-cup-rim)" stroke={isDark ? 'rgba(255,220,100,0.3)' : 'rgba(200,130,20,0.35)'} strokeWidth="0.5"/>
-      {/* Handle outer */}
-      <path d="M57 33 Q70 33 70 43 Q70 53 57 53" stroke={isDark ? '#C4882A' : '#C47820'} strokeWidth="6" strokeLinecap="round" fill="none"/>
-      {/* Handle inner highlight */}
-      <path d="M57 33 Q66 33 66 43 Q66 53 57 53" stroke={isDark ? 'rgba(255,200,100,0.25)' : 'rgba(255,200,100,0.2)'} strokeWidth="2.5" strokeLinecap="round" fill="none"/>
-      {/* Cup side highlight */}
-      <path d="M20 30 Q22 46 23 56" stroke="rgba(255,255,255,0.12)" strokeWidth="2.5" strokeLinecap="round"/>
-    </svg>
-  )
-}
-
-// ── Steam SVG (animated via GSAP) ─────────────────────────────────────────────
-const SteamSVG = ({ isDark, steamRefs }) => {
-  const P = getPalette(isDark)
-  const steamColor = isDark ? 'rgba(255,200,100,0.7)' : 'rgba(180,100,20,0.6)'
-  return (
-    <svg width="60" height="36" viewBox="0 0 60 36" style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', overflow: 'visible', pointerEvents: 'none' }}>
-      <path ref={el => steamRefs.current[0] = el} d="M18 34 Q14 24 18 16 Q22 8 18 0" stroke={steamColor} strokeWidth="2.5" strokeLinecap="round" fill="none" opacity="0"/>
-      <path ref={el => steamRefs.current[1] = el} d="M30 34 Q26 22 30 14 Q34 6 30 0" stroke={steamColor} strokeWidth="2.5" strokeLinecap="round" fill="none" opacity="0"/>
-      <path ref={el => steamRefs.current[2] = el} d="M42 34 Q38 24 42 16 Q46 8 42 0" stroke={steamColor} strokeWidth="2.5" strokeLinecap="round" fill="none" opacity="0"/>
-    </svg>
-  )
-}
-
-// ── Decorative corner accent (SVG) ────────────────────────────────────────────
-const CornerAccent = ({ isDark, position = 'tl' }) => {
-  const P = getPalette(isDark)
-  const flip = position === 'br' ? 'scale(-1,-1)' : 'none'
-  return (
-    <svg width="48" height="48" viewBox="0 0 48 48" fill="none"
-      style={{ position: 'absolute', ...(position === 'tl' ? { top: 16, left: 16 } : { bottom: 16, right: 16 }), opacity: 0.35, pointerEvents: 'none', transform: flip }}>
-      <path d="M2 24 L2 4 Q2 2 4 2 L24 2" stroke={P.accent} strokeWidth="1.5" strokeLinecap="round" fill="none"/>
-      <circle cx="2" cy="2" r="2.5" fill={P.accent}/>
-    </svg>
-  )
-}
-
-// ── Badge for username status ──────────────────────────────────────────────────
-const StatusBadge = ({ status, isDark }) => {
-  const P = getPalette(isDark)
-  if (!status) return null
-
-  const configs = {
-    checking: {
-      bg: P.pillBg, border: P.inputBorder, color: P.accent,
-      icon: <span style={{ width: 11, height: 11, borderRadius: '50%', border: `2px solid currentColor`, borderTopColor: 'transparent', display: 'inline-block', animation: 'lp-spin .7s linear infinite' }}/>,
-      text: 'Checking…'
-    },
-    exists: {
-      bg: P.successBg, border: P.successBorder, color: P.success,
-      icon: <CheckMark />,
-      text: 'Found — signing you in!'
-    },
-    free: {
-      bg: P.infoBg, border: P.infoBorder, color: P.info,
-      icon: <SparkleIcon />,
-      text: 'Username available!'
-    },
-    invalid: {
-      bg: P.dangerBg, border: P.dangerBorder, color: P.danger,
-      icon: <XMark />,
-      text: 'Letters, numbers, _ . - only'
-    },
-  }
-  const cfg = configs[status]
-  if (!cfg) return null
-
-  return (
-    <div key={status} style={{
-      display: 'flex', alignItems: 'center', gap: 8,
-      padding: '8px 12px', borderRadius: 10, marginBottom: 14,
-      background: cfg.bg, border: `1px solid ${cfg.border}`,
-      color: cfg.color, fontSize: 12.5, fontWeight: 600,
-      fontFamily: FONTS.body,
-      animation: 'lp-slide-up 0.25s ease-out both',
-    }}>
-      {cfg.icon}
-      {cfg.text}
+    <div className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl mb-4"
+      style={{ background: 'rgba(220,38,38,.06)', border: '1px solid rgba(220,38,38,.15)' }}>
+      <ILock />
+      <span className="text-[13px] font-semibold text-red-700/70" style={{ fontFamily: FONTS.body }}>
+        Blocked — try in {m > 0 ? `${m}m ` : ''}{String(s).padStart(2, '0')}s
+      </span>
     </div>
   )
 }
 
-// ── Mini SVG icons ────────────────────────────────────────────────────────────
-const CheckMark = () => (
-  <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-    <path d="M2.5 6.5 L5.5 9.5 L10.5 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-  </svg>
-)
-const XMark = () => (
-  <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-    <path d="M3 3 L10 10 M10 3 L3 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-  </svg>
-)
-const SparkleIcon = () => (
-  <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-    <path d="M6.5 1 L7.5 5.5 L12 6.5 L7.5 7.5 L6.5 12 L5.5 7.5 L1 6.5 L5.5 5.5 Z" fill="currentColor"/>
-  </svg>
-)
-const ArrowRight = () => (
-  <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-    <path d="M3 7.5 H12 M8.5 4 L12 7.5 L8.5 11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-  </svg>
-)
-const UserIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-    <circle cx="8" cy="5.5" r="2.5" stroke="currentColor" strokeWidth="1.5"/>
-    <path d="M2.5 13.5 C2.5 11 5 9 8 9 C11 9 13.5 11 13.5 13.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-  </svg>
-)
-const ShieldIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-    <path d="M7 1.5 L12 3.5 L12 7.5 C12 10 9.5 12 7 13 C4.5 12 2 10 2 7.5 L2 3.5 Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
-    <path d="M5 7 L6.5 8.5 L9.5 5.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-  </svg>
-)
-const AtSignIcon = () => (
-  <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-    <circle cx="7.5" cy="7.5" r="2.5" stroke="currentColor" strokeWidth="1.5"/>
-    <path d="M10 7.5 C10 9.5 10.5 11 12 11 C13 11 13.5 10 13.5 7.5 C13.5 4 11 1.5 7.5 1.5 C4 1.5 1.5 4 1.5 7.5 C1.5 11 4 13.5 7.5 13.5 C9.5 13.5 11 13 12 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-  </svg>
-)
-
-// ── Success burst overlay ──────────────────────────────────────────────────────
+/* ═══ SUCCESS BURST ══════════════════════════════════════════════════════ */
 const SuccessBurst = ({ show }) => {
   if (!show) return null
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+    <div className="fixed inset-0 z-[200] flex items-center justify-center pointer-events-none">
       {[...Array(8)].map((_, i) => (
-        <div key={i} style={{
-          position: 'absolute', width: 9, height: 9, borderRadius: '50%',
-          background: i % 2 === 0 ? 'var(--accent)' : 'var(--success)',
-          top: '50%', left: '50%',
-          transform: `rotate(${i * 45}deg) translateY(-64px)`,
-          animation: `lp-burst 0.65s ease-out ${i * 0.05}s both`,
-        }}/>
+        <div key={i} className="absolute w-2 h-2 rounded-full top-1/2 left-1/2"
+          style={{ background: i % 2 === 0 ? '#0d9060' : '#34d399', animation: `lp-burst .65s ease-out ${i * .05}s both`, '--deg': `${i * 45}deg` }} />
       ))}
-      <div style={{
-        width: 68, height: 68, borderRadius: '50%',
-        background: 'var(--success-bg)',
-        border: '2px solid var(--success-border)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        animation: 'lp-pop 0.4s cubic-bezier(.22,.68,0,1.3) both',
-        boxShadow: '0 8px 40px var(--success-bg)',
-      }}>
-        <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
-          <path d="M7 15 L12.5 21 L23 9" stroke="var(--success)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-            strokeDasharray="22" strokeDashoffset="22"
-            style={{ animation: 'lp-draw 0.3s ease-out 0.18s forwards' }}/>
+      <div className="w-14 h-14 rounded-full flex items-center justify-center"
+        style={{ background: 'rgba(16,185,129,.12)', border: '2px solid rgba(16,185,129,.3)', animation: 'lp-pop .4s cubic-bezier(.22,.68,0,1.3) both' }}>
+        <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
+          <path d="M6 13l5 5.5 9-10.5" stroke="#10b981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+            strokeDasharray="20" strokeDashoffset="20" style={{ animation: 'lp-draw .3s ease-out .18s forwards' }} />
         </svg>
       </div>
     </div>
   )
 }
 
-// ══ Main LoginPage ════════════════════════════════════════════════════════════
+/* ═══ FORGOT SHEET ═══════════════════════════════════════════════════════ */
+const ForgotSheet = ({ username, onClose }) => {
+  const dispatch = useDispatch()
+  const [step, setStep] = useState('request')
+  const [otp, setOtp] = useState(''); const [newPin, setNewPin] = useState(''); const [confirmPin, setConfirmPin] = useState('')
+  const [masked, setMasked] = useState(''); const [loading, setLoading] = useState(false); const [err, setErr] = useState('')
+  const [success, setSuccess] = useState(false); const [showPin, setShowPin] = useState(false)
+  const handleRequest = async () => { setLoading(true); setErr(''); const r = await dispatch(forgotPasscode(username)); setLoading(false); if (r.meta.requestStatus === 'rejected') { setErr(r.payload || 'Failed'); return } setMasked(r.payload?.data?.maskedEmail || ''); setStep('verify') }
+  const handleVerify = async () => { if (!otp || otp.length < 6) { setErr('Enter 6-digit OTP'); return } if (!newPin || newPin.length < 4) { setErr('Enter 4-digit passcode'); return } if (newPin !== confirmPin) { setErr('Passcodes do not match'); return } setLoading(true); setErr(''); const r = await dispatch(verifyOtp({ username, otp, newPasscode: newPin })); setLoading(false); if (r.meta.requestStatus === 'rejected') { setErr(r.payload || 'Failed'); return } setSuccess(true); setTimeout(onClose, 1800) }
+  const inp = 'lp-inp w-full rounded-2xl text-center font-bold tracking-widest'
+  const is = { fontFamily: FONTS.body, fontSize: 20, padding: '12px 16px', background: 'rgba(10,50,36,.05)', border: '1.5px solid rgba(10,50,36,.12)', color: '#0d2e1f' }
+  return (
+    <div className="fixed inset-0 z-[150] flex items-end justify-center" style={{ background: 'rgba(0,0,0,.55)', backdropFilter: 'blur(8px)' }}>
+      <div className="w-full max-w-sm rounded-t-3xl p-6 pb-8" style={{ background: 'rgba(245,242,235,.97)', border: '1px solid rgba(255,255,255,.7)', animation: 'lp-slide-up .3s ease-out' }}>
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-[17px] font-bold text-[#0d2e1f]" style={{ fontFamily: FONTS.body }}>{success ? 'Reset complete' : 'Reset passcode'}</h3>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-black/5"><IX /></button>
+        </div>
+        {success ? <div className="flex items-center gap-3 text-emerald-700"><SvgCheck /><p className="text-[13px]" style={{ fontFamily: FONTS.body }}>Your passcode has been reset.</p></div>
+        : step === 'request' ? <>
+          <p className="text-[13px] text-[#0d2e1f]/50 mb-4" style={{ fontFamily: FONTS.body }}>OTP will be sent to <strong className="text-[#0d2e1f]/70">{username}</strong>'s email.</p>
+          {err && <p className="text-[12px] text-red-600 mb-3" style={{ fontFamily: FONTS.body }}>{err}</p>}
+          <button onClick={handleRequest} disabled={loading} className="w-full py-3.5 rounded-2xl text-[14px] font-bold text-white flex items-center justify-center gap-2" style={{ background: '#059669', fontFamily: FONTS.body, opacity: loading ? 0.7 : 1 }}>{loading && <Spin sz={16} />}Send OTP</button>
+        </> : <>
+          <p className="text-[12px] text-[#0d2e1f]/40 mb-3" style={{ fontFamily: FONTS.body }}>OTP sent to {masked}</p>
+          {err && <p className="text-[12px] text-red-600 mb-3" style={{ fontFamily: FONTS.body }}>{err}</p>}
+          <input value={otp} onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="6-digit OTP" className={inp + ' mb-3'} style={is} />
+          <div className="relative mb-3"><input value={newPin} onChange={e => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="New passcode" type={showPin ? 'text' : 'password'} className={inp} style={{ ...is, paddingRight: 40 }} /><button type="button" onClick={() => setShowPin(p => !p)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#0d2e1f]/30"><IEye open={showPin} /></button></div>
+          <input value={confirmPin} onChange={e => setConfirmPin(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="Confirm" type="password" className={inp + ' mb-4'} style={is} />
+          <button onClick={handleVerify} disabled={loading} className="w-full py-3.5 rounded-2xl text-[14px] font-bold text-white flex items-center justify-center gap-2" style={{ background: '#059669', fontFamily: FONTS.body, opacity: loading ? 0.7 : 1 }}>{loading && <Spin sz={16} />}Reset Passcode</button>
+        </>}
+      </div>
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MAIN LOGIN PAGE
+   ═══════════════════════════════════════════════════════════════════════════ */
 const LoginPage = () => {
-  const dispatch    = useDispatch()
-  const navigate    = useNavigate()
-  const loading     = useSelector(selectAuthLoading)
-  const error       = useSelector(selectAuthError)
-  const tableNumber = useSelector(selectTableNumber)
-  const session     = useSelector(selectSession)
-  const { isDark }  = useContext(ThemeContext)
-  const P           = getPalette(isDark)
+  const dispatch = useDispatch(), navigate = useNavigate()
+  const authLoading = useSelector(selectAuthLoading), authError = useSelector(selectAuthError), blockState = useSelector(selectBlockState)
+  const tableNumber = useSelector(selectTableNumber), session = useSelector(selectSession)
+  const venueCafeId = useSelector(selectVenueCafeId), venueMode = useSelector(selectVenueMode), venueName = useSelector(selectVenueName)
+  const isRemote = venueMode === 'remote', CAFE_ID = venueCafeId ?? BRAND.cafeId ?? 'demo'
+  const curtain = useRef(null), heroRef = useRef(null), logoRef = useRef(null), cardRef = useRef(null), inputRef = useRef(null), debRef = useRef(null), alive = useRef(true)
 
-  // Refs
-  const wrapRef     = useRef(null)
-  const heroRef     = useRef(null)
-  const cardRef     = useRef(null)
-  const inputRef    = useRef(null)
-  const btnRef      = useRef(null)
-  const steamRefs   = useRef([])
-  const debounceRef = useRef(null)
-  const mountedRef  = useRef(true)
+  const [step, setStep] = useState('username')
+  const [username, setUsername] = useState('')
+  const [pin, setPin] = useState('')
+  const [confirmPin, setConfirmPin] = useState('')
+  const [, setIsNewUser] = useState(false)
+  const [localErr, setLocalErr] = useState('')
+  const [guestLoad, setGuestLoad] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [ustatus, setUstatus] = useState(null)
+  const [checked, setChecked] = useState('')
+  const [burst, setBurst] = useState(false)
+  const [showForgot, setShowForgot] = useState(false)
+  const [showPin, setShowPin] = useState(false)
+  const [blocked, setBlocked] = useState(false)
 
-  // State
-  const [usernameInput,  setUsernameInput]  = useState('')
-  const [localError,     setLocalError]     = useState('')
-  const [guestLoading,   setGuestLoading]   = useState(false)
-  const [usernameStatus, setUsernameStatus] = useState(null)
-  const [checkedValue,   setCheckedValue]   = useState('')
-  const [showBurst,      setShowBurst]      = useState(false)
-  const [isSubmitting,   setIsSubmitting]   = useState(false)
+  const busy = authLoading || submitting || guestLoad
+  useEffect(() => { alive.current = true; return () => { alive.current = false; clearTimeout(debRef.current) } }, [])
+  useEffect(() => { if (blockState?.remainingSeconds) setBlocked(true) }, [blockState])
 
-  useEffect(() => {
-    mountedRef.current = true
-    return () => { mountedRef.current = false; clearTimeout(debounceRef.current) }
-  }, [])
-
-  // ── GSAP entrance ──────────────────────────────────────────────────────────
+  /* ── GSAP entrance ─────────────────────────────────────────────────────── */
   useEffect(() => {
     const ctx = gsap.context(() => {
       const tl = gsap.timeline({ defaults: { ease: 'power3.out' } })
-
-      // Hero section stagger
-      if (heroRef.current) {
-        tl.fromTo(heroRef.current.querySelectorAll('.lp-hero-el'),
-          { y: -28, opacity: 0, scale: 0.94 },
-          { y: 0, opacity: 1, scale: 1, stagger: 0.08, duration: 0.72 }, 0)
-      }
-
-      // Card slides up
-      if (cardRef.current) {
-        tl.fromTo(cardRef.current,
-          { y: 56, opacity: 0 },
-          { y: 0, opacity: 1, duration: 0.68, ease: 'power2.out' }, 0.18)
-
-        // Card inner elements stagger
-        tl.fromTo(cardRef.current.querySelectorAll('.lp-card-el'),
-          { y: 12, opacity: 0 },
-          { y: 0, opacity: 1, stagger: 0.06, duration: 0.42, ease: 'power2.out' }, 0.42)
-      }
-
-      // Steam animation loop
-      steamRefs.current.forEach((el, i) => {
-        if (!el) return
-        gsap.fromTo(el,
-          { y: 0, opacity: 0, scaleX: 1 },
-          {
-            y: -24, opacity: 0, scaleX: 1.4,
-            duration: 2.2,
-            delay: i * 0.7,
-            repeat: -1,
-            ease: 'power1.out',
-            keyframes: [
-              { y: 0,   opacity: 0,    scaleX: 1,   duration: 0 },
-              { y: -6,  opacity: 0.65, scaleX: 1.05,duration: 0.4 },
-              { y: -16, opacity: 0.4,  scaleX: 1.2, duration: 0.6 },
-              { y: -24, opacity: 0,    scaleX: 1.45,duration: 0.5 },
-            ],
-          })
-      })
+      tl.fromTo(curtain.current, { scaleY: 1, transformOrigin: 'top center' }, { scaleY: 0, duration: 1.1, ease: 'power4.inOut' }, 0)
+      tl.fromTo('.lp-bg', { scale: 1.05 }, { scale: 1, duration: 2.2 }, 0.05)
+      tl.fromTo(logoRef.current, { scale: 0.5, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.9, ease: 'back.out(1.6)' }, 0.8)
+      tl.fromTo(heroRef.current?.querySelectorAll('.he') ?? [], { y: 20, opacity: 0 }, { y: 0, opacity: 1, stagger: 0.08, duration: 0.6 }, 1.1)
+      tl.fromTo(cardRef.current, { y: 60, opacity: 0, scale: 0.97 }, { y: 0, opacity: 1, scale: 1, duration: 0.85, ease: 'back.out(1.1)' }, 1.0)
+      tl.fromTo(cardRef.current?.querySelectorAll('.cf') ?? [], { y: 16, opacity: 0 }, { y: 0, opacity: 1, stagger: 0.05, duration: 0.45 }, 1.35)
     })
-
+    setTimeout(() => inputRef.current?.focus(), 1500)
     return () => ctx.revert()
   }, [])
 
-  useEffect(() => { setTimeout(() => inputRef.current?.focus(), 500) }, [])
-  useEffect(() => {
-    dispatch(clearError())
-    return () => dispatch(clearError())
-  }, [dispatch])
+  useEffect(() => { dispatch(clearError()); return () => dispatch(clearError()) }, [dispatch])
 
-  // ── Live username check ────────────────────────────────────────────────────
-  const doLiveCheck = useCallback(async (val) => {
-    if (!val || val.length < 2) { if (mountedRef.current) setUsernameStatus(null); return }
-    if (!/^[a-z0-9_.-]+$/.test(val)) { if (mountedRef.current) setUsernameStatus('invalid'); return }
-    if (mountedRef.current) setUsernameStatus('checking')
+  /* ── Username check ────────────────────────────────────────────────────── */
+  const doCheck = useCallback(async val => {
+    if (!val || val.length < 2) { if (alive.current) setUstatus(null); return }
+    if (!/^[a-z0-9_.-]+$/.test(val)) { if (alive.current) setUstatus('invalid'); return }
+    if (alive.current) setUstatus('checking')
     try {
-      const result = await dispatch(checkUsername(val))
-      if (!mountedRef.current) return
-      if (result.meta.requestStatus === 'fulfilled') {
-        const exists = result.payload?.exists ?? result.payload?.data?.exists ?? false
-        setUsernameStatus(exists ? 'exists' : 'free')
-        setCheckedValue(val)
-      } else setUsernameStatus(null)
-    } catch { if (mountedRef.current) setUsernameStatus(null) }
+      const r = await dispatch(checkUsername(val))
+      if (!alive.current) return
+      if (r.meta.requestStatus === 'fulfilled') { const ex = r.payload?.exists ?? r.payload?.data?.exists ?? false; setUstatus(ex ? 'exists' : 'free'); setChecked(val) }
+      else setUstatus(null)
+    } catch { if (alive.current) setUstatus(null) }
   }, [dispatch])
 
-  const handleChange = (e) => {
-    const val   = e.target.value
-    setUsernameInput(val)
-    setLocalError('')
-    const lower = val.trim().toLowerCase()
-    clearTimeout(debounceRef.current)
-    if (!lower || lower.length < 2) { setUsernameStatus(null); return }
-    if (!/^[a-z0-9_.-]+$/.test(lower)) { setUsernameStatus('invalid'); return }
-    debounceRef.current = setTimeout(() => doLiveCheck(lower), 480)
+  const onUsernameChange = e => { const v = e.target.value; setUsername(v); setLocalErr(''); const l = v.trim().toLowerCase(); clearTimeout(debRef.current); if (!l || l.length < 2) { setUstatus(null); return } if (!/^[a-z0-9_.-]+$/.test(l)) { setUstatus('invalid'); return } debRef.current = setTimeout(() => doCheck(l), 450) }
+
+  const onUsernameSubmit = async e => {
+    e?.preventDefault(); if (busy) return; setLocalErr(''); dispatch(clearError())
+    const val = username.trim().toLowerCase()
+    if (!val || val.length < 2) { setLocalErr('Please enter a username'); return }
+    if (!/^[a-z0-9_.-]+$/.test(val)) { setLocalErr('Only letters, numbers, _ . - allowed'); return }
+    setSubmitting(true); let ex = null
+    if (checked === val && (ustatus === 'exists' || ustatus === 'free')) { ex = ustatus === 'exists' }
+    else { const cr = await dispatch(checkUsername(val)); if (cr.meta.requestStatus === 'rejected') { setLocalErr('Could not reach server'); setSubmitting(false); return } ex = cr.payload?.exists ?? cr.payload?.data?.exists ?? false; setUstatus(ex ? 'exists' : 'free'); setChecked(val) }
+    setSubmitting(false); setIsNewUser(!ex)
+    if (cardRef.current) { gsap.to(cardRef.current, { x: -10, opacity: 0.7, duration: 0.12, ease: 'power2.in', onComplete: () => { setStep(ex ? 'pin' : 'create_pin'); setPin(''); setConfirmPin(''); gsap.fromTo(cardRef.current, { x: 10, opacity: 0.7 }, { x: 0, opacity: 1, duration: 0.25, ease: 'power2.out' }) } }) }
+    else setStep(ex ? 'pin' : 'create_pin')
   }
 
-  // ── Input focus ring animation ─────────────────────────────────────────────
-  const handleInputFocus = () => {
-    if (inputRef.current) {
-      gsap.to(inputRef.current, { scale: 1.008, duration: 0.18, ease: 'power2.out' })
-    }
-  }
-  const handleInputBlur = () => {
-    if (inputRef.current) {
-      gsap.to(inputRef.current, { scale: 1, duration: 0.22, ease: 'power2.inOut' })
-    }
+  /* ── PIN ────────────────────────────────────────────────────────────────── */
+  const onPinKey = key => {
+    setLocalErr(''); dispatch(clearBlockState())
+    if (key === '⌫') { if (step === 'confirm_pin') setConfirmPin(p => p.slice(0, -1)); else setPin(p => p.slice(0, -1)); return }
+    if (step === 'confirm_pin') { if (confirmPin.length >= 4) return; const n = confirmPin + key; setConfirmPin(n); if (n.length === 4) setTimeout(() => doConfirm(n), 120) }
+    else { if (pin.length >= 4) return; const n = pin + key; setPin(n); if (n.length === 4) { if (step === 'pin') setTimeout(() => doLogin(n), 120); if (step === 'create_pin') setTimeout(() => { setStep('confirm_pin'); setConfirmPin('') }, 120) } }
   }
 
-  // ── Nav ────────────────────────────────────────────────────────────────────
-  const goToMenu = useCallback((isNew) => {
-    if (session) persistSession(session)
-    preloadSounds('customer')
-    navigate('/menu', { replace: true, state: isNew ? { firstTimeUser: true } : undefined })
-  }, [navigate, session])
-
-  // ── Submit ─────────────────────────────────────────────────────────────────
-  const handleSubmit = async (e) => {
-    e?.preventDefault()
-    if (isSubmitting) return
-    setLocalError('')
-    dispatch(clearError())
-    const val = usernameInput.trim().toLowerCase()
-    if (!val || val.length < 2) { setLocalError('Please enter a username'); return }
-    if (!/^[a-z0-9_.-]+$/.test(val)) { setLocalError('Only letters, numbers, _ . - allowed'); return }
-
-    // Button press animation
-    if (btnRef.current) {
-      gsap.to(btnRef.current, {
-        scale: 0.96, duration: 0.08, ease: 'power2.in',
-        onComplete: () => gsap.to(btnRef.current, { scale: 1, duration: 0.4, ease: 'elastic.out(1.3, 0.5)' }),
-      })
-    }
-
-    setIsSubmitting(true)
-
-    let exists = null
-    if (checkedValue === val && (usernameStatus === 'exists' || usernameStatus === 'free')) {
-      exists = usernameStatus === 'exists'
-    } else {
-      const checkResult = await dispatch(checkUsername(val))
-      if (checkResult.meta.requestStatus === 'rejected') {
-        setLocalError('Could not reach server — please try again')
-        setIsSubmitting(false)
-        return
-      }
-      exists = checkResult.payload?.exists ?? checkResult.payload?.data?.exists ?? false
-      setUsernameStatus(exists ? 'exists' : 'free')
-      setCheckedValue(val)
-    }
-
-    if (exists) {
-      const result = await dispatch(loginWithUsername({ username: val }))
-      if (result.meta.requestStatus === 'rejected') {
-        setLocalError(typeof result.payload === 'string' ? result.payload : 'Login failed')
-        setIsSubmitting(false)
-        return
-      }
-      setIsSubmitting(false)
-      setShowBurst(true)
-      setTimeout(() => goToMenu(false), 860)
-    } else {
-      if (cardRef.current) {
-        gsap.to(cardRef.current, {
-          x: -6, duration: 0.06, ease: 'power2.in', yoyo: true, repeat: 5,
-          onComplete: () => gsap.set(cardRef.current, { x: 0 }),
-        })
-      }
-      const result = await dispatch(registerWithUsername({ username: val, name: val, cafeId: CAFE_ID }))
-      if (result.meta.requestStatus === 'rejected') {
-        setLocalError(typeof result.payload === 'string' ? result.payload : 'Registration failed')
-        setIsSubmitting(false)
-        return
-      }
-      setIsSubmitting(false)
-      setShowBurst(true)
-      setTimeout(() => goToMenu(true), 860)
-    }
+  const doLogin = async p => {
+    setSubmitting(true); setLocalErr(''); dispatch(clearError())
+    const r = await dispatch(loginUser({ username: username.trim().toLowerCase(), passcode: p }))
+    setSubmitting(false)
+    if (r.meta.requestStatus === 'rejected') { setPin(''); if (cardRef.current) gsap.to(cardRef.current, { x: -6, duration: .04, ease: 'power2.in', yoyo: true, repeat: 5, onComplete: () => gsap.set(cardRef.current, { x: 0 }) }); return }
+    setBurst(true); setTimeout(() => goMenu(false), 800)
   }
 
-  // ── Guest ──────────────────────────────────────────────────────────────────
-  const handleGuest = async () => {
-    setGuestLoading(true)
-    const result = await dispatch(loginAsGuest(CAFE_ID))
-    if (!mountedRef.current) return
-    setGuestLoading(false)
-    if (result.meta.requestStatus === 'rejected') {
-      setLocalError(typeof result.payload === 'string' ? result.payload : 'Guest login failed')
-      return
-    }
-    preloadSounds('customer')
-    navigate('/menu', { replace: true })
+  const doConfirm = async cv => {
+    if (cv !== pin) { setLocalErr('Passcodes do not match'); if (cardRef.current) gsap.to(cardRef.current, { x: -6, duration: .04, ease: 'power2.in', yoyo: true, repeat: 5, onComplete: () => gsap.set(cardRef.current, { x: 0 }) }); setTimeout(() => { setStep('create_pin'); setPin(''); setConfirmPin(''); setLocalErr('') }, 1000); return }
+    setSubmitting(true); setLocalErr('')
+    const r = await dispatch(registerUser({ username: username.trim().toLowerCase(), passcode: pin, cafeId: CAFE_ID }))
+    setSubmitting(false)
+    if (r.meta.requestStatus === 'rejected') { setLocalErr(typeof r.payload === 'string' ? r.payload : 'Registration failed'); setStep('create_pin'); setPin(''); setConfirmPin(''); return }
+    setBurst(true); setTimeout(() => goMenu(true), 800)
   }
 
-  // ── Derived state ──────────────────────────────────────────────────────────
-  const displayError = localError || error
-  const isLoading    = loading || isSubmitting
+  const goMenu = useCallback(async isNew => { try { await dispatch(fetchActiveSession()) } catch (_) {} if (session) persistSession(session); preloadSounds('customer'); navigate('/menu', { replace: true, state: isNew ? { firstTimeUser: true } : undefined }) }, [navigate, session, dispatch])
+  const doGuest = async () => { setGuestLoad(true); const r = await dispatch(guestLogin(CAFE_ID)); if (!alive.current) return; setGuestLoad(false); if (r.meta.requestStatus === 'rejected') { setLocalErr(typeof r.payload === 'string' ? r.payload : 'Guest login failed'); return } preloadSounds('customer'); navigate('/menu', { replace: true }) }
+  const goBack = () => { dispatch(clearError()); dispatch(clearBlockState()); setPin(''); setConfirmPin(''); setLocalErr(''); setBlocked(false); gsap.to(cardRef.current, { x: 10, opacity: 0.7, duration: 0.12, ease: 'power2.in', onComplete: () => { setStep('username'); gsap.fromTo(cardRef.current, { x: -10, opacity: 0.7 }, { x: 0, opacity: 1, duration: 0.25, ease: 'power2.out' }) } }) }
 
-  // Input border from status
-  const inputBorderColor =
-    usernameStatus === 'exists'   ? 'var(--input-border-valid)'
-    : usernameStatus === 'free'   ? 'var(--input-border-free)'
-    : usernameStatus === 'invalid'? 'var(--input-border-error)'
-    : 'var(--input-border)'
+  const displayErr = localErr || authError
+  const currentPin = step === 'confirm_pin' ? confirmPin : pin
+  const isBlocked = blocked || !!blockState?.remainingSeconds
+  const displayName = venueName || BRAND.name
 
-  const inputShadow =
-    usernameStatus === 'exists'  ? 'var(--input-shadow-valid)'
-    : usernameStatus === 'free'  ? 'var(--input-shadow-free)'
-    : 'none'
+  const titles = {
+    username:    { t: 'Welcome', s: 'Enter your username to get started' },
+    pin:         { t: `Welcome back, ${username}`, s: 'Enter your 4-digit passcode' },
+    create_pin:  { t: 'Create a passcode', s: 'Choose a 4-digit passcode to secure your account' },
+    confirm_pin: { t: 'Confirm passcode', s: 'Enter it one more time' },
+  }
+  const { t: stepTitle, s: stepSub } = titles[step]
 
-  // Button style from status
-  const btnGradient =
-    usernameStatus === 'exists' ? `linear-gradient(135deg, ${P.success} 0%, #059669 100%)`
-    : usernameStatus === 'free' ? `linear-gradient(135deg, ${P.info} 0%, #1D4ED8 100%)`
-    : 'var(--accent-gradient)'
-
-  const btnGlow =
-    usernameStatus === 'exists' ? P.successBg
-    : usernameStatus === 'free' ? P.infoBg
-    : 'var(--accent-glow)'
-
-  const btnLabel =
-    isLoading                   ? 'Please wait…'
-    : usernameStatus === 'exists' ? 'Sign in'
-    : usernameStatus === 'free'   ? 'Create account'
-    : 'Continue'
-
-  const canSubmit = !isLoading && !!usernameInput.trim() && usernameStatus !== 'invalid'
-
+  /* ═══ RENDER ═══════════════════════════════════════════════════════════ */
   return (
-    <div ref={wrapRef} style={{
-      minHeight: '100dvh',
-      display: 'flex', flexDirection: 'column',
-      position: 'relative', overflow: 'hidden',
-      background: 'var(--bg)',
-      fontFamily: FONTS.body,
-    }}>
-      {/* ── Global page styles ─────────────────────────────────────────── */}
+    <div className="relative min-h-dvh w-full flex flex-col lg:flex-row overflow-hidden">
       <style>{`
-        @import url('${FONTS.googleUrl}');
-        *, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-
-        @keyframes lp-spin    { to { transform: rotate(360deg) } }
-        @keyframes lp-slide-up{ from { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: translateY(0) } }
-        @keyframes lp-pop     { from { opacity: 0; transform: scale(0) } to { opacity: 1; transform: scale(1) } }
-        @keyframes lp-burst   { 0% { transform: rotate(var(--r)) translateY(-64px) scale(0); opacity: 1 }
-                                 60% { opacity: 1 } 100% { transform: rotate(var(--r)) translateY(-64px) scale(0); opacity: 0 } }
-        @keyframes lp-draw    { to { stroke-dashoffset: 0 } }
-        @keyframes lp-shimmer { 0% { transform: translateX(-100%) } 100% { transform: translateX(400%) } }
-
-        .lp-input {
-          width: 100%; padding: 14px 44px 14px 44px;
-          border-radius: 13px;
-          font-family: ${FONTS.body}; font-size: 15px; font-weight: 500;
-          background: var(--input-bg);
-          color: var(--text-primary);
-          border: 1.5px solid var(--input-border);
-          outline: none; transition: border-color 0.22s, box-shadow 0.22s, background 0.18s;
-        }
-        .lp-input::placeholder { color: var(--text-disabled); }
-        .lp-input:hover:not(:focus) { background: var(--input-bg-hover); }
-
-        .lp-btn-ghost {
-          width: 100%; display: flex; align-items: center; justify-content: center; gap: 9px;
-          padding: 13px 18px; border-radius: 13px;
-          border: 1.5px solid var(--divider);
-          background: var(--pill-bg);
-          color: var(--text-secondary);
-          font-family: ${FONTS.body}; font-size: 13.5px; font-weight: 600;
-          cursor: pointer; transition: background 0.15s, border-color 0.15s, opacity 0.15s;
-        }
-        .lp-btn-ghost:hover:not(:disabled) { background: var(--pill-bg-hover); border-color: var(--pill-border-active); }
-        .lp-btn-ghost:disabled { opacity: 0.45; cursor: not-allowed; }
-
-        .lp-staff-btn {
-          width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;
-          padding: 11px 18px; border-radius: 13px;
-          border: 1.5px solid var(--divider);
-          background: transparent;
-          color: var(--text-muted);
-          font-family: ${FONTS.body}; font-size: 12.5px; font-weight: 600;
-          cursor: pointer; transition: background 0.15s, color 0.15s, border-color 0.15s;
-        }
-        .lp-staff-btn:hover:not(:disabled) { background: var(--accent-dim); border-color: var(--accent-border); color: var(--accent); }
-        .lp-staff-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-        ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 99px; }
+@import url('${FONTS.googleUrl}');
+@keyframes lp-slide-up{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes lp-pop{from{opacity:0;transform:scale(0)}to{opacity:1;transform:scale(1)}}
+@keyframes lp-draw{to{stroke-dashoffset:0}}
+@keyframes lp-burst{0%{transform:rotate(var(--deg,0deg)) translateY(-60px) scale(0);opacity:1}60%{opacity:1}100%{transform:rotate(var(--deg,0deg)) translateY(-60px) scale(0);opacity:0}}
+@keyframes lp-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+@keyframes lp-breathe{0%,100%{opacity:.5}50%{opacity:.7}}
+@keyframes lp-shimmer{0%{transform:translateX(-100%) skewX(-15deg)}100%{transform:translateX(320%) skewX(-15deg)}}
+.lp-float{animation:lp-float 4.5s ease-in-out infinite}
+.lp-shine::after{content:'';position:absolute;inset:0;background:linear-gradient(105deg,transparent 38%,rgba(255,255,255,.15) 50%,transparent 62%);animation:lp-shimmer 3s ease-in-out infinite;pointer-events:none}
+.lp-inp:focus{outline:none;border-color:rgba(10,60,42,.5)!important;box-shadow:0 0 0 3px rgba(10,60,42,.1),0 2px 12px rgba(0,0,0,.06)}
+.lp-inp::placeholder{color:rgba(60,80,70,.35)}
       `}</style>
 
-      <SuccessBurst show={showBurst} />
+      <SuccessBurst show={burst} />
+      {showForgot && <ForgotSheet username={username} onClose={() => setShowForgot(false)} />}
+      <div ref={curtain} className="fixed inset-0 z-[100]" style={{ background: '#020e09' }} />
 
-      {/* ── Background image with overlay ─────────────────────────────── */}
-      <img src={BG_IMG} alt="" aria-hidden="true" style={{
-        position: 'fixed', inset: 0, width: '100%', height: '100%',
-        objectFit: 'cover', zIndex: 0, pointerEvents: 'none',
-        filter: isDark ? 'brightness(0.7) saturate(0.85)' : 'brightness(1.08) saturate(0.8)',
-      }}/>
-      <div aria-hidden="true" style={{
-        position: 'fixed', inset: 0, zIndex: 1, pointerEvents: 'none',
-        background: isDark
-          ? 'linear-gradient(180deg, rgba(13,9,5,0.15) 0%, rgba(13,9,5,0.65) 55%, rgba(13,9,5,0.96) 100%)'
-          : 'linear-gradient(180deg, rgba(245,237,216,0.1) 0%, rgba(245,237,216,0.72) 55%, rgba(245,237,216,0.97) 100%)',
-      }}/>
+      {/* BG */}
+      <div className="lp-bg fixed inset-0 z-0">
+        <div className="absolute inset-0" style={{ background: BG.a }} />
+        <div className="absolute inset-0" style={{ background: BG.b }} />
+        <div className="absolute inset-0" style={{ background: BG.c }} />
+        <div className="absolute inset-0 opacity-[0.05]" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='0.65' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)'/%3E%3C/svg%3E")`, backgroundSize: '300px', mixBlendMode: 'overlay' }} />
+        <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at 50% 50%, rgba(0,100,65,.1) 0%, transparent 60%)', animation: 'lp-breathe 5s ease-in-out infinite' }} />
+      </div>
 
-      {/* ── Content ───────────────────────────────────────────────────── */}
-      <div style={{ position: 'relative', zIndex: 2, display: 'flex', flexDirection: 'column', minHeight: '100dvh', padding: '0 20px' }}>
+      {/* ═══ LAYOUT ═══ */}
+      <div className="relative z-10 flex flex-col lg:flex-row items-center lg:items-stretch min-h-dvh w-full">
 
-        {/* ── Hero: cup + brand name ─────────────────────────────────── */}
-        <div ref={heroRef} style={{
-          paddingTop: 'max(60px, calc(env(safe-area-inset-top) + 40px))',
-          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0,
-        }}>
-          {/* Cup with steam */}
-          <div className="lp-hero-el" style={{ position: 'relative', width: 88, height: 100, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', marginBottom: 4 }}>
-            <SteamSVG isDark={isDark} steamRefs={steamRefs} />
-            <div style={{ position: 'absolute', bottom: 0, willChange: 'transform' }}>
-              <CupSVG isDark={isDark} />
+        {/* ── HERO ── */}
+        <div ref={heroRef}
+          className="flex flex-col items-center justify-center w-full lg:w-[46%] xl:w-[44%]
+                     lg:min-h-dvh lg:sticky lg:top-0
+                     pt-[max(40px,calc(env(safe-area-inset-top)+24px))]
+                     pb-3 sm:pb-4 lg:pb-0
+                     px-6 sm:px-8">
+
+          {/* Logo */}
+          <div ref={logoRef} className="lp-float mb-4 lg:mb-6 relative" style={{ opacity: 0 }}>
+            <div className="relative">
+              {/* Outer ring */}
+              <div className="absolute -inset-3 rounded-[20px] lg:rounded-[24px] border border-white/[0.06]" />
+              <div className="absolute -inset-6 rounded-[24px] lg:rounded-[28px] border border-white/[0.03]" />
+
+              {BRAND.logo ? (
+                <div className="w-[72px] h-[72px] sm:w-20 sm:h-20 lg:w-24 lg:h-24
+                                rounded-2xl lg:rounded-3xl flex items-center justify-center overflow-hidden
+                                bg-white/[0.06] border border-white/[0.12]
+                                shadow-[0_16px_48px_rgba(0,0,0,0.4)]
+                                backdrop-blur-xl">
+                  <img src={BRAND.logo} alt={displayName}
+                    className="w-12 h-12 sm:w-14 sm:h-14 lg:w-16 lg:h-16 object-contain" />
+                </div>
+              ) : (
+                <div className="w-[72px] h-[72px] sm:w-20 sm:h-20 lg:w-24 lg:h-24
+                                rounded-2xl lg:rounded-3xl flex items-center justify-center
+                                bg-white/[0.06] border border-white/[0.12]
+                                shadow-[0_16px_48px_rgba(0,0,0,0.4)]
+                                backdrop-blur-xl
+                                text-emerald-400/60">
+                  <SvgWave />
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Cafe name */}
-          <h1 className="lp-hero-el" style={{
-            fontFamily: FONTS.display,
-            fontWeight: 900,
-            fontSize: 'clamp(32px, 9vw, 42px)',
-            letterSpacing: '-0.02em',
-            lineHeight: 1.15,
-            margin: '10px 0 0',
-            background: isDark
-              ? 'linear-gradient(128deg, #FFE8A0 0%, var(--accent) 42%, var(--accent-dark) 100%)'
-              : 'linear-gradient(128deg, var(--accent) 0%, var(--accent-dark) 100%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            backgroundClip: 'text',
-            filter: 'drop-shadow(0 2px 8px var(--accent-glow))',
-          }}>
+          {/* Brand name */}
+          <h1 className="he text-[20px] sm:text-[22px] lg:text-[28px] xl:text-[32px]
+                         font-extrabold text-white/90 tracking-tight text-center leading-tight mb-1"
+            style={{ opacity: 0, fontFamily: FONTS.heading }}>
             {BRAND.name}
           </h1>
 
           {/* Tagline */}
-          <div className="lp-hero-el" style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
-            <div style={{ width: 28, height: 1, borderRadius: 99, background: 'var(--divider-strong)' }}/>
-            <p style={{
-              fontFamily: FONTS.body,
-              fontSize: 9.5, fontWeight: 700,
-              letterSpacing: '0.26em', textTransform: 'uppercase',
-              color: 'var(--text-muted)', margin: 0,
-            }}>
-              {BRAND.tagline}{BRAND.address ? ` · ${BRAND.address}` : ''}
+          <div className="he flex items-center gap-2.5 mb-3 lg:mb-4" style={{ opacity: 0 }}>
+            <div className="w-5 sm:w-6 h-px bg-white/15 rounded-full" />
+            <p className="text-[9px] sm:text-[10px] lg:text-[11px] font-semibold text-white/30
+                          tracking-[0.2em] uppercase"
+              style={{ fontFamily: FONTS.body }}>
+              {BRAND.tagline}
             </p>
-            <div style={{ width: 28, height: 1, borderRadius: 99, background: 'var(--divider-strong)' }}/>
+            <div className="w-5 sm:w-6 h-px bg-white/15 rounded-full" />
           </div>
+
+          {/* Venue + mode badges */}
+          {venueName && venueName !== BRAND.name && (
+            <div className="he px-3 py-1.5 rounded-full text-[11px] font-semibold text-white/70 mb-1.5
+                            bg-white/[0.08] border border-white/[0.12] backdrop-blur-sm"
+              style={{ opacity: 0, fontFamily: FONTS.body }}>
+              {venueName}
+            </div>
+          )}
+          {tableNumber && (
+            <div className="he px-3 py-1.5 rounded-full text-[11px] font-semibold text-white/70 mb-1.5
+                            bg-white/[0.08] border border-white/[0.12] backdrop-blur-sm"
+              style={{ opacity: 0, fontFamily: FONTS.body }}>
+              Table {tableNumber}
+            </div>
+          )}
+          {isRemote && (
+            <div className="he px-3 py-1.5 rounded-full text-[10px] font-semibold text-amber-300/70 mb-1.5
+                            bg-amber-500/[0.08] border border-amber-400/[0.12] backdrop-blur-sm"
+              style={{ opacity: 0, fontFamily: FONTS.body }}>
+              Remote ordering
+            </div>
+          )}
+
+          {/* Desktop description */}
+          <p className="he hidden lg:block text-[13px] text-white/20 text-center max-w-[240px] leading-relaxed mt-3"
+            style={{ opacity: 0, fontFamily: FONTS.body }}>
+            Sign in to order, earn loyalty points, and enjoy your favorites
+          </p>
         </div>
 
-        <div style={{ flex: 1 }}/>
-
-        {/* ── Auth card ─────────────────────────────────────────────── */}
-        <div ref={cardRef} style={{
-          marginBottom: 'max(32px, calc(env(safe-area-inset-bottom) + 22px))',
-          borderRadius: 24,
-          position: 'relative',
-          overflow: 'hidden',
-          background: 'var(--card-bg)',
-          backdropFilter: 'blur(40px) saturate(160%)',
-          WebkitBackdropFilter: 'blur(40px) saturate(160%)',
-          border: '1px solid var(--card-border)',
-          boxShadow: 'var(--card-shadow)',
-          padding: '28px 22px 24px',
-        }}>
-          {/* Top shimmer line */}
-          <div aria-hidden="true" style={{
-            position: 'absolute', top: 0, left: '10%', right: '10%',
-            height: '1.5px', borderRadius: 99,
-            background: 'var(--top-glow)', opacity: 0.7,
-          }}/>
-
-          {/* Corner accents */}
-          <CornerAccent isDark={isDark} position="tl" />
-          <CornerAccent isDark={isDark} position="br" />
-
-          {/* ── Table banner ── */}
-          {tableNumber && (
-            <div className="lp-card-el" style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-              marginBottom: 20, padding: '10px 16px', borderRadius: 12,
-              background: 'var(--accent-dim)', border: '1px solid var(--accent-border)',
+        {/* ── CARD ── */}
+        <div className="flex-1 flex items-start lg:items-center justify-center
+                        w-full lg:w-[54%] xl:w-[56%]
+                        px-4 sm:px-5 lg:px-8 xl:px-12
+                        pb-[max(20px,calc(env(safe-area-inset-bottom)+12px))] lg:py-8">
+          <div ref={cardRef}
+            className="w-full max-w-[380px] sm:max-w-[400px] lg:max-w-[420px]
+                       rounded-2xl sm:rounded-3xl overflow-hidden"
+            style={{
+              opacity: 0,
+              backdropFilter: 'blur(48px) saturate(150%) brightness(1.15)',
+              WebkitBackdropFilter: 'blur(48px) saturate(150%) brightness(1.15)',
+              background: 'rgba(245,242,235,.9)',
+              border: '1px solid rgba(255,255,255,.65)',
+              boxShadow: '0 28px 70px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.85)',
             }}>
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <rect x="1" y="6" width="12" height="2" rx="1" fill="var(--accent)"/>
-                <rect x="3" y="8" width="1.5" height="4" rx="0.75" fill="var(--accent)"/>
-                <rect x="9.5" y="8" width="1.5" height="4" rx="0.75" fill="var(--accent)"/>
-                <rect x="2" y="3" width="10" height="3" rx="1.5" fill="var(--accent)" opacity="0.6"/>
-              </svg>
-              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent)', fontFamily: FONTS.body }}>
-                Table {tableNumber} is ready for you
-              </span>
-            </div>
-          )}
 
-          {/* ── Card heading ── */}
-          <div className="lp-card-el" style={{ textAlign: 'center', marginBottom: 24 }}>
-            <h2 style={{
-              fontFamily: FONTS.display,
-              fontWeight: 800,
-              fontSize: 'clamp(22px, 6vw, 26px)',
-              letterSpacing: '-0.025em',
-              color: 'var(--text-primary)',
-              margin: '0 0 5px',
-              lineHeight: 1.2,
-            }}>
-              स्वागत छ! 🙏
-            </h2>
-            <p style={{
-              fontFamily: FONTS.body,
-              fontSize: 13, color: 'var(--text-muted)', margin: 0,
-            }}>
-              Enter your username to sign in or register
-            </p>
-          </div>
+            {/* Top shimmer line */}
+            <div className="h-px w-full" style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,.85) 30%, white 50%, rgba(255,255,255,.85) 70%, transparent)' }} />
 
-          {/* ── Error ── */}
-          {displayError && (
-            <div className="lp-card-el" style={{
-              marginBottom: 16, padding: '11px 14px', borderRadius: 11,
-              background: 'var(--danger-bg)', border: '1px solid var(--danger-border)',
-              color: 'var(--danger)', fontSize: 13, fontFamily: FONTS.body,
-              animation: 'lp-slide-up 0.22s ease-out both',
-            }}>
-              {displayError}
-            </div>
-          )}
+            <div className="px-5 sm:px-6 lg:px-7 pt-6 sm:pt-7 pb-6 sm:pb-7">
 
-          {/* ── Form ── */}
-          <form onSubmit={handleSubmit} autoComplete="off">
-            <label style={{
-              display: 'block', marginBottom: 8,
-              fontSize: 11, fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase',
-              color: 'var(--text-muted)', fontFamily: FONTS.body,
-            }}>
-              Username
-            </label>
+              {/* Back button */}
+              {step !== 'username' && (
+                <button onClick={goBack}
+                  className="cf flex items-center gap-1.5 mb-4 text-[13px] font-medium text-[#0d2e1f]/40
+                             hover:text-[#0d2e1f]/60 transition-colors"
+                  style={{ fontFamily: FONTS.body, background: 'none', border: 'none' }}>
+                  <IBack /> Back
+                </button>
+              )}
 
-            {/* ── Input wrapper ── */}
-            <div className="lp-card-el" style={{ position: 'relative', marginBottom: 6 }}>
-              {/* @ icon */}
-              <div style={{
-                position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)',
-                color: usernameStatus === 'exists' ? 'var(--success)'
-                  : usernameStatus === 'free' ? 'var(--info)'
-                  : 'var(--text-muted)',
-                transition: 'color 0.2s', pointerEvents: 'none',
-              }}>
-                <AtSignIcon />
+              {/* Heading — SVG icon + text, NO emoji */}
+              <div className="cf text-center mb-5">
+                <div className="flex justify-center mb-3">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center
+                                  bg-emerald-600/8 text-emerald-700/50">
+                    {step === 'username' ? <SvgWave /> :
+                     step === 'pin' ? <SvgLock /> :
+                     <SvgCheck />}
+                  </div>
+                </div>
+                <h2 className="text-[18px] sm:text-[20px] font-bold text-[#0d2e1f] mb-1 leading-tight"
+                  style={{ fontFamily: FONTS.heading, letterSpacing: '-0.02em' }}>
+                  {stepTitle}
+                </h2>
+                <p className="text-[12px] sm:text-[13px] text-[#0d2e1f]/45 leading-relaxed"
+                  style={{ fontFamily: FONTS.body }}>
+                  {stepSub}
+                </p>
               </div>
 
-              <input
-                ref={inputRef}
-                className="lp-input"
-                type="text"
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
-                placeholder="your_username"
-                value={usernameInput}
-                onChange={handleChange}
-                onFocus={handleInputFocus}
-                onBlur={handleInputBlur}
-                onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-                disabled={isLoading}
-                style={{
-                  borderColor: inputBorderColor,
-                  boxShadow: inputShadow,
-                }}
-              />
+              {/* Error */}
+              {displayErr && !isBlocked && (
+                <div className="cf flex items-center gap-2 mb-4 px-3.5 py-3 rounded-xl text-[12px] font-medium text-red-700/70"
+                  style={{ animation: 'lp-slide-up .2s ease-out', fontFamily: FONTS.body, background: 'rgba(220,38,38,.06)', border: '1px solid rgba(220,38,38,.12)' }}>
+                  <IX />{displayErr}
+                </div>
+              )}
+              {isBlocked && blockState?.remainingSeconds && (
+                <BlockTimer seconds={blockState.remainingSeconds} onExpired={() => { setBlocked(false); dispatch(clearBlockState()); setPin('') }} />
+              )}
 
-              {/* Right status icon */}
-              <div style={{
-                position: 'absolute', right: 13, top: '50%', transform: 'translateY(-50%)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                width: 20, height: 20,
-              }}>
-                {usernameStatus === 'checking' && (
-                  <div style={{ width: 14, height: 14, borderRadius: '50%', border: '2px solid var(--accent)', borderTopColor: 'transparent', animation: 'lp-spin .7s linear infinite' }}/>
-                )}
-                {usernameStatus === 'exists' && (
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                    <circle cx="8" cy="8" r="7" stroke="var(--success)" strokeWidth="1.5" opacity="0.4"/>
-                    <circle cx="8" cy="8" r="7" stroke="var(--success)" strokeWidth="1.5" strokeDasharray="44" style={{ animation: 'none' }}/>
-                    <path d="M4.5 8 L7 10.5 L11.5 5.5" stroke="var(--success)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                )}
-                {usernameStatus === 'free' && <SparkleIcon />}
-                {usernameStatus === 'invalid' && <XMark />}
-              </div>
+              {/* ── USERNAME STEP ── */}
+              {step === 'username' && (
+                <form onSubmit={onUsernameSubmit} autoComplete="off">
+                  <label className="cf block mb-2 text-[10px] font-bold tracking-[.12em] uppercase text-[#0d2e1f]/35"
+                    style={{ fontFamily: FONTS.body }}>Username</label>
+                  <div className="cf mb-4">
+                    <input ref={inputRef} type="text" autoCapitalize="none" autoCorrect="off" spellCheck={false}
+                      placeholder="your_username" value={username} onChange={onUsernameChange} disabled={busy}
+                      className="lp-inp w-full rounded-2xl font-medium transition-all duration-200 disabled:opacity-40"
+                      style={{ fontFamily: FONTS.body, fontSize: 15, padding: '14px 16px', background: 'rgba(10,50,36,.04)', border: '1.5px solid rgba(10,50,36,.1)', color: '#0d2e1f' }} />
+                  </div>
+
+                  <button type="submit" disabled={busy || !username.trim() || ustatus === 'invalid'}
+                    className="cf relative overflow-hidden w-full flex items-center justify-center gap-2
+                               rounded-2xl text-white font-bold
+                               transition-all duration-200 active:scale-[.97]
+                               disabled:opacity-40 lp-shine mb-4"
+                    style={{
+                      fontFamily: FONTS.body, fontSize: 15, padding: '15px 20px',
+                      background: ustatus === 'exists' ? '#059669' : ustatus === 'free' ? '#2563eb' : '#0a4433',
+                      boxShadow: '0 6px 24px rgba(8,60,40,.4)',
+                    }}>
+                    {busy ? <Spin sz={16} /> : null}
+                    <span>{busy ? 'Please wait...' : ustatus === 'exists' ? 'Sign in' : ustatus === 'free' ? 'Create account' : 'Continue'}</span>
+                    {!busy && <IArrow />}
+                  </button>
+
+                  <div className="cf flex items-center gap-3 mb-4">
+                    <div className="flex-1 h-px bg-[#0d2e1f]/8 rounded-full" />
+                    <span className="text-[10px] font-bold tracking-[.12em] text-[#0d2e1f]/20" style={{ fontFamily: FONTS.body }}>OR</span>
+                    <div className="flex-1 h-px bg-[#0d2e1f]/8 rounded-full" />
+                  </div>
+
+                  {!isRemote && (
+                    <button onClick={doGuest} disabled={busy} type="button"
+                      className="cf w-full flex items-center justify-center gap-2
+                                 rounded-2xl font-semibold
+                                 transition-all duration-200 active:scale-[.97]
+                                 disabled:opacity-30 mb-3"
+                      style={{
+                        fontFamily: FONTS.body, fontSize: 14, padding: '13px 18px',
+                        color: '#0d3326', background: 'rgba(10,60,40,.06)', border: '1.5px solid rgba(10,60,40,.1)',
+                      }}>
+                      {guestLoad ? <Spin sz={16} dk /> : <IUser />}
+                      {guestLoad ? 'Setting up...' : 'Continue as guest'}
+                    </button>
+                  )}
+
+                  {isRemote && (
+                    <div className="cf px-4 py-3 rounded-xl mb-3 text-center"
+                      style={{ background: 'rgba(217,119,6,.05)', border: '1px solid rgba(217,119,6,.1)' }}>
+                      <p className="text-[11px] text-amber-700/50 leading-relaxed" style={{ fontFamily: FONTS.body }}>
+                        Guest access requires being at the venue
+                      </p>
+                    </div>
+                  )}
+
+                  <button onClick={() => navigate('/staff/login')} disabled={busy} type="button"
+                    className="cf w-full flex items-center justify-center gap-2
+                               rounded-xl font-medium text-[#0d2e1f]/30
+                               hover:text-[#0d2e1f]/45
+                               transition-colors mb-5"
+                    style={{ fontFamily: FONTS.body, fontSize: 12, padding: '11px 16px', border: '1px solid rgba(10,50,36,.06)', background: 'transparent' }}>
+                    <IShield /> Staff login
+                  </button>
+
+                  <div className="cf flex items-start gap-3 px-4 py-3.5 rounded-xl"
+                    style={{ background: 'rgba(10,60,40,.05)', border: '1px solid rgba(10,60,40,.08)' }}>
+                    <span className="mt-0.5 shrink-0"><IStar /></span>
+                    <div>
+                      <p className="text-[11px] font-bold text-[#0a3326] mb-0.5" style={{ fontFamily: FONTS.body }}>
+                        Earn loyalty points
+                      </p>
+                      <p className="text-[10px] text-[#0d2e1f]/38 leading-relaxed" style={{ fontFamily: FONTS.body }}>
+                        Bronze, Silver, Gold — up to 15% off at {displayName}
+                      </p>
+                    </div>
+                  </div>
+                </form>
+              )}
+
+              {/* ── PIN STEPS ── */}
+              {(step === 'pin' || step === 'create_pin' || step === 'confirm_pin') && (
+                <div>
+                  {(step === 'create_pin' || step === 'confirm_pin') && (
+                    <div className="flex items-center justify-center gap-2 mb-4">
+                      {['create_pin', 'confirm_pin'].map((s, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold"
+                            style={{
+                              background: step === s || (step === 'confirm_pin' && i === 0) ? '#059669' : 'rgba(10,50,36,.08)',
+                              color: step === s || (step === 'confirm_pin' && i === 0) ? '#fff' : 'rgba(10,50,36,.35)',
+                              fontFamily: FONTS.body,
+                            }}>{i + 1}</div>
+                          {i === 0 && <div className="w-8 h-px" style={{ background: step === 'confirm_pin' ? '#059669' : 'rgba(10,50,36,.1)' }} />}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <PinDots length={currentPin.length} />
+                  <div className="flex justify-center mb-4">
+                    <button type="button" onClick={() => setShowPin(p => !p)}
+                      className="flex items-center gap-1.5 text-[11px] font-medium text-[#0d2e1f]/35"
+                      style={{ fontFamily: FONTS.body, background: 'none', border: 'none' }}>
+                      <IEye open={showPin} /> {showPin ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                  <PinKeypad onKey={onPinKey} disabled={busy || isBlocked} />
+                  {step === 'pin' && (
+                    <div className="flex justify-center mt-5">
+                      <button type="button" onClick={() => setShowForgot(true)}
+                        className="flex items-center gap-1.5 text-[11px] font-medium text-[#0d2e1f]/30"
+                        style={{ fontFamily: FONTS.body, background: 'none', border: 'none' }}>
+                        <ILock /> Forgot passcode?
+                      </button>
+                    </div>
+                  )}
+                  {busy && <div className="flex justify-center mt-4"><Spin sz={20} dk /></div>}
+                </div>
+              )}
             </div>
 
-            {/* ── Status badge ── */}
-            <StatusBadge status={usernameStatus} isDark={isDark} />
-
-            {/* ── Submit button ── */}
-            <button
-              ref={btnRef}
-              type="submit"
-              disabled={!canSubmit}
-              className="lp-card-el"
-              style={{
-                width: '100%',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-                padding: '15px 20px', borderRadius: 14, marginBottom: 14,
-                border: 'none',
-                background: !canSubmit ? 'var(--btn-disabled)' : btnGradient,
-                color: !canSubmit ? 'var(--btn-disabled-text)' : '#fff',
-                fontFamily: FONTS.body, fontWeight: 700, fontSize: 15,
-                minHeight: 52,
-                boxShadow: !canSubmit ? 'none' : `0 6px 24px ${btnGlow}`,
-                cursor: canSubmit ? 'pointer' : 'not-allowed',
-                opacity: !canSubmit ? 0.55 : 1,
-                transition: 'background 0.25s, box-shadow 0.25s, opacity 0.18s',
-                position: 'relative', overflow: 'hidden',
-              }}
-            >
-              {/* Shimmer effect on hover */}
-              {canSubmit && (
-                <div aria-hidden="true" style={{
-                  position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                  background: 'linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.15) 50%, transparent 60%)',
-                  animation: 'lp-shimmer 2.5s ease-in-out infinite',
-                  pointerEvents: 'none',
-                }}/>
-              )}
-              {isLoading && (
-                <div style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', animation: 'lp-spin .7s linear infinite', flexShrink: 0 }}/>
-              )}
-              <span>{btnLabel}</span>
-              {!isLoading && <ArrowRight />}
-            </button>
-          </form>
-
-          {/* ── Divider ── */}
-          <div className="lp-card-el" style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '0 0 14px' }}>
-            <div style={{ flex: 1, height: '1px', background: 'var(--divider)' }}/>
-            <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--text-disabled)', fontFamily: FONTS.body }}>OR</span>
-            <div style={{ flex: 1, height: '1px', background: 'var(--divider)' }}/>
-          </div>
-
-          {/* ── Guest button ── */}
-          <button className="lp-btn-ghost lp-card-el" onClick={handleGuest} disabled={isLoading || guestLoading} style={{ marginBottom: 10 }}>
-            <UserIcon />
-            {guestLoading ? 'Setting up…' : 'Continue as Guest'}
-          </button>
-
-          {/* ── Staff button ── */}
-          <button className="lp-staff-btn lp-card-el" onClick={() => navigate('/staff/login')} disabled={isLoading} style={{ marginBottom: 18 }}>
-            <ShieldIcon />
-            Staff Login
-          </button>
-
-          {/* ── Loyalty hint ── */}
-          <div className="lp-card-el" style={{
-            display: 'flex', alignItems: 'flex-start', gap: 11,
-            padding: '11px 14px', borderRadius: 13,
-            background: 'var(--loyalty-bg)', border: '1px solid var(--loyalty-border)',
-          }}>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, marginTop: 1 }}>
-              <path d="M8 1.5 L9.6 5.8 L14 6.2 L10.8 9.1 L11.8 13.5 L8 11.2 L4.2 13.5 L5.2 9.1 L2 6.2 L6.4 5.8 Z" fill="var(--loyalty-text)" opacity="0.85"/>
-            </svg>
-            <div>
-              <p style={{ fontFamily: FONTS.body, fontWeight: 700, fontSize: 12.5, color: 'var(--loyalty-text)', margin: '0 0 3px' }}>
-                Sign in to earn loyalty points
-              </p>
-              <p style={{ fontFamily: FONTS.body, fontSize: 11.5, color: 'var(--loyalty-sub-text)', margin: 0, lineHeight: 1.45 }}>
-                Bronze → Silver → Gold · Up to 15% off at {BRAND.name}
-              </p>
-            </div>
+            {/* Bottom shimmer */}
+            <div className="h-px w-full" style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,.6) 50%, transparent)' }} />
           </div>
         </div>
       </div>

@@ -91,6 +91,117 @@ export const COLORS = {
     silver: { DEFAULT: '#9CA3AF', light: '#D1D5DB', bg: '#F9FAFB', text: '#374151' },
     gold:   { DEFAULT: '#F59E0B', light: '#FCD34D', bg: '#FFFBEB', text: '#78350F' },
   },
+portion: {
+  half: {
+    dark: {
+      rowBg:       'rgba(255,159,28,0.13)',
+      rowBorder:   'rgba(255,159,28,0.58)',
+      rowShadow:   '0 0 0 3px rgba(255,159,28,0.13), 0 4px 18px rgba(255,159,28,0.18)',
+      radioBg:     'rgba(255,159,28,0.18)',
+      radioBorder: 'rgba(255,159,28,0.70)',
+      radioDot:    '#FF9F1C',
+      nameColor:   '#FFD080',
+      priceColor:  '#FFB84D',
+      divider:     'rgba(255,159,28,0.45)',
+      btnGradient: 'linear-gradient(135deg, #FF9F1C 0%, #E05C2A 100%)',
+      btnShadow:   '0 8px 28px rgba(255,159,28,0.40), inset 0 1px 0 rgba(255,255,255,0.22)',
+    },
+    light: {
+      rowBg:       'rgba(200,104,10,0.08)',
+      rowBorder:   'rgba(200,104,10,0.55)',
+      rowShadow:   '0 0 0 3px rgba(180,100,20,0.08), 0 4px 16px rgba(180,100,20,0.14)',
+      radioBg:     'rgba(200,104,10,0.12)',
+      radioBorder: 'rgba(200,104,10,0.65)',
+      radioDot:    '#C8680A',
+      nameColor:   '#B85C00',
+      priceColor:  '#B85C00',
+      divider:     'rgba(180,100,20,0.38)',
+      btnGradient: 'linear-gradient(135deg, #E8892A 0%, #C8680A 100%)',
+      btnShadow:   '0 8px 24px rgba(180,100,20,0.32), inset 0 1px 0 rgba(255,255,255,0.22)',
+    },
+  },
+  full: {
+    dark: {
+      rowBg:       'rgba(52,211,153,0.11)',
+      rowBorder:   'rgba(52,211,153,0.55)',
+      rowShadow:   '0 0 0 3px rgba(52,211,153,0.11), 0 4px 18px rgba(52,211,153,0.16)',
+      radioBg:     'rgba(52,211,153,0.16)',
+      radioBorder: 'rgba(52,211,153,0.65)',
+      radioDot:    '#34D399',
+      nameColor:   '#6EE7B7',
+      priceColor:  '#6EE7B7',
+      divider:     'rgba(52,211,153,0.40)',
+      btnGradient: 'linear-gradient(135deg, #34D399 0%, #10B981 100%)',
+      btnShadow:   '0 8px 28px rgba(52,211,153,0.35), inset 0 1px 0 rgba(255,255,255,0.20)',
+    },
+    light: {
+      rowBg:       'rgba(5,150,105,0.07)',
+      rowBorder:   'rgba(5,150,105,0.50)',
+      rowShadow:   '0 0 0 3px rgba(5,150,105,0.07), 0 4px 16px rgba(5,150,105,0.13)',
+      radioBg:     'rgba(5,150,105,0.10)',
+      radioBorder: 'rgba(5,150,105,0.60)',
+      radioDot:    '#059669',
+      nameColor:   '#065F46',
+      priceColor:  '#065F46',
+      divider:     'rgba(5,150,105,0.32)',
+      btnGradient: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+      btnShadow:   '0 8px 24px rgba(5,150,105,0.28), inset 0 1px 0 rgba(255,255,255,0.22)',
+    },
+  },
+  unselected: {
+    dark: {
+      rowBg:       'rgba(255,255,255,0.035)',
+      rowBorder:   'rgba(255,255,255,0.09)',
+      nameColor:   'rgba(255,220,160,0.65)',
+      priceColor:  'rgba(255,190,100,0.32)',
+      divider:     'rgba(255,255,255,0.09)',
+      radioBg:     'rgba(255,255,255,0.06)',
+      radioBorder: 'rgba(255,255,255,0.18)',
+    },
+    light: {
+      rowBg:       'rgba(180,100,20,0.04)',
+      rowBorder:   'rgba(180,100,20,0.14)',
+      nameColor:   'rgba(90,45,8,0.65)',
+      priceColor:  'rgba(120,65,10,0.38)',
+      divider:     'rgba(180,100,20,0.14)',
+      radioBg:     'rgba(180,100,20,0.07)',
+      radioBorder: 'rgba(180,100,20,0.22)',
+    },
+  },
+},
+  // ── PAYMENT METHODS ────────────────────────────────────────────────────────
+  // eSewa = Nepal's dominant digital wallet (#1 by transaction volume)
+  payment: {
+    esewa: {
+      DEFAULT: '#60BB46',   // eSewa official green
+      dark:    '#3A8A2A',
+      light:   '#84D464',
+      bg:      'rgba(96,187,70,0.10)',
+      border:  'rgba(96,187,70,0.28)',
+      glow:    'rgba(96,187,70,0.32)',
+      text:    '#FFFFFF',   // white text on green button
+    },
+    cash: {
+      DEFAULT: '#FF9F1C',   // uses brand accent
+      bg:      'rgba(255,159,28,0.10)',
+      border:  'rgba(255,159,28,0.28)',
+    },
+    card: {
+      DEFAULT: '#3B82F6',   // universal card blue
+      dark:    '#1D4ED8',
+      bg:      'rgba(59,130,246,0.10)',
+      border:  'rgba(59,130,246,0.28)',
+      glow:    'rgba(59,130,246,0.25)',
+    },
+    khalti: {              // Nepal second-most-popular wallet
+      DEFAULT: '#5C2D91',
+      dark:    '#3D1E64',
+      bg:      'rgba(92,45,145,0.10)',
+      border:  'rgba(92,45,145,0.28)',
+      glow:    'rgba(92,45,145,0.28)',
+      text:    '#FFFFFF',
+    },
+  },
 
   // ── WEATHER MOODS ──────────────────────────────────────────────────────────
   weather: {
@@ -150,6 +261,7 @@ export const COLORS = {
     brandSoft: 'linear-gradient(135deg, #FFB84D, #F0784A)',
     matcha:    'linear-gradient(135deg, #2D9B5A, #38C26F)',
     dark:      'linear-gradient(180deg, #1A1208, #0F0A06)',
+    esewa:     'linear-gradient(135deg, #60BB46, #3A8A2A)',
     loyalty: {
       bronze: 'linear-gradient(135deg, #CD7F32, #E8A96A)',
       silver: 'linear-gradient(135deg, #9CA3AF, #D1D5DB)',
@@ -164,6 +276,7 @@ export const COLORS = {
     lg:    '0 8px 24px rgba(0,0,0,0.12)',
     brand: '0 4px 20px rgba(255,159,28,0.35)',
     card:  '0 2px 8px rgba(92,51,23,0.08)',
+    esewa: '0 4px 20px rgba(96,187,70,0.32)',
   },
 }
 

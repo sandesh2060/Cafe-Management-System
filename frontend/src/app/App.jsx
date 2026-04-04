@@ -1,48 +1,53 @@
-// src/app/App.jsx
+// frontend/src/app/App.jsx
 //
-// ✅ FIX: Lenis and BrowserRouter are now only in providers.jsx — removed
-//    duplicate mounts here. App.jsx just composes Provider + AppInner.
-// ✅ HMR guard on bootstrapPromise prevents StrictMode double-invoke issues.
-// ✅ Bootstrap reads /auth/me once, handles both token shapes safely.
-// ✅ Global auth event listeners for session expiry and force-logout.
+// ─── VENUE ENTRY FLOW CHANGES ─────────────────────────────────────────────────
+// 1. ADDED: clearVenue dispatch on session expired + logout
+// 2. CHANGED: redirect /login → /venue on session expired
+// 3. CHANGED: redirect /detect → /venue on logout
+// 4. ALL other code — bootstrap, socket, ScrollToTop, etc. — IDENTICAL
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// ★ OWNER BOOTSTRAP FIX ───────────────────────────────────────────────────────
+// Bootstrap was calling only /auth/me (customer endpoint).
+// If that returns 401, it immediately called clearAuth() — wiping owner Redux
+// state set by ownerLogin thunk, and breaking page-reload for owners.
+//
+// Fix: if /auth/me fails, try GET /owner/me before giving up.
+// Only call clearAuth() when BOTH fail.
+// ─────────────────────────────────────────────────────────────────────────────
 
-import { Provider }                    from 'react-redux'
-import { Toaster }                     from 'react-hot-toast'
-import { useEffect, useState }         from 'react'
-import { useDispatch }                 from 'react-redux'
-import { useNavigate }                 from 'react-router-dom'
-import { ThemeProvider }               from '@shared/context/ThemeContext'
-import store                           from '@store'
-import Providers                       from './providers'
-import AppRoutes                       from './routes/AppRoutes'
+import { Toaster }                   from 'react-hot-toast'
+import { useEffect, useState }       from 'react'
+import { useDispatch }               from 'react-redux'
+import { useNavigate }               from 'react-router-dom'
+import store                         from '@store'
+import Providers                     from './providers'
+import AppRoutes                     from './routes/AppRoutes'
 import {
   setCredentials,
   clearAuth,
   setBootstrapReady,
-}                                      from '@store/slices/authSlice'
-import { setSession, clearSession }    from '@store/slices/tableSessionSlice'
-import { rehydratePersistedSession }   from '@modules/table/hooks/tableSession.utils'
-import { clearCart }                   from '@store/slices/cartSlice'
-import api                             from '@api/axios'
-import { ENDPOINTS }                   from '@api/endpoints'
-import PageTransition                  from '@shared/components/utils/PageTransition'
-import useSocket                       from '@shared/hooks/useSocket'
-import ToastRenderer                   from '@shared/components/notifications/ToastRenderer'
-import { FONTS }                       from '@shared/config/brand'
+}                                    from '@store/slices/authSlice'
+import { clearSession }              from '@store/slices/tableSessionSlice'
+import { clearVenue }                from '@store/slices/venueSlice'
+import { rehydratePersistedSession } from '@modules/table/hooks/tableSession.utils'
+import { clearCart }                 from '@store/slices/cartSlice'
+import api                           from '@api/axios'
+import { ENDPOINTS }                 from '@api/endpoints'
+import PageTransition                from '@shared/components/utils/PageTransition'
+import ScrollToTop                   from '@shared/components/utils/ScrollToTop'
+import useSocket                     from '@shared/hooks/useSocket'
+import ToastRenderer                 from '@shared/components/notifications/ToastRenderer'
+import { FONTS }                     from '@shared/config/brand'
 
-// ── Bootstrap promise ─────────────────────────────────────────────────────────
-// Module-level so StrictMode double-invoke shares the same promise.
-// HMR guard resets it on hot-reload so dev never gets a stale bootstrap.
+// ── Bootstrap promise (module-level singleton) ────────────────────────────────
 let bootstrapPromise = null
 
 if (import.meta.hot) {
-  import.meta.hot.dispose(() => {
-    bootstrapPromise = null
-  })
+  import.meta.hot.dispose(() => { bootstrapPromise = null })
 }
 
 // ── AppInner ──────────────────────────────────────────────────────────────────
-// Needs to be inside <Providers> so it can use useDispatch + useNavigate.
 const AppInner = () => {
   const dispatch = useDispatch()
   const navigate = useNavigate()
@@ -56,10 +61,11 @@ const AppInner = () => {
       dispatch(clearAuth())
       dispatch(clearCart())
       dispatch(clearSession())
-      navigate('/login', { replace: true })
+      dispatch(clearVenue())
+      navigate('/venue', { replace: true })
     }
     const handleLogout = () => {
-      navigate('/detect', { replace: true })
+      navigate('/venue', { replace: true })
     }
     window.addEventListener('auth:session-expired', handleExpired)
     window.addEventListener('auth:logout-redirect', handleLogout)
@@ -69,10 +75,9 @@ const AppInner = () => {
     }
   }, [dispatch, navigate])
 
-  // Bootstrap: restore auth session from token
+  // ── Bootstrap: restore auth session from cookie ───────────────────────────
   useEffect(() => {
     const runBootstrap = async () => {
-      // StrictMode second invoke — promise already running, just await + mark ready
       if (bootstrapPromise) {
         await bootstrapPromise
         dispatch(setBootstrapReady(true))
@@ -81,34 +86,49 @@ const AppInner = () => {
       }
 
       bootstrapPromise = (async () => {
-        // Rehydrate table session from localStorage (sync)
         dispatch(rehydratePersistedSession())
 
-        const token = localStorage.getItem('kc_token')
-        if (!token) return // no token — not logged in
-
+        // ── Step 1: Try customer session ──────────────────────────────────
         try {
           const data = await api.get(ENDPOINTS.AUTH.ME)
-          // Handle both response shapes for safety
           const user = data?.data ?? data?.user ?? (data?._id ? data : null)
           if (user?._id) {
-            dispatch(setCredentials({ user, token }))
-          } else {
-            localStorage.removeItem('kc_token')
-            localStorage.removeItem('kc_user')
-            dispatch(clearAuth())
+            dispatch(setCredentials({ user }))
+            return   // ✅ customer session restored — done
           }
         } catch (err) {
           const status = err?.response?.status
-          if (status === 401 || status === 403) {
-            console.warn('[App] Token invalid — clearing auth')
-          } else {
+          if (status !== 401 && status !== 403) {
             console.warn('[App] Bootstrap /auth/me failed:', status ?? 'network error')
           }
-          localStorage.removeItem('kc_token')
-          localStorage.removeItem('kc_user')
-          dispatch(clearAuth())
+          // fall through to owner check
         }
+
+        // ★ Step 2: Try owner session ──────────────────────────────────────
+        // Runs when customer /auth/me returns 401/403 (no customer cookie).
+        // Owner sets kc_owner_token (separate httpOnly cookie).
+        // Without this, every page reload logs the owner out.
+        try {
+          const data = await api.get('/owner/me')
+          const owner = data?.data?.owner
+            ?? data?.data
+            ?? data?.owner
+            ?? (data?._id ? data : null)
+          if (owner?._id) {
+            // Inject role:'owner' — owner.model has no role field
+            dispatch(setCredentials({ user: { ...owner, role: 'owner' } }))
+            return   // ✅ owner session restored — done
+          }
+        } catch (err) {
+          // 401/403 = no owner cookie either — totally fine, just not logged in
+          const status = err?.response?.status
+          if (status !== 401 && status !== 403) {
+            console.warn('[App] Bootstrap /owner/me failed:', status ?? 'network error')
+          }
+        }
+
+        // Both failed → clear any stale state
+        dispatch(clearAuth())
       })()
 
       await bootstrapPromise
@@ -132,6 +152,7 @@ const AppInner = () => {
 
   return (
     <>
+      <ScrollToTop />
       <PageTransition>
         <AppRoutes />
       </PageTransition>
@@ -141,8 +162,6 @@ const AppInner = () => {
 }
 
 // ── Root ──────────────────────────────────────────────────────────────────────
-// Providers wraps: Redux → BrowserRouter → ThemeProvider → Lenis
-// Toaster sits outside AppInner but inside Providers so it can read theme vars.
 const App = () => (
   <Providers>
     <AppInner />

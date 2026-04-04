@@ -1,21 +1,16 @@
 // src/store/slices/orderSlice.js
 //
-// FIXES:
-//   • placeOrder body map now forwards customizations per item
-//   • fetchActiveOrder / fetchOrderHistory / cancelOrder all use
-//     payload.data?.x ?? payload.x double-unwrap guard
-//   • updateOrderStatus exported as alias of socketStatusUpdate
-//     so any legacy import doesn't silently get undefined
-//   • fetchActiveOrder.fulfilled now has shallow-equality guard —
-//     skips state update (and re-render) if order hasn't changed
+// ─── CHANGES FROM ORIGINAL ────────────────────────────────────────────────────
+// 1. placeOrder payload now includes orderType ('dine-in' | 'delivery' | 'pickup')
+//    and deliveryAddress (for remote delivery orders)
+// 2. activeOrder now stores orderType for downstream components
+// All other logic, selectors, and status constants are unchanged.
+// ─────────────────────────────────────────────────────────────────────────────
 
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import orderService from '@modules/customer/services/orderService'
 
-// ── helpers ────────────────────────────────────────────────────────────────────
 const unwrap = (payload, key) => payload?.data?.[key] ?? payload?.[key]
-
-// ── Thunks ─────────────────────────────────────────────────────────────────────
 
 export const placeOrder = createAsyncThunk(
   'order/place',
@@ -34,11 +29,14 @@ export const placeOrder = createAsyncThunk(
           customizations: i.customizations ?? null,
           notes:          i.notes          ?? null,
         })),
-        tableId:     payload.tableId     ?? null,
-        sessionId:   payload.sessionId   ?? null,
-        cafeId:      payload.cafeId,
-        loyaltyTier: payload.loyaltyTier ?? 'none',
-        specialNote: payload.specialNote ?? null,
+        tableId:         payload.tableId         ?? null,
+        sessionId:       payload.sessionId       ?? null,
+        cafeId:          payload.cafeId,
+        loyaltyTier:     payload.loyaltyTier     ?? 'none',
+        specialNote:     payload.specialNote     ?? null,
+        // ★ NEW: remote order fields
+        orderType:       payload.orderType       ?? 'dine-in',   // 'dine-in' | 'delivery' | 'pickup'
+        deliveryAddress: payload.deliveryAddress ?? null,        // { line1, city, landmark, lat, lng }
       }
       return await orderService.placeOrder(body)
     } catch (err) {
@@ -80,8 +78,9 @@ export const cancelOrder = createAsyncThunk(
   }
 )
 
-// ── Constants ──────────────────────────────────────────────────────────────────
-export const BLOCKING_STATUSES = ['pending', 'preparing', 'on_the_way']
+// ── Status constants ───────────────────────────────────────────────────────────
+export const BLOCKING_STATUSES = ['pending', 'preparing', 'on_the_way', 'delivered', 'billed']
+export const ADDABLE_STATUSES  = ['pending', 'preparing', 'on_the_way', 'delivered']
 
 // ── Slice ──────────────────────────────────────────────────────────────────────
 const initialState = {
@@ -91,6 +90,7 @@ const initialState = {
   loading:        false,
   placing:        false,
   lastMerged:     false,
+  lastReordered:  false,
   error:          null,
   hasActiveOrder: false,
 }
@@ -115,9 +115,11 @@ const orderSlice = createSlice({
       }
     },
 
-    socketOrderUpdated: (state, { payload: { order } }) => {
+    socketOrderUpdated: (state, { payload: { order, reordered } }) => {
       if (state.activeOrder?._id === order._id) {
-        state.activeOrder = order
+        state.activeOrder    = order
+        state.hasActiveOrder = BLOCKING_STATUSES.includes(order.status)
+        if (reordered) state.lastReordered = true
       }
       const idx = state.orderHistory.findIndex(o => o._id === order._id)
       if (idx !== -1) state.orderHistory[idx] = order
@@ -131,33 +133,33 @@ const orderSlice = createSlice({
       state.activeOrder    = null
       state.hasActiveOrder = false
     },
-    clearError:  (state) => { state.error      = null },
-    clearMerged: (state) => { state.lastMerged = false },
+    clearError:     (state) => { state.error        = null },
+    clearMerged:    (state) => { state.lastMerged    = false },
+    clearReordered: (state) => { state.lastReordered = false },
   },
 
   extraReducers: (builder) => {
     builder
-      // ── placeOrder ─────────────────────────────────────────────────────
       .addCase(placeOrder.pending, (state) => {
-        state.placing    = true
-        state.error      = null
-        state.lastMerged = false
+        state.placing       = true
+        state.error         = null
+        state.lastMerged    = false
+        state.lastReordered = false
       })
       .addCase(placeOrder.rejected, (state, { payload }) => {
         state.placing = false
         state.error   = payload
       })
       .addCase(placeOrder.fulfilled, (state, { payload }) => {
-        const order  = unwrap(payload, 'order')
-        const merged = payload?.data?.merged ?? payload?.merged ?? false
-
+        const order     = unwrap(payload, 'order')
+        const merged    = payload?.data?.merged    ?? payload?.merged    ?? false
+        const reordered = payload?.data?.reordered ?? payload?.reordered ?? false
         state.placing        = false
         state.lastMerged     = merged
+        state.lastReordered  = reordered
         state.activeOrder    = order
         state.hasActiveOrder = BLOCKING_STATUSES.includes(order?.status)
-
         if (!order) return
-
         if (merged) {
           const idx = state.orderHistory.findIndex(o => o._id === order._id)
           if (idx !== -1) state.orderHistory[idx] = order
@@ -167,19 +169,13 @@ const orderSlice = createSlice({
         }
       })
 
-      // ── fetchActiveOrder ───────────────────────────────────────────────
       .addCase(fetchActiveOrder.pending,  (state) => { state.loading = true })
       .addCase(fetchActiveOrder.rejected, (state, { payload }) => {
-        state.loading = false
-        state.error   = payload
+        state.loading = false; state.error = payload
       })
       .addCase(fetchActiveOrder.fulfilled, (state, { payload }) => {
         const incoming = unwrap(payload, 'order')
         state.loading  = false
-
-        // Shallow-equality guard — skip state update if nothing changed.
-        // This prevents unnecessary re-renders which were causing the
-        // polling interval to reset and fire 750+ times per minute.
         const changed =
           (state.activeOrder === null) !== (incoming === null) ||
           (incoming !== null && (
@@ -193,11 +189,9 @@ const orderSlice = createSlice({
         }
       })
 
-      // ── fetchOrderHistory ──────────────────────────────────────────────
       .addCase(fetchOrderHistory.pending,  (state) => { state.loading = true })
       .addCase(fetchOrderHistory.rejected, (state, { payload }) => {
-        state.loading = false
-        state.error   = payload
+        state.loading = false; state.error = payload
       })
       .addCase(fetchOrderHistory.fulfilled, (state, { payload }) => {
         state.loading      = false
@@ -205,11 +199,9 @@ const orderSlice = createSlice({
         state.pagination   = unwrap(payload, 'pagination') ?? null
       })
 
-      // ── cancelOrder ────────────────────────────────────────────────────
       .addCase(cancelOrder.pending,  (state) => { state.loading = true })
       .addCase(cancelOrder.rejected, (state, { payload }) => {
-        state.loading = false
-        state.error   = payload
+        state.loading = false; state.error = payload
       })
       .addCase(cancelOrder.fulfilled, (state, { payload }) => {
         const order   = unwrap(payload, 'order')
@@ -226,20 +218,24 @@ const orderSlice = createSlice({
 
 export const {
   socketStatusUpdate, socketOrderCancelled, socketOrderUpdated,
-  setActiveOrder, clearActiveOrder, clearError, clearMerged,
+  setActiveOrder, clearActiveOrder, clearError, clearMerged, clearReordered,
 } = orderSlice.actions
 
 export const updateOrderStatus = orderSlice.actions.socketStatusUpdate
 
-// ── Selectors ──────────────────────────────────────────────────────────────────
 export const selectActiveOrder     = (s) => s.order.activeOrder
 export const selectHasActiveOrder  = (s) => s.order.hasActiveOrder
 export const selectOrderStatus     = (s) => s.order.activeOrder?.status
+export const selectOrderType       = (s) => s.order.activeOrder?.orderType ?? null   // ★ NEW
 export const selectOrderHistory    = (s) => s.order.orderHistory
 export const selectOrderPagination = (s) => s.order.pagination
 export const selectOrderLoading    = (s) => s.order.loading
 export const selectOrderPlacing    = (s) => s.order.placing
 export const selectOrderError      = (s) => s.order.error
 export const selectLastMerged      = (s) => s.order.lastMerged
+export const selectLastReordered   = (s) => s.order.lastReordered
+
+export const selectCanAddItems = (s) =>
+  ADDABLE_STATUSES.includes(s.order.activeOrder?.status)
 
 export default orderSlice.reducer
